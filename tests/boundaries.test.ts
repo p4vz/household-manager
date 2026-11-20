@@ -55,6 +55,18 @@ describe("module boundaries", () => {
     expect(violations).toEqual([]);
   });
 
+  it("app routes reach modules only through api.ts, ui/ or the registry", () => {
+    const violations: string[] = [];
+    for (const file of files.filter((f) => rel(f).startsWith("app/"))) {
+      for (const spec of imports(file)) {
+        const target = resolveImport(file, spec)?.replace(/\.(ts|tsx)$/, "");
+        if (!target?.startsWith("modules/")) continue;
+        if (!/^modules\/([^/]+\/(api|ui\/.+)|registry)$/.test(target)) violations.push(`${rel(file)} -> ${spec}`);
+      }
+    }
+    expect(violations).toEqual([]);
+  });
+
   it("core never depends on a module (except the schema aggregate)", () => {
     const violations = files
       .filter((f) => rel(f).startsWith("core/") && rel(f) !== "core/db/schema.ts")

@@ -1,5 +1,5 @@
 import "server-only";
-import { allowedHosts, checkOutboundUrl } from "./hosts";
+import { checkOutboundUrl } from "./hosts";
 
 /**
  * The only way server code may reach the network. Enforces https and the
@@ -11,6 +11,6 @@ export const outboundFetch: typeof fetch = async (input, init) => {
   const url = new URL(
     typeof input === "string" ? input : input instanceof URL ? input.href : input.url,
   );
-  checkOutboundUrl(url, allowedHosts(process.env.SIMPLEFIN_ACCESS_URL));
+  checkOutboundUrl(url);
   return fetch(input, { ...init, redirect: "error" });
 };

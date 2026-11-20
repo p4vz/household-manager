@@ -1,19 +1,18 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
-import { allowedHosts, checkOutboundUrl, OutboundBlockedError } from "@/core/net/hosts";
+import { checkOutboundUrl, OutboundBlockedError } from "@/core/net/hosts";
 import { outboundFetch } from "@/core/net/outbound";
 import { isValidCronRequest } from "@/core/net/cron";
 
 describe("outbound host allowlist", () => {
-  const hosts = allowedHosts("https://user:pass@bridge.example-sfin.org/simplefin");
-  it("allows the provider hosts and the configured SimpleFIN host", () => {
+  it("allows the provider hosts", () => {
     for (const u of [
       "https://api.anthropic.com/v1/messages",
       "https://generativelanguage.googleapis.com/v1beta/models",
       "https://beta-bridge.simplefin.org/simplefin/create",
-      "https://bridge.example-sfin.org/simplefin/accounts",
+      "https://user:pass@bridge.simplefin.org/simplefin/accounts",
       "https://oauth2.googleapis.com/token",
     ]) {
-      expect(() => checkOutboundUrl(new URL(u), hosts)).not.toThrow();
+      expect(() => checkOutboundUrl(new URL(u))).not.toThrow();
     }
   });
   it("blocks other hosts, lookalikes and plain http", () => {
@@ -22,8 +21,9 @@ describe("outbound host allowlist", () => {
       "https://api.anthropic.com.evil.io/",
       "http://api.anthropic.com/",
       "https://169.254.169.254/latest/meta-data",
+      "https://api.anthropic.com:8443/",
     ]) {
-      expect(() => checkOutboundUrl(new URL(u), hosts)).toThrow(OutboundBlockedError);
+      expect(() => checkOutboundUrl(new URL(u))).toThrow(OutboundBlockedError);
     }
   });
   it("outboundFetch refuses before opening a connection and disables redirects", async () => {

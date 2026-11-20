@@ -46,7 +46,7 @@ publishes an event. Subscribers react on their own.
 | Event | Published by | Who listens, and what they do |
 | --- | --- | --- |
 | `trips.tripPlanned` | trips | calendar adds the trip; finance adds the trip budget as an expected expense |
-| `trips.tripCancelled` | trips | calendar removes the trip |
+| `trips.tripCancelled` | trips | calendar removes the trip; finance drops the expected expense |
 | `maintenance.taskScheduled` | maintenance | calendar adds a reminder; finance adds the estimated cost as an expected expense |
 | `maintenance.costRecorded` | maintenance | finance updates the expected expense with the actual cost |
 | `finance.annualFeeUpcoming` | finance | calendar adds an annual-fee reminder |
@@ -85,6 +85,27 @@ These are enforced by `tests/boundaries.test.ts`, which runs in CI.
    `module.ts`.
 2. If module B needs to ask module A something, add a function to A's
    `api.ts` and call it from B.
+
+## Finance ingestion
+
+- **SimpleFIN** (`modules/finance/ingest/simplefin.ts`, `sync.ts`). One
+  request per run pulls every account plus transactions since the last good
+  run minus 5 days (89 days on the first run). Transactions are deduped on
+  `(account, "simplefin", SimpleFIN id)`. Pending rows that SimpleFIN stops
+  reporting are removed, since banks re-issue them under a new id when they
+  post. User edits (display name, owner, type, active, category) are never
+  overwritten by a sync.
+- **Simplifi CSV** (`ingest/csv.ts`, `import.ts`). Each CSV account is mapped
+  to an existing account, a new CSV-only account, or skipped. Rows dated on
+  or after that account's SimpleFIN start date are dropped, and each row gets
+  a content hash id, so importing the same or an overlapping export again
+  adds nothing. If an account is linked to SimpleFIN after its history was
+  imported, the sync deletes the CSV rows that SimpleFIN now covers.
+  Recommended order: connect SimpleFIN first, then import history into the
+  synced accounts.
+- **Categories.** Simplifi categories (`Parent: Child`) are kept as
+  category/subcategory, and the most common category per merchant becomes a
+  rule that is applied to newly synced transactions.
 
 ## Database
 

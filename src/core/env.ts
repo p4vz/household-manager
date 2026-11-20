@@ -27,6 +27,7 @@ const schema = z.object({
   GEMINI_API_KEY: z.string().optional().default(""),
   ANTHROPIC_API_KEY: z.string().optional().default(""),
   HOUSEHOLD_LEGAL_NAMES: z.string().optional().default(""),
+  HOUSEHOLD_TIMEZONE: z.string().optional().default("America/New_York"),
 });
 
 export type ServerEnv = z.infer<typeof schema>;

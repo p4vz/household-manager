@@ -17,23 +17,14 @@ export const STATIC_OUTBOUND_HOSTS = [
   "api.anthropic.com",
 ] as const;
 
-export function allowedHosts(simplefinAccessUrl?: string): Set<string> {
-  const hosts = new Set<string>(STATIC_OUTBOUND_HOSTS);
-  // The SimpleFIN access URL may point at a different bridge host; allow
-  // exactly that host and nothing else.
-  if (simplefinAccessUrl) {
-    try {
-      hosts.add(new URL(simplefinAccessUrl).hostname.toLowerCase());
-    } catch {
-      /* invalid URL: ignored, the call will fail closed */
-    }
-  }
-  return hosts;
-}
+export const OUTBOUND_HOSTS: ReadonlySet<string> = new Set<string>(STATIC_OUTBOUND_HOSTS);
 
-export function checkOutboundUrl(url: URL, hosts: Set<string>): void {
+export function checkOutboundUrl(url: URL, hosts: ReadonlySet<string> = OUTBOUND_HOSTS): void {
   if (url.protocol !== "https:") {
     throw new OutboundBlockedError(`Outbound call must use https: ${url.protocol}`);
+  }
+  if (url.port !== "" && url.port !== "443") {
+    throw new OutboundBlockedError(`Outbound call on non-standard port: ${url.port}`);
   }
   if (!hosts.has(url.hostname.toLowerCase())) {
     throw new OutboundBlockedError(`Outbound host not allowlisted: ${url.hostname}`);

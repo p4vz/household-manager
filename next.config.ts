@@ -35,6 +35,11 @@ const securityHeaders = [
 const nextConfig: NextConfig = {
   poweredByHeader: false,
   serverExternalPackages: ["postgres"],
+  experimental: {
+    // Simplifi CSV history uploads.
+    serverActions: { bodySizeLimit: "15mb" },
+    proxyClientMaxBodySize: "15mb",
+  },
   turbopack: {
     rules: {
       "*.css": {
