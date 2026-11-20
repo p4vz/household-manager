@@ -1,9 +1,5 @@
-import { PGlite } from "@electric-sql/pglite";
-import { drizzle } from "drizzle-orm/pglite";
-import { migrate } from "drizzle-orm/pglite/migrator";
 import { beforeAll, describe, expect, it } from "vitest";
-import { setDbForTests, type Db } from "@/core/db/client";
-import * as schema from "@/core/db/schema";
+import { freshDb } from "./helpers/db";
 import { registerModules } from "@/modules/registry";
 import { listUpcoming } from "@/modules/calendar/api";
 import { listExpectedExpenses } from "@/modules/finance/api";
@@ -11,9 +7,7 @@ import { completeTask, scheduleTask } from "@/modules/maintenance/api";
 import { cancelTrip, planTrip } from "@/modules/trips/api";
 
 beforeAll(async () => {
-  const pg = drizzle(new PGlite(), { schema });
-  await migrate(pg, { migrationsFolder: "./drizzle" });
-  setDbForTests(pg as unknown as Db);
+  await freshDb();
   registerModules();
 });
 
@@ -35,6 +29,7 @@ describe("modules talk to each other in-process", () => {
     await cancelTrip(tripId);
     events = await listUpcoming("2027-01-01");
     expect(events.find((e) => e.title === "Trip: Lisbon")).toBeUndefined();
+    expect((await listExpectedExpenses("2027-01-01")).find((e) => e.title === "Trip: Lisbon")).toBeUndefined();
   });
 
   it("maintenance tasks become calendar reminders and expected expenses", async () => {

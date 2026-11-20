@@ -1,5 +1,5 @@
 import type { ModuleDefinition } from "../types";
-import { upsertExpectedExpense } from "./api";
+import { removeExpectedExpense, upsertExpectedExpense } from "./api";
 
 /** Finance hears about costs that originate in other modules. */
 export const financeModule: ModuleDefinition = {
@@ -27,5 +27,8 @@ export const financeModule: ModuleDefinition = {
         { title: `Trip: ${e.name}`, date: e.startDate, amount: e.budget, category: "Travel" },
       );
     });
+    bus.subscribe("trips.tripCancelled", "finance", (e) =>
+      removeExpectedExpense({ module: "trips", ref: e.tripId }),
+    );
   },
 };

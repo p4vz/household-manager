@@ -41,13 +41,14 @@ in-process function calls; no route, queue or socket exposes them.
 ## What the server may call
 
 All outbound traffic goes through `src/core/net/outbound.ts`, which requires
-https, checks the host against the list below, and refuses redirects. CI
+https on port 443, checks the host against the list below, and refuses
+redirects. CI
 fails if `fetch(` is used anywhere else.
 
 | Host | Why |
 | --- | --- |
 | `accounts.google.com`, `oauth2.googleapis.com`, `openidconnect.googleapis.com`, `www.googleapis.com` | Google sign-in |
-| `bridge.simplefin.org`, `beta-bridge.simplefin.org`, plus the host inside `SIMPLEFIN_ACCESS_URL` | bank sync |
+| `bridge.simplefin.org`, `beta-bridge.simplefin.org` | bank sync |
 | `generativelanguage.googleapis.com` | Gemini |
 | `api.anthropic.com` | Claude |
 
@@ -63,6 +64,19 @@ only by server code. Files that read them import `server-only`, so a Client
 Component importing them breaks the build. No variable uses the
 `NEXT_PUBLIC_` prefix (CI checks this). Secrets live in Railway variables,
 never in the repo (`.env*` is git-ignored except `.env.example`).
+
+The SimpleFIN access URL is the one secret the app obtains at runtime. If
+`SIMPLEFIN_ACCESS_URL` is set it is used as is; otherwise the URL claimed on
+the setup screen is stored in `core_settings` encrypted with AES-256-GCM
+under a key derived from `AUTH_SECRET` (HKDF). It is never sent to the
+browser. Rotating `AUTH_SECRET` means reconnecting SimpleFIN.
+
+## Bank sync limits
+
+SimpleFIN is contacted at most twice a day. Railway cron calls
+`/api/cron/simplefin-sync` hourly; the handler only proceeds in the 7 AM and
+7 PM hours of `HOUSEHOLD_TIMEZONE`, and refuses to run again within 4 hours
+of the last run whatever the trigger.
 
 ## What the AI providers see
 
