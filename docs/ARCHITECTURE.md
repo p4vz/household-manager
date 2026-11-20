@@ -45,7 +45,7 @@ publishes an event. Subscribers react on their own.
 
 | Event | Published by | Who listens, and what they do |
 | --- | --- | --- |
-| `trips.tripPlanned` | trips | calendar adds the trip; finance adds the trip budget as an expected expense |
+| `trips.tripPlanned` | trips | calendar adds the trip; finance adds the trip budget (or, with no budget, the sum of step costs) as an expected expense. Re-published whenever dates, places or costs change |
 | `trips.tripCancelled` | trips | calendar removes the trip; finance drops the expected expense |
 | `maintenance.taskScheduled` | maintenance | calendar adds a reminder; finance adds the estimated cost as an expected expense |
 | `maintenance.costRecorded` | maintenance | finance updates the expected expense with the actual cost |
@@ -142,6 +142,51 @@ These are enforced by `tests/boundaries.test.ts`, which runs in CI.
   on demand. It receives only aggregates: per-card spend/earn/fee, spend by
   category, monthly amounts of recurring merchants, and the audit's missed
   value by category. Reports are stored in `finance_advisor_reports`.
+
+## Card rewards and trips
+
+Trips asks finance which card to book with; finance never reads trip tables.
+
+- `finance.planCardsForPurchases(purchases)` takes planned purchases (date
+  the charge posts, amount, merchant, category) and returns the card per
+  purchase plus each sign-up bonus's progress. It is plain code in
+  `rewards/bonus.ts`.
+- A card's profile can hold a sign-up offer: bonus (points, or dollars for
+  cash back), minimum spend, start and deadline. Progress is the card's
+  purchases net of refunds in that window; transfers and income never count.
+- Planning: open offers are filled first, most valuable first, using only
+  purchases that post before the deadline, cheapest multiplier loss per
+  dollar first, and only if the plan can actually reach the minimum (partial
+  progress is not worth giving up multipliers). Everything else goes to the
+  best-multiplier card, honouring caps already used this year.
+- Trips turns unpaid itinerary steps with a cost into purchases
+  (`trips/card-plan.ts`): kind maps to the Simplifi category a charge would
+  land in (flight to Travel / Air Travel, stay to Travel / Hotel, ...) and the
+  booking provider is the merchant, so merchant rules like "Marriott" match.
+  A step marked "paid with" a card drops out: its real charge will arrive
+  through the bank sync and count there.
+
+## Trips
+
+Ported from the standalone family trip assistant (`p4vz/trip-assistant-`).
+What moved: itinerary with booking states, re-check dates and two-zone
+times; reusable packing templates; gluten-free dining (OpenStreetMap search,
+pasted Find Me Gluten Free lists) with coeliac-grade ratings; printable
+allergy cards; Wikipedia-grounded trivia, kids' quizzes and scavenger hunts;
+per-place emergency info; the encrypted documents vault.
+
+What changed in the move:
+
+- One household, so the old household/invite-code layer is gone. People are
+  `trips_travelers`; adults can be linked to a sign-in by owner label.
+- AI goes through the shared layer (Gemini or Claude per Settings).
+  Variables travel in the sanitized payload, and travellers are sent only as
+  "adult" or "child, age 8", never by name.
+- Documents download through a server action that returns the decrypted
+  bytes to the signed-in member, because the app has no file routes.
+- Not ported yet, because each needs public routes or new OAuth scopes: the
+  MCP endpoint and its OAuth server, Google Photos, Drive backup and the
+  Calendar mirror. The offline service worker is also not ported yet.
 
 ## Database
 

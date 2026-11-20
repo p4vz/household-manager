@@ -1,8 +1,9 @@
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
+import { Progress } from "@/components/ui/progress";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { formatMoney } from "@/lib/utils";
-import { OWNER_LABELS, latestAdvisorReport, listCardsWithProfiles, rewardsAudit } from "@/modules/finance/api";
+import { OWNER_LABELS, latestAdvisorReport, listCardsWithProfiles, rewardsAudit, signupBonusOverview } from "@/modules/finance/api";
 import { AdvisorButton } from "@/modules/finance/ui/advisor-button";
 import { addCardRuleAction, deleteCardRuleAction, runAdvisorAction, saveCardProfileAction } from "../actions";
 
@@ -10,7 +11,12 @@ const MONTHS = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "
 const input = "h-8 rounded-md border bg-background px-2";
 
 export default async function RewardsPage() {
-  const [cards, { audit }, advisor] = await Promise.all([listCardsWithProfiles(), rewardsAudit("12M"), latestAdvisorReport()]);
+  const [cards, { audit }, advisor, bonuses] = await Promise.all([
+    listCardsWithProfiles(),
+    rewardsAudit("12M"),
+    latestAdvisorReport(),
+    signupBonusOverview(),
+  ]);
 
   return (
     <section className="max-w-5xl space-y-8">
@@ -82,6 +88,29 @@ export default async function RewardsPage() {
       ) : (
         <p className="text-muted-foreground">Set up a reward profile for at least one card below to see the audit.</p>
       )}
+
+      {bonuses.length ? (
+        <Card>
+          <CardHeader>
+            <CardTitle>Sign-up bonuses in progress</CardTitle>
+            <CardDescription>Spend on the card since the offer started, net of refunds. Trip pages suggest bookings that would close the gap.</CardDescription>
+          </CardHeader>
+          <CardContent className="space-y-3 text-sm">
+            {bonuses.map((b) => (
+              <div key={b.accountId} className="space-y-1">
+                <div className="flex justify-between">
+                  <span><strong>{b.card}</strong>: worth about {formatMoney(b.bonusValue)}</span>
+                  <span className={b.remaining > 0 && b.daysLeft < 30 ? "text-destructive" : "text-muted-foreground"}>
+                    {b.remaining > 0 ? `${formatMoney(b.remaining)} to go, ${b.daysLeft} days left (by ${b.deadline})` : "Minimum spend met"}
+                  </span>
+                </div>
+                <Progress value={Math.min(100, (b.spent / b.minSpend) * 100)} />
+                <p className="text-xs text-muted-foreground">{formatMoney(b.spent)} of {formatMoney(b.minSpend)}</p>
+              </div>
+            ))}
+          </CardContent>
+        </Card>
+      ) : null}
 
       <Card>
         <CardHeader className="flex-row items-start justify-between gap-4">
@@ -162,7 +191,22 @@ export default async function RewardsPage() {
                     {MONTHS.map((m, i) => <option key={m} value={i + 1}>{m}</option>)}
                   </select>
                 </label>
-                <Button size="sm" variant="outline">Save</Button>
+                <fieldset className="flex basis-full flex-wrap items-end gap-3">
+                  <legend className="mb-1 text-xs text-muted-foreground">Sign-up bonus (leave blank if none)</legend>
+                  <label className="flex flex-col">Bonus ({c.profile?.rewardType === "cashback" ? "$" : "points"})
+                    <input name="signupBonus" type="number" step="1" min="0" defaultValue={c.profile?.signupBonus ?? ""} className={`${input} w-28`} />
+                  </label>
+                  <label className="flex flex-col">Minimum spend ($)
+                    <input name="signupMinSpend" type="number" step="1" min="0" defaultValue={c.profile?.signupMinSpend ?? ""} className={`${input} w-28`} />
+                  </label>
+                  <label className="flex flex-col">Opened
+                    <input name="signupStart" type="date" defaultValue={c.profile?.signupStart ?? ""} className={input} />
+                  </label>
+                  <label className="flex flex-col">Spend by
+                    <input name="signupDeadline" type="date" defaultValue={c.profile?.signupDeadline ?? ""} className={input} />
+                  </label>
+                  <Button size="sm" variant="outline">Save</Button>
+                </fieldset>
               </form>
               <p className="text-xs text-muted-foreground">For cash back, set value per point to 1 (a 2% card is base rate 2). Fee month adds a reminder to the calendar.</p>
 

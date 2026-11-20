@@ -15,6 +15,11 @@ export const STATIC_OUTBOUND_HOSTS = [
   // AI providers
   "generativelanguage.googleapis.com",
   "api.anthropic.com",
+  // Trips: keyless reference data (no credentials are ever sent)
+  "geocoding-api.open-meteo.com",
+  "api.open-meteo.com",
+  "en.wikipedia.org",
+  "overpass-api.de",
 ] as const;
 
 export const OUTBOUND_HOSTS: ReadonlySet<string> = new Set<string>(STATIC_OUTBOUND_HOSTS);
