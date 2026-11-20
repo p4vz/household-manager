@@ -30,7 +30,7 @@ update here and in the tests that enforce it.
 | --- | --- | --- |
 | `/signin` | anyone | shows the Google button, nothing else |
 | `/api/auth/*` | anyone | Auth.js OAuth flow; allowlist enforced in callbacks |
-| `/api/cron/*` | Railway cron only | `Authorization: Bearer $CRON_SECRET`, constant-time compare, fails closed if the secret is missing or short |
+| `/api/cron/simplefin-sync`, `/api/cron/monthly-advisor` | Railway cron only | `Authorization: Bearer $CRON_SECRET`, constant-time compare, fails closed if the secret is missing or short |
 | everything else | allowlisted users | session + allowlist (proxy and in-handler) |
 
 There is **no public API**. The module API and the event bus are plain

@@ -124,6 +124,25 @@ These are enforced by `tests/boundaries.test.ts`, which runs in CI.
   model (also run after each bank sync). It only sees merchant names, a
   typical amount and a count, referenced by index.
 
+## Card rewards
+
+- Each active credit card can have a profile: reward type, base rate, value
+  per point (cents), annual fee and the month it posts. Bonus rules match a
+  category, subcategory or merchant, with an optional spend cap per
+  month/quarter/year and an optional date window for rotating categories.
+- The audit (`rewards/engine.ts`) is plain code. Transactions are walked in
+  date order; each is valued on the card used (with that card's cap usage)
+  and on every household card (with a separate "optimal" cap ledger). The
+  difference is "points left on the table", reported per category and per
+  transaction, alongside each card's rewards value minus its fee.
+- Saving a fee month publishes `finance.annualFeeUpcoming`; the calendar
+  adds a reminder. It is re-published after each sync so next year's date
+  appears once this year's has passed.
+- The AI advisor (flagship model) runs on the 1st of each month via cron or
+  on demand. It receives only aggregates: per-card spend/earn/fee, spend by
+  category, monthly amounts of recurring merchants, and the audit's missed
+  value by category. Reports are stored in `finance_advisor_reports`.
+
 ## Database
 
 Drizzle ORM on Postgres. Migrations live in `drizzle/` and are generated with
