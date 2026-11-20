@@ -10,7 +10,7 @@ calendar and trips, in one Next.js app with one Postgres database.
 
 | Module | State |
 | --- | --- |
-| Finance (expenses, auto-budget, card rewards) | in progress: bank sync, CSV history, accounts |
+| Finance (expenses, auto-budget, card rewards) | in progress: bank sync, CSV history, accounts, charts, auto-budget |
 | Home maintenance | scaffold: tasks with dates and costs |
 | Calendar | scaffold: events created by other modules |
 | Trips | scaffold: trips with dates and a budget |

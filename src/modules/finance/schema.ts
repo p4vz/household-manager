@@ -111,3 +111,11 @@ export const financeExpectedExpenses = pgTable(
   },
   (t) => [uniqueIndex("finance_expected_source_uq").on(t.sourceModule, t.sourceRef)],
 );
+
+/** Monthly limit per spending category. `source` = accepted suggestion or manual override. */
+export const financeBudgets = pgTable("finance_budgets", {
+  category: text("category").primaryKey(),
+  monthlyLimit: money("monthly_limit").notNull(),
+  source: text("source", { enum: ["auto", "manual"] }).notNull(),
+  updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
+});
