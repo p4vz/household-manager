@@ -7,7 +7,9 @@ import { getAiSettings } from "@/core/ai/store";
 import { db } from "@/core/db/client";
 import { isIncome } from "../analytics/load";
 import { financeAccounts, financeAdvisorReports, financeTransactions as t } from "../schema";
-import { runRewardsAudit } from "./store";
+import { listCatalog } from "./catalog/store";
+import { quarterOf } from "./catalog/terms";
+import { runCatalogComparison, runRewardsAudit } from "./store";
 
 export const AdvisorReport = z.object({
   summary: z.string(),
@@ -33,7 +35,9 @@ function monthsAgo(today: Date, n: number) {
 export async function buildAdvisorPayload(today = new Date()) {
   const from = monthsAgo(today, 12);
   const names = legalNamesFromEnv();
-  const { cards, audit } = await runRewardsAudit(from);
+  const [{ cards, audit }, candidates, catalog] = await Promise.all([runRewardsAudit(from), runCatalogComparison(from), listCatalog()]);
+  const catalogById = new Map(catalog.map((p) => [p.id, p]));
+  const quarter = quarterOf(today.toISOString().slice(0, 10));
 
   const categories = await db()
     .select({ category: sql<string>`coalesce(${t.category}, 'Uncategorized')`, spend: sql<number>`sum(-${t.amount})::float8` })
@@ -69,8 +73,30 @@ export async function buildAdvisorPayload(today = new Date()) {
         spend12m: perf?.spend ?? 0,
         rewardsValue12m: perf?.earned ?? 0,
         netOfFee12m: perf?.net ?? 0,
+        // Published terms on file for this card (catalog), so the advisor need not look them up.
+        catalogTerms: (() => {
+          const p = c.catalogProductId ? catalogById.get(c.catalogProductId) : undefined;
+          if (!p?.terms) return null;
+          return {
+            product: `${p.issuer} ${p.name}`,
+            verifiedDate: p.verifiedAt?.toISOString().slice(0, 10) ?? "not yet verified",
+            credits: p.terms.credits.map((x) => ({ label: x.label, amount: x.amount, per: x.period })),
+            perks: p.terms.perks,
+            rotatingThisQuarter: p.terms.rotating?.quarters.find((q) => q.quarter === quarter)?.description ?? null,
+          };
+        })(),
       };
     }),
+    // Cards the household does not hold, priced in code against its last 12 months of spend.
+    candidateCards: candidates.slice(0, 8).map((x) => ({
+      card: x.card,
+      annualFee: x.annualFee,
+      addedRewardsPerYear: x.addedRewards,
+      netPerYear: x.netPerYear,
+      signupOffer: x.signupOffer ? { ...x.signupOffer, valueUsd: x.signupValue } : null,
+      creditsPerYearFaceValue: x.creditsPerYear,
+      verifiedDate: x.verifiedAt ?? "not yet verified",
+    })),
     pointsLeftOnTable12m: audit?.totalMissed ?? 0,
     missedByCategory: audit?.byCategory.slice(0, 10) ?? [],
     spendByCategory12m: categories
@@ -86,12 +112,12 @@ export async function runAdvisor(trigger: "manual" | "monthly", today = new Date
   const report = await runStructured({
     tier: "flagship",
     system:
-      "You are a careful credit card rewards analyst for a two-person household. Use only the data provided. Be specific and quantitative. Do not invent card terms you are not confident about; when suggesting sign-up bonuses, name the card type and say the offer must be verified.",
+      "You are a careful credit card rewards analyst for a two-person household. Use only the data provided. Be specific and quantitative. Card terms come from the household's stored catalog (catalogTerms, candidateCards) with the date each was last verified; rely on those and do not invent terms. Mention unused statement credits on held cards when relevant.",
     task: [
       "Review DATA and produce:",
       "1. underperformingCards: annual-fee cards whose rewards value does not clearly beat their fee, or that the household barely uses.",
       "2. billIncreases: recurring merchants whose monthly amount went up recently (compare earlier months to the latest).",
-      "3. signupBonusIdeas: up to 3 higher-yield card ideas that fit the spending categories, with rationale.",
+      "3. signupBonusIdeas: up to 3 card ideas, chosen from candidateCards (already priced against this household's spending). Quote the sign-up offer and its verifiedDate; say 'verify before applying' if it is older than 30 days or not yet verified.",
       "4. summary: two or three sentences.",
     ].join("\n"),
     payload,

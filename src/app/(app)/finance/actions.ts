@@ -21,6 +21,16 @@ import {
   setBudget,
   setMerchantCategory,
   updateAccount,
+  acceptCatalogChange,
+  addCatalogProduct,
+  applyCatalogTermsToCard,
+  keepCardRules,
+  linkCardToCatalog,
+  markCatalogChangesSeen,
+  refreshCatalogCardNow,
+  rejectCatalogChange,
+  saveCatalogTermsByUser,
+  CardTerms,
 } from "@/modules/finance/api";
 
 const MAX_CSV_CHARS = 14 * 1024 * 1024;
@@ -222,4 +232,91 @@ export async function runAdvisorAction() {
   } catch (err) {
     return { ok: false as const, error: err instanceof Error ? err.message : "Advisor failed" };
   }
+}
+
+// ---------- card catalog ----------
+
+const productId = z.string().regex(/^[a-z0-9-]{1,80}$/);
+
+const link = authedAction(z.object({ accountId: z.uuid(), productId: productId.nullable() }), ({ accountId, productId }) =>
+  linkCardToCatalog(accountId, productId),
+);
+export async function linkCardToCatalogAction(form: FormData) {
+  await link({ accountId: form.get("accountId"), productId: form.get("productId") || null });
+  revalidatePath("/finance/rewards");
+}
+
+const apply = authedAction(z.object({ accountId: z.uuid() }), ({ accountId }) => applyCatalogTermsToCard(accountId));
+export async function applyCatalogTermsAction(form: FormData) {
+  await apply({ accountId: form.get("accountId") });
+  revalidatePath("/finance/rewards");
+}
+
+const keep = authedAction(z.object({ accountId: z.uuid() }), ({ accountId }) => keepCardRules(accountId));
+export async function keepCardRulesAction(form: FormData) {
+  await keep({ accountId: form.get("accountId") });
+  revalidatePath("/finance/rewards");
+}
+
+const review = authedAction(z.object({ id: z.uuid(), decision: z.enum(["accept", "reject"]) }), ({ id, decision }) =>
+  decision === "accept" ? acceptCatalogChange(id) : rejectCatalogChange(id),
+);
+export async function reviewCatalogChangeAction(form: FormData) {
+  await review({ id: form.get("id"), decision: form.get("decision") });
+  revalidatePath("/finance/rewards");
+  revalidatePath("/finance/rewards/catalog");
+}
+
+const seen = authedAction(z.object({}), () => markCatalogChangesSeen());
+export async function markCatalogChangesSeenAction() {
+  await seen({});
+  revalidatePath("/finance/rewards");
+  revalidatePath("/finance/rewards/catalog");
+}
+
+const domain = z.string().regex(/^[a-z0-9.-]+\.[a-z]{2,}$/i).max(100);
+const addProduct = authedAction(
+  z.object({ issuer: z.string().trim().min(2).max(60), name: z.string().trim().min(2).max(80), sourceDomains: z.array(domain).min(1).max(4) }),
+  (p) => addCatalogProduct({ ...p, sourceDomains: p.sourceDomains.map((d) => d.toLowerCase()) }),
+);
+export async function addCatalogProductAction(form: FormData) {
+  await addProduct({
+    issuer: form.get("issuer"),
+    name: form.get("name"),
+    sourceDomains: String(form.get("sourceDomains") ?? "")
+      .split(/[\s,]+/)
+      .filter(Boolean),
+  });
+  revalidatePath("/finance/rewards/catalog");
+}
+
+type CatalogState = null | { ok: true; message: string } | { ok: false; error: string };
+
+const refresh = authedAction(z.object({ productId }), ({ productId }) => refreshCatalogCardNow(productId));
+export async function refreshCatalogCardAction(_prev: CatalogState, form: FormData): Promise<CatalogState> {
+  try {
+    const r = await refresh({ productId: form.get("productId") });
+    revalidatePath("/finance/rewards/catalog");
+    revalidatePath("/finance/rewards");
+    if (r.status === "error") return { ok: false, error: r.error };
+    return { ok: true, message: r.status === "unchanged" ? "Verified, no changes" : r.status === "applied" ? `${r.changes.length} change(s) saved` : "Changes need your review" };
+  } catch (err) {
+    return { ok: false, error: err instanceof Error ? err.message : "Check failed" };
+  }
+}
+
+const editTerms = authedAction(z.object({ productId, terms: CardTerms }), ({ productId, terms }) => saveCatalogTermsByUser(productId, terms));
+export async function saveCatalogTermsAction(_prev: CatalogState, form: FormData): Promise<CatalogState> {
+  let terms: unknown;
+  try {
+    terms = JSON.parse(String(form.get("terms") ?? ""));
+  } catch {
+    return { ok: false, error: "Not valid JSON" };
+  }
+  const parsed = CardTerms.safeParse(terms);
+  if (!parsed.success) return { ok: false, error: parsed.error.issues.map((i) => `${i.path.join(".")}: ${i.message}`).slice(0, 3).join("; ") };
+  await editTerms({ productId: form.get("productId"), terms: parsed.data });
+  revalidatePath("/finance/rewards/catalog");
+  revalidatePath("/finance/rewards");
+  return { ok: true, message: "Saved" };
 }

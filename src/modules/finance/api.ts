@@ -19,10 +19,27 @@ import {
   addCardRule,
   deleteCardRule,
   listCardsWithProfiles,
+  loadAuditCards,
   publishAnnualFeeReminders,
+  runCatalogComparison,
   runRewardsAudit,
   saveCardProfile,
 } from "./rewards/store";
+import {
+  acceptCatalogChange,
+  addCatalogProduct,
+  applyCatalogTermsToCard,
+  catalogDriftForCards,
+  heldProductIds,
+  keepCardRules,
+  linkCardToCatalog,
+  listCatalog,
+  listCatalogChanges,
+  markCatalogChangesSeen,
+  rejectCatalogChange,
+  saveCatalogTermsByUser,
+} from "./rewards/catalog/store";
+import { refreshCatalogProduct, runCatalogRefreshIfDue } from "./rewards/catalog/refresh";
 import { commitCsvImport, previewCsvImport, type AccountMapping } from "./ingest/import";
 import { claimAccessUrl } from "./ingest/simplefin";
 import { syncSimplefin } from "./ingest/sync";
@@ -235,6 +252,57 @@ export async function runMonthlyAdvisorIfDue(now = new Date()) {
   if (await hasReportForMonth(now)) return { status: "skipped" as const, reason: "Already ran this month" };
   await runAdvisor("monthly", now);
   return { status: "ok" as const };
+}
+
+// ---------- card catalog ----------
+// A stored, kept-current copy of each card's published terms (bonus
+// categories, rotating quarters, sign-up offer, credits, perks), for the
+// household's cards and well-known cards it does not hold.
+
+export { CardTerms, CATALOG_CATEGORIES } from "./rewards/catalog/terms";
+export {
+  acceptCatalogChange,
+  rejectCatalogChange,
+  markCatalogChangesSeen,
+  listCatalogChanges,
+  linkCardToCatalog,
+  applyCatalogTermsToCard,
+  keepCardRules,
+  catalogDriftForCards,
+  addCatalogProduct,
+  saveCatalogTermsByUser,
+  runCatalogRefreshIfDue,
+};
+
+export async function cardCatalog() {
+  const [products, held] = await Promise.all([listCatalog(), heldProductIds()]);
+  return products.map((p) => ({ ...p, held: held.has(p.id) }));
+}
+
+/** Check one card against its issuer now (two AI calls with web search). */
+export function refreshCatalogCardNow(productId: string) {
+  return refreshCatalogProduct(productId);
+}
+
+/** Cards the household does not hold, priced against its spending. */
+export function catalogComparison(range: RangeKey = "12M", today = new Date()) {
+  return runCatalogComparison(`${rangeMonths(range, today)[0]}-01`);
+}
+
+/**
+ * Stored terms of each household card that is linked to the catalog
+ * (credits, perks, current sign-up offer, rotating quarters), for other
+ * modules such as trips. Read from the database, never fetched live.
+ */
+export async function heldCardTerms() {
+  const [cards, catalog] = await Promise.all([loadAuditCards(), listCatalog()]);
+  const byId = new Map(catalog.map((p) => [p.id, p]));
+  return cards.flatMap((c) => {
+    const p = c.catalogProductId ? byId.get(c.catalogProductId) : undefined;
+    return p?.terms
+      ? [{ accountId: c.accountId, card: c.name, product: `${p.issuer} ${p.name}`, terms: p.terms, verifiedAt: p.verifiedAt }]
+      : [];
+  });
 }
 
 // ---------- cross-module ----------

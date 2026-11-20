@@ -14,6 +14,8 @@ export type CardRule = {
   validFrom: string | null;
   validTo: string | null;
   label: string | null;
+  /** Rules that share one cap (one catalog multiplier over several categories). Defaults to `id`. */
+  capGroup?: string;
 };
 
 export type Card = {
@@ -81,7 +83,7 @@ export function valueOn(card: Card, t: SpendTxn, ledger: Ledger): { cents: numbe
     let bonusSpend = t.amount;
     let key: string | null = null;
     if (rule.capAmount != null) {
-      key = `${card.accountId}|${rule.id}|${periodKey(t.date, rule.capPeriod ?? "year")}`;
+      key = `${card.accountId}|${rule.capGroup ?? rule.id}|${periodKey(t.date, rule.capPeriod ?? "year")}`;
       bonusSpend = Math.max(0, Math.min(t.amount, rule.capAmount - (ledger.get(key) ?? 0)));
     }
     const cents = (bonusSpend * rule.rate + (t.amount - bonusSpend) * card.baseRate) * card.centsPerUnit;
@@ -165,6 +167,27 @@ export function auditRewards(cards: Card[], txns: SpendTxn[]) {
     topMisses: rows.filter((r) => r.missedCents > 0).sort((a, b) => b.missedCents - a.missedCents).slice(0, 20),
     rows,
   };
+}
+
+/**
+ * Rewards value in dollars if every transaction went on the best of `cards`
+ * (cap-aware, in date order). Used to price a card the household does not
+ * hold: value(held + candidate) - value(held).
+ */
+export function optimalValue(cards: Card[], txns: SpendTxn[]): number {
+  const ledger: Ledger = new Map();
+  let cents = 0;
+  for (const t of [...txns].sort((a, b) => a.date.localeCompare(b.date) || a.id.localeCompare(b.id))) {
+    if (t.amount <= 0 || cards.length === 0) continue;
+    let best = valueOn(cards[0], t, ledger);
+    for (const c of cards.slice(1)) {
+      const v = valueOn(c, t, ledger);
+      if (v.cents > best.cents + 1e-9) best = v;
+    }
+    record(ledger, best.use);
+    cents += best.cents;
+  }
+  return r2(cents / 100);
 }
 
 /** Next date the annual fee posts (1st of the fee month), on or after today. */

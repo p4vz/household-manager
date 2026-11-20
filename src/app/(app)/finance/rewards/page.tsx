@@ -2,19 +2,53 @@ import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { formatMoney } from "@/lib/utils";
-import { OWNER_LABELS, latestAdvisorReport, listCardsWithProfiles, rewardsAudit } from "@/modules/finance/api";
+import Link from "next/link";
+import {
+  OWNER_LABELS,
+  cardCatalog,
+  catalogComparison,
+  catalogDriftForCards,
+  latestAdvisorReport,
+  listCardsWithProfiles,
+  listCatalogChanges,
+  rewardsAudit,
+} from "@/modules/finance/api";
 import { AdvisorButton } from "@/modules/finance/ui/advisor-button";
-import { addCardRuleAction, deleteCardRuleAction, runAdvisorAction, saveCardProfileAction } from "../actions";
+import { changeLines, daysAgo } from "@/modules/finance/ui/catalog-format";
+import {
+  addCardRuleAction,
+  applyCatalogTermsAction,
+  deleteCardRuleAction,
+  keepCardRulesAction,
+  linkCardToCatalogAction,
+  runAdvisorAction,
+  saveCardProfileAction,
+} from "../actions";
 
 const MONTHS = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"];
 const input = "h-8 rounded-md border bg-background px-2";
 
 export default async function RewardsPage() {
-  const [cards, { audit }, advisor] = await Promise.all([listCardsWithProfiles(), rewardsAudit("12M"), latestAdvisorReport()]);
+  const [cards, { audit }, advisor, catalog, drift, candidates, changes] = await Promise.all([
+    listCardsWithProfiles(),
+    rewardsAudit("12M"),
+    latestAdvisorReport(),
+    cardCatalog(),
+    catalogDriftForCards(),
+    catalogComparison("12M"),
+    listCatalogChanges({ limit: 40 }),
+  ]);
+  const driftByCard = new Map(drift.map((d) => [d.accountId, d]));
+  const toReview = changes.filter((c) => c.status === "pending" || !c.seen).length;
 
   return (
     <section className="max-w-5xl space-y-8">
-      <h1 className="text-2xl font-semibold">Card rewards</h1>
+      <div className="flex items-center justify-between">
+        <h1 className="text-2xl font-semibold">Card rewards</h1>
+        <Link href="/finance/rewards/catalog" className="flex items-center gap-2 text-sm text-muted-foreground hover:text-foreground">
+          Card catalog ({catalog.length} cards){toReview ? <Badge variant="warning">{toReview} to review</Badge> : null}
+        </Link>
+      </div>
 
       {audit ? (
         <div className="grid gap-4 md:grid-cols-3">
@@ -83,6 +117,43 @@ export default async function RewardsPage() {
         <p className="text-muted-foreground">Set up a reward profile for at least one card below to see the audit.</p>
       )}
 
+      {candidates.length ? (
+        <Card>
+          <CardHeader>
+            <CardTitle>Cards worth considering</CardTitle>
+            <CardDescription>
+              Each catalog card you don&apos;t hold, priced against your last 12 months of card spending: what it would add on top of your
+              current cards (always using the best card per purchase), minus its fee. Credits are listed at face value and not counted.
+            </CardDescription>
+          </CardHeader>
+          <CardContent>
+            <table className="w-full text-sm">
+              <thead className="text-left text-muted-foreground">
+                <tr><th className="py-1">Card</th><th className="text-right">Fee</th><th className="text-right">Adds / yr</th><th className="text-right">Net / yr</th><th className="pl-4">Sign-up offer</th><th className="text-right">Verified</th></tr>
+              </thead>
+              <tbody>
+                {candidates.slice(0, 8).map((c) => (
+                  <tr key={c.id} className="border-t">
+                    <td className="py-1.5">{c.card}</td>
+                    <td className="text-right tabular-nums">{formatMoney(c.annualFee)}</td>
+                    <td className="text-right tabular-nums">{formatMoney(c.addedRewards)}</td>
+                    <td className={`text-right tabular-nums ${c.netPerYear < 0 ? "text-destructive" : ""}`}>{formatMoney(c.netPerYear)}</td>
+                    <td className="pl-4">
+                      {c.signupOffer ? (
+                        <>~{formatMoney(c.signupValue)} after {formatMoney(c.signupOffer.minSpend)} in {c.signupOffer.windowMonths} mo{c.signupOffer.endDate ? ` (ends ${c.signupOffer.endDate})` : ""}</>
+                      ) : (
+                        <span className="text-muted-foreground">none on file</span>
+                      )}
+                    </td>
+                    <td className="text-right text-muted-foreground">{c.verifiedAt ?? "not yet"}</td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </CardContent>
+        </Card>
+      ) : null}
+
       <Card>
         <CardHeader className="flex-row items-start justify-between gap-4">
           <div>
@@ -139,6 +210,44 @@ export default async function RewardsPage() {
               </CardTitle>
             </CardHeader>
             <CardContent className="space-y-4 text-sm">
+              <form action={linkCardToCatalogAction} className="flex flex-wrap items-end gap-2">
+                <input type="hidden" name="accountId" value={c.accountId} />
+                <label className="flex flex-col">Catalog card
+                  <select name="productId" defaultValue={c.profile?.catalogProductId ?? ""} className={input}>
+                    <option value="">Not linked</option>
+                    {catalog.map((p) => <option key={p.id} value={p.id}>{p.issuer} {p.name}</option>)}
+                  </select>
+                </label>
+                <Button size="sm" variant="outline">Link</Button>
+                {(() => {
+                  const p = catalog.find((x) => x.id === c.profile?.catalogProductId);
+                  return p ? (
+                    <span className="text-xs text-muted-foreground">
+                      {p.status === "verified" ? `Terms verified ${daysAgo(p.verifiedAt)}` : "Terms not yet verified"}
+                      {p.terms?.rotating ? " · rotating categories are added to the audit automatically" : ""}
+                    </span>
+                  ) : (
+                    <span className="text-xs text-muted-foreground">Link it to fill in fee and bonus categories and keep them current.</span>
+                  );
+                })()}
+              </form>
+              {driftByCard.has(c.accountId) ? (
+                <div className="space-y-2 rounded-md border border-warning/40 bg-warning/10 p-3">
+                  <p className="font-medium">
+                    {driftByCard.get(c.accountId)!.appliedVersion == null
+                      ? `Use the catalog terms for ${driftByCard.get(c.accountId)!.productName}?`
+                      : `${driftByCard.get(c.accountId)!.productName} terms changed`}
+                  </p>
+                  {driftByCard.get(c.accountId)!.appliedVersion != null ? (
+                    <ul className="list-disc pl-5">{changeLines(driftByCard.get(c.accountId)!.changes).map((l, i) => <li key={i}>{l}</li>)}</ul>
+                  ) : null}
+                  <p className="text-xs text-muted-foreground">Applying sets the fee, base rate and catalog bonus rules. Rules you added yourself are kept.</p>
+                  <div className="flex gap-2">
+                    <form action={applyCatalogTermsAction}><input type="hidden" name="accountId" value={c.accountId} /><Button size="sm">Apply to this card</Button></form>
+                    <form action={keepCardRulesAction}><input type="hidden" name="accountId" value={c.accountId} /><Button size="sm" variant="ghost">Keep mine</Button></form>
+                  </div>
+                </div>
+              ) : null}
               <form action={saveCardProfileAction} className="flex flex-wrap items-end gap-3">
                 <input type="hidden" name="accountId" value={c.accountId} />
                 <label className="flex flex-col">Type
@@ -171,6 +280,7 @@ export default async function RewardsPage() {
                   {c.rules.map((r) => (
                     <li key={r.id} className="flex items-center gap-2">
                       <Badge variant="secondary">{r.rate}{c.profile?.rewardType === "cashback" ? "%" : "x"}</Badge>
+                      {r.source === "catalog" ? <Badge variant="outline">catalog</Badge> : null}
                       <span>{r.label ? `${r.label}: ` : ""}{r.matchType} “{r.match}”</span>
                       {r.capAmount ? <span className="text-muted-foreground">up to {formatMoney(r.capAmount)}/{r.capPeriod}</span> : null}
                       {r.validFrom || r.validTo ? <span className="text-muted-foreground">{r.validFrom ?? "…"} to {r.validTo ?? "…"}</span> : null}
