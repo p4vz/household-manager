@@ -64,6 +64,7 @@ export async function loadAuditCards(): Promise<(BonusCard & { owner: string; ca
           p.signupBonus != null && p.signupMinSpend != null && p.signupStart && p.signupDeadline
             ? { bonus: p.signupBonus, minSpend: p.signupMinSpend, start: p.signupStart, deadline: p.signupDeadline }
             : null,
+        rewardType: p.rewardType,
         accountId: c.accountId,
         name: c.name,
         owner: c.owner,
