@@ -4,6 +4,7 @@ import { bus } from "@/core/bus";
 import { db } from "@/core/db/client";
 import { isIncome } from "../analytics/load";
 import { financeAccounts, financeCardProfiles, financeCardRules, financeTransactions as t } from "../schema";
+import { planPurchases, type BonusCard, type PlannedPurchase } from "./bonus";
 import { rotatingRules } from "./catalog/categories";
 import { compareCatalog, type CatalogCard } from "./catalog/compare";
 import { heldProductIds, listCatalog } from "./catalog/store";
@@ -31,7 +32,7 @@ export async function listCardsWithProfiles() {
  * the household entered by hand (a rule with a date window overlapping it)
  * wins over the catalog.
  */
-export async function loadAuditCards(): Promise<(Card & { owner: string; catalogProductId: string | null })[]> {
+export async function loadAuditCards(): Promise<(BonusCard & { owner: string; catalogProductId: string | null })[]> {
   const [cards, catalog] = await Promise.all([listCardsWithProfiles(), listCatalog()]);
   const byId = new Map(catalog.map((p) => [p.id, p]));
   return cards
@@ -57,7 +58,12 @@ export async function loadAuditCards(): Promise<(Card & { owner: string; catalog
             (v) => !own.some((o) => o.validFrom && o.validTo && o.validFrom <= v.validTo! && o.validTo >= v.validFrom!),
           )
         : [];
+      const p = c.profile!;
       return {
+        signup:
+          p.signupBonus != null && p.signupMinSpend != null && p.signupStart && p.signupDeadline
+            ? { bonus: p.signupBonus, minSpend: p.signupMinSpend, start: p.signupStart, deadline: p.signupDeadline }
+            : null,
         accountId: c.accountId,
         name: c.name,
         owner: c.owner,
@@ -76,6 +82,11 @@ export type ProfileInput = {
   centsPerUnit: number;
   annualFee: number;
   annualFeeMonth: number | null;
+  /** Omit to leave the sign-up offer as it is. */
+  signupBonus?: number | null;
+  signupMinSpend?: number | null;
+  signupStart?: string | null;
+  signupDeadline?: string | null;
 };
 
 export async function saveCardProfile(accountId: string, p: ProfileInput, today = new Date()) {
@@ -169,4 +180,40 @@ export async function runCatalogComparison(fromDate: string) {
     .filter((p) => p.terms && !held.has(p.id))
     .map((p) => ({ id: p.id, issuer: p.issuer, name: p.name, terms: p.terms!, verifiedAt: p.verifiedAt }));
   return compareCatalog(baseline, txns, candidates);
+}
+
+/**
+ * Spend counted toward each card's sign-up bonus: purchases net of refunds
+ * on that card from the offer start to its deadline. Transfers, payments
+ * and income never count.
+ */
+export async function spentTowardBonuses(cards: BonusCard[]): Promise<Map<string, number>> {
+  const out = new Map<string, number>();
+  for (const c of cards) {
+    if (!c.signup) continue;
+    const [row] = await db()
+      .select({ spent: sql<number>`coalesce(sum(-${t.amount}), 0)::float8` })
+      .from(t)
+      .where(
+        and(
+          eq(t.accountId, c.accountId),
+          eq(t.isTransfer, false),
+          sql`not ${isIncome}`,
+          gte(t.postedDate, c.signup.start),
+          sql`${t.postedDate} <= ${c.signup.deadline}`,
+        ),
+      );
+    out.set(c.accountId, Math.max(0, Number(row?.spent ?? 0)));
+  }
+  return out;
+}
+
+/** Best card for each planned purchase, with open sign-up bonuses routed first. */
+export async function planCardsForPurchases(purchases: PlannedPurchase[], today = new Date()) {
+  const todayIso = today.toISOString().slice(0, 10);
+  const { cards, audit } = await runRewardsAudit(`${todayIso.slice(0, 4)}-01-01`);
+  if (cards.length === 0) return { cards: [], purchases: [], bonuses: [] };
+  const spentToward = await spentTowardBonuses(cards);
+  const plan = planPurchases({ cards, purchases, spentToward, capUsage: audit?.capUsage, today: todayIso });
+  return { cards: cards.map((c) => ({ accountId: c.accountId, name: c.name, owner: c.owner })), ...plan };
 }

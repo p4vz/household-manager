@@ -28,6 +28,8 @@ const schema = z.object({
   ANTHROPIC_API_KEY: z.string().optional().default(""),
   HOUSEHOLD_LEGAL_NAMES: z.string().optional().default(""),
   HOUSEHOLD_TIMEZONE: z.string().optional().default("America/New_York"),
+  /** Trips document vault key (32 bytes, base64). Uploads are refused without it. */
+  DOC_VAULT_KEY: z.string().optional().default(""),
 });
 
 export type ServerEnv = z.infer<typeof schema>;

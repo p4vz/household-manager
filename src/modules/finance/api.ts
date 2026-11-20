@@ -20,6 +20,7 @@ import {
   deleteCardRule,
   listCardsWithProfiles,
   loadAuditCards,
+  planCardsForPurchases,
   publishAnnualFeeReminders,
   runCatalogComparison,
   runRewardsAudit,
@@ -305,7 +306,34 @@ export async function heldCardTerms() {
   });
 }
 
+/** Open sign-up bonuses and how far along each one is. */
+export async function signupBonusOverview(today = new Date()) {
+  return (await planCardsForPurchases([], today)).bonuses;
+}
+
 // ---------- cross-module ----------
+
+export type { PlannedPurchase, PurchasePlan, BonusStatus } from "./rewards/bonus";
+
+/**
+ * Card advice for purchases another module is planning (trip bookings):
+ * best card per purchase, with open sign-up bonuses routed first, and each
+ * bonus's progress including the planned spend.
+ */
+export { planCardsForPurchases };
+
+/** Active household credit cards, for "paid with" pickers in other modules. */
+export async function listCreditCards() {
+  return db()
+    .select({
+      accountId: financeAccounts.id,
+      name: sql<string>`coalesce(${financeAccounts.displayName}, ${financeAccounts.bankName})`,
+      owner: financeAccounts.owner,
+    })
+    .from(financeAccounts)
+    .where(and(eq(financeAccounts.active, true), eq(financeAccounts.kind, "credit")))
+    .orderBy(asc(financeAccounts.owner), asc(financeAccounts.bankName));
+}
 
 export type ExpectedExpense = {
   title: string;
