@@ -1,7 +1,17 @@
 import "server-only";
-import { and, asc, count, desc, eq, gte, max, min } from "drizzle-orm";
+import { and, asc, count, desc, eq, gte, inArray, isNull, lt, max, min, sql, type SQL } from "drizzle-orm";
 import type { ModuleName } from "@/core/bus/events";
 import { db } from "@/core/db/client";
+import { categorizeUncategorized, setMerchantCategory } from "./ai/categorize";
+import { rangeMonths, type OwnerFilter, type RangeKey } from "./analytics/compute";
+import { isIncome, loadCategoryFacts, loadMerchantFacts } from "./analytics/load";
+import {
+  acceptAllSuggestions,
+  budgetOverview,
+  removeBudget,
+  saveBudgetOptions,
+  setBudget,
+} from "./budget/store";
 import { connectionInfo, storeAccessUrl } from "./ingest/credentials";
 import { commitCsvImport, previewCsvImport, type AccountMapping } from "./ingest/import";
 import { claimAccessUrl } from "./ingest/simplefin";
@@ -31,9 +41,22 @@ export async function connectSimplefin(setupToken: string) {
   return syncSimplefin({ trigger: "setup" });
 }
 
-export function runScheduledSync(now = new Date()) {
-  return syncSimplefin({ trigger: "cron", now });
+export async function runScheduledSync(now = new Date()) {
+  const result = await syncSimplefin({ trigger: "cron", now });
+  if (result.status === "ok" && result.inserted > 0 && aiConfigured()) {
+    // Best effort: a provider outage must not fail the bank sync.
+    await categorizeUncategorized().catch((err) =>
+      console.error(`[finance] AI categorization failed: ${err instanceof Error ? err.message : err}`),
+    );
+  }
+  return result;
 }
+
+function aiConfigured() {
+  return Boolean(process.env.GEMINI_API_KEY || process.env.ANTHROPIC_API_KEY);
+}
+
+export { categorizeUncategorized, setMerchantCategory };
 
 export async function syncStatus() {
   const connection = await connectionInfo();
@@ -107,6 +130,77 @@ export async function listRecentTransactions(limit = 100) {
     .orderBy(desc(financeTransactions.postedDate))
     .limit(limit);
 }
+
+// ---------- insights ----------
+
+/** Everything the dashboard needs; filtering happens in the browser. */
+export async function dashboardData(today = new Date()) {
+  const months = rangeMonths("12M", today);
+  const from = `${months[0]}-01`;
+  const [categoryFacts, merchantFacts, accounts] = await Promise.all([
+    loadCategoryFacts(from),
+    loadMerchantFacts(from),
+    db()
+      .select({
+        id: financeAccounts.id,
+        name: sql<string>`coalesce(${financeAccounts.displayName}, ${financeAccounts.bankName})`,
+        owner: financeAccounts.owner,
+      })
+      .from(financeAccounts)
+      .where(eq(financeAccounts.active, true))
+      .orderBy(asc(financeAccounts.owner)),
+  ]);
+  return { today: today.toISOString().slice(0, 10), categoryFacts, merchantFacts, accounts };
+}
+
+export type DrillDown = {
+  range: RangeKey;
+  owner: OwnerFilter;
+  accountIds: string[] | null;
+  category?: string;
+  subcategory?: string | null;
+  merchant?: string;
+};
+
+export async function drillDownTransactions(q: DrillDown, today = new Date()) {
+  const months = rangeMonths(q.range, today);
+  const [y, m] = months[months.length - 1].split("-").map(Number);
+  const end = new Date(Date.UTC(y, m, 1)).toISOString().slice(0, 10);
+  const where: SQL[] = [
+    eq(financeTransactions.isTransfer, false),
+    eq(financeAccounts.active, true),
+    gte(financeTransactions.postedDate, `${months[0]}-01`),
+    lt(financeTransactions.postedDate, end),
+  ];
+  if (q.owner !== "all") where.push(eq(financeAccounts.owner, q.owner));
+  if (q.accountIds?.length) where.push(inArray(financeTransactions.accountId, q.accountIds));
+  if (q.category === "Uncategorized") where.push(isNull(financeTransactions.category));
+  else if (q.category) where.push(eq(financeTransactions.category, q.category));
+  if (q.subcategory === "Other") where.push(isNull(financeTransactions.subcategory));
+  else if (q.subcategory) where.push(eq(financeTransactions.subcategory, q.subcategory));
+  if (q.merchant) where.push(eq(financeTransactions.merchant, q.merchant), sql`not ${isIncome}`);
+
+  return db()
+    .select({
+      id: financeTransactions.id,
+      date: financeTransactions.postedDate,
+      merchant: financeTransactions.merchant,
+      category: financeTransactions.category,
+      subcategory: financeTransactions.subcategory,
+      amount: financeTransactions.amount,
+      account: sql<string>`coalesce(${financeAccounts.displayName}, ${financeAccounts.bankName})`,
+      owner: financeAccounts.owner,
+    })
+    .from(financeTransactions)
+    .innerJoin(financeAccounts, eq(financeTransactions.accountId, financeAccounts.id))
+    .where(and(...where))
+    .orderBy(desc(financeTransactions.postedDate))
+    .limit(500);
+}
+
+// ---------- budgets ----------
+
+export { budgetOverview, setBudget, removeBudget, acceptAllSuggestions, saveBudgetOptions };
 
 // ---------- cross-module ----------
 
