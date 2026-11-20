@@ -13,6 +13,16 @@ import {
   setBudget,
 } from "./budget/store";
 import { connectionInfo, storeAccessUrl } from "./ingest/credentials";
+import { householdTimeZone, localHour } from "./ingest/schedule";
+import { hasReportForMonth, latestAdvisorReport, runAdvisor } from "./rewards/advisor";
+import {
+  addCardRule,
+  deleteCardRule,
+  listCardsWithProfiles,
+  publishAnnualFeeReminders,
+  runRewardsAudit,
+  saveCardProfile,
+} from "./rewards/store";
 import { commitCsvImport, previewCsvImport, type AccountMapping } from "./ingest/import";
 import { claimAccessUrl } from "./ingest/simplefin";
 import { syncSimplefin } from "./ingest/sync";
@@ -49,6 +59,8 @@ export async function runScheduledSync(now = new Date()) {
       console.error(`[finance] AI categorization failed: ${err instanceof Error ? err.message : err}`),
     );
   }
+  // Keep next year's annual-fee reminders on the calendar.
+  await publishAnnualFeeReminders(now).catch(() => undefined);
   return result;
 }
 
@@ -201,6 +213,29 @@ export async function drillDownTransactions(q: DrillDown, today = new Date()) {
 // ---------- budgets ----------
 
 export { budgetOverview, setBudget, removeBudget, acceptAllSuggestions, saveBudgetOptions };
+
+// ---------- rewards ----------
+
+export { listCardsWithProfiles, saveCardProfile, addCardRule, deleteCardRule, latestAdvisorReport };
+
+export function rewardsAudit(range: RangeKey = "12M", today = new Date()) {
+  return runRewardsAudit(`${rangeMonths(range, today)[0]}-01`);
+}
+
+export function runAdvisorNow() {
+  return runAdvisor("manual");
+}
+
+/** Monthly advisor: first day of the month, 8 AM household time, once. */
+export async function runMonthlyAdvisorIfDue(now = new Date()) {
+  const tz = householdTimeZone();
+  const day = Number(new Intl.DateTimeFormat("en-US", { timeZone: tz, day: "numeric" }).format(now));
+  if (day !== 1 || localHour(now, tz) !== 8) return { status: "skipped" as const, reason: "Not the monthly slot" };
+  if (!aiConfigured()) return { status: "skipped" as const, reason: "No AI provider key configured" };
+  if (await hasReportForMonth(now)) return { status: "skipped" as const, reason: "Already ran this month" };
+  await runAdvisor("monthly", now);
+  return { status: "ok" as const };
+}
 
 // ---------- cross-module ----------
 

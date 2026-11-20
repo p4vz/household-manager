@@ -10,7 +10,7 @@ calendar and trips, in one Next.js app with one Postgres database.
 
 | Module | State |
 | --- | --- |
-| Finance (expenses, auto-budget, card rewards) | in progress: bank sync, CSV history, accounts, charts, auto-budget |
+| Finance (expenses, auto-budget, card rewards) | bank sync, CSV history, accounts, charts, auto-budget, rewards audit, AI advisor |
 | Home maintenance | scaffold: tasks with dates and costs |
 | Calendar | scaffold: events created by other modules |
 | Trips | scaffold: trips with dates and a budget |
@@ -39,9 +39,10 @@ npm run lint && npm run typecheck && npm test && npm run build
 2. Set the variables from `.env.example` on the app service.
 3. Start command: `npm run db:migrate && npm start`.
 4. Add a second service from the same repo for cron: schedule `0 * * * *`,
-   start command `node scripts/cron.mjs simplefin-sync`, variables `APP_URL`
+   start command `node scripts/cron.mjs simplefin-sync monthly-advisor`, variables `APP_URL`
    (the app's public URL) and `CRON_SECRET`. The app only contacts SimpleFIN
-   at 7 AM and 7 PM in `HOUSEHOLD_TIMEZONE`.
+   at 7 AM and 7 PM in `HOUSEHOLD_TIMEZONE`, and runs the AI card
+   review on the 1st of each month.
 
 ## First run
 
@@ -49,3 +50,6 @@ npm run lint && npm run typecheck && npm test && npm run build
 2. Finance → Connect SimpleFIN: paste a setup token from SimpleFIN Bridge.
 3. Finance → Accounts: give each card a display name, owner and type.
 4. Finance → Import Simplifi history: drop the Simplifi CSV export.
+5. Finance → Rewards: enter each card's fee, base rate, bonus categories and
+   point value.
+6. Settings: pick Gemini or Claude and the fast/flagship models.

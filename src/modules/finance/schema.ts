@@ -119,3 +119,47 @@ export const financeBudgets = pgTable("finance_budgets", {
   source: text("source", { enum: ["auto", "manual"] }).notNull(),
   updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
 });
+
+/**
+ * Reward profile per card. Value of one unit (point / percent of cashback)
+ * is `centsPerUnit`: e.g. 1.25 for points worth 1.25c, 1 for cashback where
+ * a rate of 2 means 2%.
+ */
+export const financeCardProfiles = pgTable("finance_card_profiles", {
+  accountId: uuid("account_id")
+    .primaryKey()
+    .references(() => financeAccounts.id, { onDelete: "cascade" }),
+  rewardType: text("reward_type", { enum: ["points", "cashback"] }).notNull().default("points"),
+  baseRate: numeric("base_rate", { precision: 6, scale: 3, mode: "number" }).notNull().default(1),
+  centsPerUnit: numeric("cents_per_unit", { precision: 6, scale: 3, mode: "number" }).notNull().default(1),
+  annualFee: money("annual_fee").notNull().default(0),
+  /** Month (1-12) the annual fee posts, for calendar reminders. */
+  annualFeeMonth: integer("annual_fee_month"),
+  updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
+});
+
+export const financeCardRules = pgTable("finance_card_rules", {
+  id: uuid("id").primaryKey().defaultRandom(),
+  accountId: uuid("account_id")
+    .notNull()
+    .references(() => financeAccounts.id, { onDelete: "cascade" }),
+  /** What the rule matches: a category, a subcategory, or a merchant name (case-insensitive). */
+  matchType: text("match_type", { enum: ["category", "subcategory", "merchant"] }).notNull(),
+  match: text("match").notNull(),
+  rate: numeric("rate", { precision: 6, scale: 3, mode: "number" }).notNull(),
+  /** Spend cap in dollars per period; above it the base rate applies. */
+  capAmount: money("cap_amount"),
+  capPeriod: text("cap_period", { enum: ["month", "quarter", "year"] }),
+  /** For rotating categories: only valid in this window. */
+  validFrom: date("valid_from"),
+  validTo: date("valid_to"),
+  label: text("label"),
+});
+
+export const financeAdvisorReports = pgTable("finance_advisor_reports", {
+  id: uuid("id").primaryKey().defaultRandom(),
+  createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+  trigger: text("trigger", { enum: ["manual", "monthly"] }).notNull(),
+  provider: text("provider").notNull(),
+  report: jsonb("report").notNull(),
+});
