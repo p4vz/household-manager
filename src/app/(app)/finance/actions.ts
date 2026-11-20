@@ -162,7 +162,14 @@ const profile = authedAction(
     centsPerUnit: num(0, 100),
     annualFee: num(0, 10_000),
     annualFeeMonth: z.coerce.number().int().min(1).max(12).nullable(),
-  }),
+    signupBonus: num(0, 10_000_000).nullable(),
+    signupMinSpend: num(0, 1_000_000).nullable(),
+    signupStart: z.iso.date().nullable(),
+    signupDeadline: z.iso.date().nullable(),
+  }).refine(
+    (p) => !p.signupStart || !p.signupDeadline || p.signupStart <= p.signupDeadline,
+    "The sign-up offer ends before it starts",
+  ),
   ({ accountId, ...p }) => saveCardProfile(accountId, p),
 );
 export async function saveCardProfileAction(form: FormData) {
@@ -173,8 +180,13 @@ export async function saveCardProfileAction(form: FormData) {
     centsPerUnit: form.get("centsPerUnit"),
     annualFee: form.get("annualFee") || 0,
     annualFeeMonth: form.get("annualFeeMonth") || null,
+    signupBonus: form.get("signupBonus") || null,
+    signupMinSpend: form.get("signupMinSpend") || null,
+    signupStart: form.get("signupStart") || null,
+    signupDeadline: form.get("signupDeadline") || null,
   });
   revalidatePath("/finance/rewards");
+  revalidatePath("/trips", "layout");
 }
 
 const rule = authedAction(

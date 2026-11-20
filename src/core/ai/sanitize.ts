@@ -127,3 +127,34 @@ function deepScrub(value: unknown, legalNames: readonly string[]): unknown {
 function isDateKey(key: string): boolean {
   return /date|month|period|quarter/i.test(key);
 }
+
+/**
+ * For reference material that is not financial (place names, Wikipedia
+ * summaries, packing lists): years and opening times must survive, so only
+ * long digit runs (6+, the shape of card, account, passport and phone
+ * numbers), masked numbers and household legal names are removed.
+ */
+const LONG_NUMBER_PATTERNS: RegExp[] = [/[*xX•#]{2,}[\s-]*\d{2,}/g, /\b\d(?:[\s-]?\d){5,}\b/g];
+
+export function scrubReferenceText(input: string, legalNames: readonly string[] = []): string {
+  let out = input.replace(ENDING_IN, REDACTED);
+  for (const p of LONG_NUMBER_PATTERNS) out = out.replace(p, REDACTED);
+  for (const name of legalNames) {
+    for (const part of nameParts(name)) {
+      out = out.replace(new RegExp(`\\b${escapeRegExp(part)}\\b`, "gi"), REDACTED);
+    }
+  }
+  return out.replace(/\s{2,}/g, " ").trim();
+}
+
+export function sanitizeReferencePayload<T>(payload: T, legalNames = legalNamesFromEnv()): Sanitized<T> {
+  const walk = (v: unknown): unknown =>
+    typeof v === "string"
+      ? scrubReferenceText(v, legalNames)
+      : Array.isArray(v)
+        ? v.map(walk)
+        : v && typeof v === "object"
+          ? Object.fromEntries(Object.entries(v).map(([k, x]) => [k, walk(x)]))
+          : v;
+  return walk(payload) as Sanitized<T>;
+}

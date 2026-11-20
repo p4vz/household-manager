@@ -66,7 +66,7 @@ function matches(rule: CardRule, t: SpendTxn): boolean {
 }
 
 /** Cap usage, keyed by card+rule+period. One ledger per scenario (actual vs optimal). */
-type Ledger = Map<string, number>;
+export type Ledger = Map<string, number>;
 
 /**
  * Value in cents of putting `t` on `card`, given cap usage so far. Splits
@@ -90,7 +90,7 @@ export function valueOn(card: Card, t: SpendTxn, ledger: Ledger): { cents: numbe
   return best;
 }
 
-function record(ledger: Ledger, use: [string, number] | null) {
+export function record(ledger: Ledger, use: [string, number] | null) {
   if (use) ledger.set(use[0], (ledger.get(use[0]) ?? 0) + use[1]);
 }
 
@@ -152,6 +152,8 @@ export function auditRewards(cards: Card[], txns: SpendTxn[]) {
   }
 
   return {
+    /** Cap usage on the cards actually used, for planning further spend. */
+    capUsage: actualLedger as ReadonlyMap<string, number>,
     totalMissed: r2(rows.reduce((s, r) => s + r.missedCents, 0) / 100),
     totalEarned: r2(rows.reduce((s, r) => s + r.actualCents, 0) / 100),
     perCard,

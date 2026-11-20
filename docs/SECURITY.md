@@ -51,6 +51,12 @@ fails if `fetch(` is used anywhere else.
 | `bridge.simplefin.org`, `beta-bridge.simplefin.org` | bank sync |
 | `generativelanguage.googleapis.com` | Gemini |
 | `api.anthropic.com` | Claude |
+| `geocoding-api.open-meteo.com`, `api.open-meteo.com` | trips: place lookup and weather forecast (keyless) |
+| `en.wikipedia.org` | trips: article summary that grounds generated trivia (keyless) |
+| `overpass-api.de` | trips: gluten-free venues tagged in OpenStreetMap (keyless) |
+
+The trips hosts receive only a place name or coordinates. No household
+data, names or credentials are sent to them.
 
 The browser is held to the same origin by the Content-Security-Policy in
 `next.config.ts` (`connect-src 'self'`, `frame-ancestors 'none'`). The site
@@ -59,7 +65,7 @@ also sends HSTS, `X-Frame-Options: DENY`, `nosniff`, and `noindex`.
 ## Secrets
 
 `DATABASE_URL`, `AUTH_SECRET`, `AUTH_GOOGLE_SECRET`, `CRON_SECRET`,
-`SIMPLEFIN_ACCESS_URL`, `GEMINI_API_KEY` and `ANTHROPIC_API_KEY` are read
+`SIMPLEFIN_ACCESS_URL`, `GEMINI_API_KEY`, `ANTHROPIC_API_KEY` and `DOC_VAULT_KEY` are read
 only by server code. Files that read them import `server-only`, so a Client
 Component importing them breaks the build. No variable uses the
 `NEXT_PUBLIC_` prefix (CI checks this). Secrets live in Railway variables,
@@ -94,3 +100,19 @@ Before anything goes to Gemini or Claude:
 
 Both providers receive the identical prompt and must answer with JSON that
 matches a Zod schema.
+
+Trip features (trivia, quizzes, hunts, allergy cards, packing suggestions)
+send place names, Wikipedia summaries, packing item names and dietary flags,
+through `sanitizeReferencePayload()`: legal names, masked numbers and digit
+runs of 6+ are removed, while years survive. Traveller names, documents and
+bookings are never sent.
+
+## Documents vault
+
+Trip documents (passports, insurance, tickets) are encrypted with
+AES-256-GCM under `DOC_VAULT_KEY` before they are written, and only the last
+four characters of a document number and the expiry are stored in the
+clear. The key is separate from `AUTH_SECRET` so rotating sign-in secrets
+never destroys files. Without the key, uploads are refused rather than
+stored unencrypted. Files are decrypted only inside an `authedAction` and
+returned to the member who asked; there is no download URL.

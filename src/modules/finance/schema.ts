@@ -135,6 +135,16 @@ export const financeCardProfiles = pgTable("finance_card_profiles", {
   annualFee: money("annual_fee").notNull().default(0),
   /** Month (1-12) the annual fee posts, for calendar reminders. */
   annualFeeMonth: integer("annual_fee_month"),
+  /**
+   * Sign-up bonus, if the card is still inside its welcome-offer window.
+   * `signupBonus` is in reward units (points, or dollars for cash back),
+   * earned once `signupMinSpend` is spent on the card between
+   * `signupStart` and `signupDeadline` (inclusive).
+   */
+  signupBonus: numeric("signup_bonus", { precision: 12, scale: 2, mode: "number" }),
+  signupMinSpend: money("signup_min_spend"),
+  signupStart: date("signup_start"),
+  signupDeadline: date("signup_deadline"),
   updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
 });
 
