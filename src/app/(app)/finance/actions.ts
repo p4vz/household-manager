@@ -6,9 +6,20 @@ import { authedAction } from "@/core/actions/authed-action";
 import {
   ACCOUNT_KINDS,
   OWNERS,
+  acceptAllSuggestions,
+  addCardRule,
+  categorizeUncategorized,
+  deleteCardRule,
+  runAdvisorNow,
+  saveCardProfile,
   commitCsvImport,
   connectSimplefin,
+  drillDownTransactions,
   previewCsvImport,
+  removeBudget,
+  saveBudgetOptions,
+  setBudget,
+  setMerchantCategory,
   updateAccount,
 } from "@/modules/finance/api";
 
@@ -68,3 +79,147 @@ export const commitCsvAction = authedAction(
     return result;
   },
 );
+
+// ---------- insights ----------
+
+export const drillDownAction = authedAction(
+  z.object({
+    range: z.enum(["3M", "6M", "12M", "YTD"]),
+    owner: z.enum(["all", "user1", "user2", "joint"]),
+    accountIds: z.array(z.uuid()).max(50).nullable(),
+    category: z.string().max(100).optional(),
+    subcategory: z.string().max(100).nullable().optional(),
+    merchant: z.string().max(200).optional(),
+  }),
+  (q) => drillDownTransactions(q),
+);
+
+// ---------- budgets ----------
+
+const CategoryLimit = z.object({ category: z.string().min(1).max(100), limit: z.coerce.number().min(0).max(1_000_000) });
+
+const accept = authedAction(CategoryLimit, ({ category, limit }) => setBudget(category, limit, "auto"));
+const override = authedAction(CategoryLimit, ({ category, limit }) => setBudget(category, limit, "manual"));
+const remove = authedAction(z.object({ category: z.string().min(1).max(100) }), ({ category }) => removeBudget(category));
+const acceptAll = authedAction(z.object({}), () => acceptAllSuggestions());
+const options = authedAction(
+  z.object({ basis: z.union([z.literal(3), z.literal(6)]), excludeOutliers: z.boolean() }),
+  (o) => saveBudgetOptions(o),
+);
+
+export async function acceptBudgetAction(form: FormData) {
+  await accept({ category: form.get("category"), limit: form.get("limit") });
+  revalidatePath("/finance/budget");
+}
+export async function overrideBudgetAction(form: FormData) {
+  if (!form.get("limit")) return;
+  await override({ category: form.get("category"), limit: form.get("limit") });
+  revalidatePath("/finance/budget");
+}
+export async function removeBudgetAction(form: FormData) {
+  await remove({ category: form.get("category") });
+  revalidatePath("/finance/budget");
+}
+export async function acceptAllBudgetsAction() {
+  await acceptAll({});
+  revalidatePath("/finance/budget");
+}
+export async function budgetOptionsAction(form: FormData) {
+  await options({ basis: Number(form.get("basis")), excludeOutliers: form.get("excludeOutliers") === "on" });
+  revalidatePath("/finance/budget");
+}
+
+// ---------- categories ----------
+
+const categorize = authedAction(z.object({}), () => categorizeUncategorized());
+export async function categorizeWithAiAction() {
+  await categorize({});
+  revalidatePath("/finance/transactions");
+}
+
+const merchantCategory = authedAction(
+  z.object({ merchant: z.string().min(1).max(200), category: z.string().min(1).max(100), subcategory: z.string().max(100).nullable() }),
+  ({ merchant, category, subcategory }) => setMerchantCategory(merchant, category, subcategory),
+);
+export async function setMerchantCategoryAction(form: FormData) {
+  await merchantCategory({
+    merchant: form.get("merchant"),
+    category: form.get("category"),
+    subcategory: (form.get("subcategory") as string | null) || null,
+  });
+  revalidatePath("/finance/transactions");
+}
+
+// ---------- rewards ----------
+
+const num = (min: number, max: number) => z.coerce.number().min(min).max(max);
+
+const profile = authedAction(
+  z.object({
+    accountId: z.uuid(),
+    rewardType: z.enum(["points", "cashback"]),
+    baseRate: num(0, 100),
+    centsPerUnit: num(0, 100),
+    annualFee: num(0, 10_000),
+    annualFeeMonth: z.coerce.number().int().min(1).max(12).nullable(),
+  }),
+  ({ accountId, ...p }) => saveCardProfile(accountId, p),
+);
+export async function saveCardProfileAction(form: FormData) {
+  await profile({
+    accountId: form.get("accountId"),
+    rewardType: form.get("rewardType"),
+    baseRate: form.get("baseRate"),
+    centsPerUnit: form.get("centsPerUnit"),
+    annualFee: form.get("annualFee") || 0,
+    annualFeeMonth: form.get("annualFeeMonth") || null,
+  });
+  revalidatePath("/finance/rewards");
+}
+
+const rule = authedAction(
+  z.object({
+    accountId: z.uuid(),
+    matchType: z.enum(["category", "subcategory", "merchant"]),
+    match: z.string().min(1).max(100),
+    rate: num(0, 100),
+    capAmount: num(0, 1_000_000).nullable(),
+    capPeriod: z.enum(["month", "quarter", "year"]).nullable(),
+    validFrom: z.iso.date().nullable(),
+    validTo: z.iso.date().nullable(),
+    label: z.string().max(60).nullable(),
+  }),
+  ({ accountId, ...r }) => addCardRule(accountId, r),
+);
+export async function addCardRuleAction(form: FormData) {
+  const capAmount = form.get("capAmount") || null;
+  await rule({
+    accountId: form.get("accountId"),
+    matchType: form.get("matchType"),
+    match: form.get("match"),
+    rate: form.get("rate"),
+    capAmount,
+    capPeriod: capAmount ? form.get("capPeriod") || "year" : null,
+    validFrom: form.get("validFrom") || null,
+    validTo: form.get("validTo") || null,
+    label: form.get("label") || null,
+  });
+  revalidatePath("/finance/rewards");
+}
+
+const removeRule = authedAction(z.object({ id: z.uuid() }), ({ id }) => deleteCardRule(id));
+export async function deleteCardRuleAction(form: FormData) {
+  await removeRule({ id: form.get("id") });
+  revalidatePath("/finance/rewards");
+}
+
+const advisor = authedAction(z.object({}), () => runAdvisorNow());
+export async function runAdvisorAction() {
+  try {
+    await advisor({});
+    revalidatePath("/finance/rewards");
+    return { ok: true as const };
+  } catch (err) {
+    return { ok: false as const, error: err instanceof Error ? err.message : "Advisor failed" };
+  }
+}

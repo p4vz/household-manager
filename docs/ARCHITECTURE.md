@@ -107,6 +107,42 @@ These are enforced by `tests/boundaries.test.ts`, which runs in CI.
   category/subcategory, and the most common category per merchant becomes a
   rule that is applied to newly synced transactions.
 
+## Finance insights and budgets
+
+- The server sends the dashboard per-month aggregates (by account, owner,
+  category, merchant) for the last 12 months. Owner, account and range
+  filters run in the browser on those aggregates, so they are instant.
+  Clicking a slice or bar loads the underlying transactions on demand.
+- Spending = outflows net of refunds, excluding transfers and inactive
+  accounts. Income = an `Income…` category or an uncategorized deposit.
+- Auto-budget = average of the last 3 or 6 complete months per category,
+  optionally ignoring one spike month (over 1.5x the median of the others),
+  rounded up. Accepting stores it as `auto`; overrides are `manual` and
+  survive "Accept all". Progress bars warn at 80% and flag at 100%.
+- There is deliberately no forecasting or projection anywhere.
+- Uncategorized merchants can be categorized in batches by the fast AI
+  model (also run after each bank sync). It only sees merchant names, a
+  typical amount and a count, referenced by index.
+
+## Card rewards
+
+- Each active credit card can have a profile: reward type, base rate, value
+  per point (cents), annual fee and the month it posts. Bonus rules match a
+  category, subcategory or merchant, with an optional spend cap per
+  month/quarter/year and an optional date window for rotating categories.
+- The audit (`rewards/engine.ts`) is plain code. Transactions are walked in
+  date order; each is valued on the card used (with that card's cap usage)
+  and on every household card (with a separate "optimal" cap ledger). The
+  difference is "points left on the table", reported per category and per
+  transaction, alongside each card's rewards value minus its fee.
+- Saving a fee month publishes `finance.annualFeeUpcoming`; the calendar
+  adds a reminder. It is re-published after each sync so next year's date
+  appears once this year's has passed.
+- The AI advisor (flagship model) runs on the 1st of each month via cron or
+  on demand. It receives only aggregates: per-card spend/earn/fee, spend by
+  category, monthly amounts of recurring merchants, and the audit's missed
+  value by category. Reports are stored in `finance_advisor_reports`.
+
 ## Database
 
 Drizzle ORM on Postgres. Migrations live in `drizzle/` and are generated with
