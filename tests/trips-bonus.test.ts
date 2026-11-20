@@ -44,6 +44,12 @@ describe("planPurchases", () => {
     expect(bonuses[0]).toMatchObject({ card: "Venture", remaining: 3500, planned: 4200, metWithPlan: true, bonusValue: 750 });
   });
 
+  it("values a cash-back bonus in dollars, not as points", () => {
+    const cash = { ...newCard, rewardType: "cashback" as const, centsPerUnit: 1, signup: { ...newCard.signup!, bonus: 200 } };
+    const { bonuses } = planPurchases({ cards: [travelCard, cash], purchases: [], spentToward: new Map(), today: "2026-11-20" });
+    expect(bonuses[0].bonusValue).toBe(200);
+  });
+
   it("only routes as much as the minimum needs, cheapest loss first", () => {
     const { purchases } = planPurchases({ cards: [travelCard, newCard], purchases: [flight, hotel], spentToward: new Map([["venture", 2000]]), today: "2026-11-20" });
     // $2,000 to go: the flight alone covers it; the hotel goes back to the 3x card.

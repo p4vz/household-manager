@@ -135,6 +135,10 @@ export const financeCardProfiles = pgTable("finance_card_profiles", {
   annualFee: money("annual_fee").notNull().default(0),
   /** Month (1-12) the annual fee posts, for calendar reminders. */
   annualFeeMonth: integer("annual_fee_month"),
+  /** Catalog product this card is (see financeCardCatalog). */
+  catalogProductId: text("catalog_product_id").references(() => financeCardCatalog.id, { onDelete: "set null" }),
+  /** Catalog version last applied to (or knowingly kept off) this card's rules. */
+  catalogAppliedVersion: integer("catalog_applied_version"),
   /**
    * Sign-up bonus, if the card is still inside its welcome-offer window.
    * `signupBonus` is in reward units (points, or dollars for cash back),
@@ -164,7 +168,69 @@ export const financeCardRules = pgTable("finance_card_rules", {
   validFrom: date("valid_from"),
   validTo: date("valid_to"),
   label: text("label"),
+  /** "catalog" rules are replaced when catalog terms are applied; "user" rules never are. */
+  source: text("source", { enum: ["user", "catalog"] }).notNull().default("user"),
+  /** Rules sharing one cap (a catalog multiplier spread over several categories). */
+  capGroup: text("cap_group"),
 });
+
+/**
+ * Stored copy of each card product's published terms: multipliers, rotating
+ * quarters, current sign-up offer, credits and perks. Covers the cards the
+ * household holds plus well-known cards it does not, so the audit and the
+ * advisor can work without searching the web each time. Refreshed by the
+ * card-catalog cron job; every change is logged in financeCardCatalogChanges.
+ */
+export const financeCardCatalog = pgTable("finance_card_catalog", {
+  /** Slug, e.g. "chase-sapphire-preferred". */
+  id: text("id").primaryKey(),
+  issuer: text("issuer").notNull(),
+  name: text("name").notNull(),
+  /** `CardTerms` (rewards/catalog/terms.ts); null until first verified for a card added by name. */
+  terms: jsonb("terms"),
+  /** Bumped whenever `terms` changes. */
+  version: integer("version").notNull().default(1),
+  sourceDomains: jsonb("source_domains").$type<string[]>().notNull().default(sql`'[]'::jsonb`),
+  sourceUrls: jsonb("source_urls").$type<string[]>().notNull().default(sql`'[]'::jsonb`),
+  /** seed = shipped with the app, not yet checked; verified = confirmed against issuer sources. */
+  status: text("status", { enum: ["seed", "verified", "pending"] }).notNull().default("seed"),
+  /** When the terms were last confirmed against a source (changed or not). */
+  verifiedAt: timestamp("verified_at", { withTimezone: true }),
+  /** When the refresh job last tried, successful or not. */
+  checkedAt: timestamp("checked_at", { withTimezone: true }),
+  lastError: text("last_error"),
+  /** "user" = a person edited these terms; the refresh then only proposes changes. */
+  editedBy: text("edited_by", { enum: ["seed", "refresh", "user"] }).notNull().default("seed"),
+  createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+  updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
+});
+
+/**
+ * What the refresh found. `applied` changes are already in the catalog and
+ * shown as "what changed"; `pending` ones wait for a person (the terms were
+ * user-edited, or the change was too large to trust unseen).
+ */
+export const financeCardCatalogChanges = pgTable(
+  "finance_card_catalog_changes",
+  {
+    id: uuid("id").primaryKey().defaultRandom(),
+    productId: text("product_id")
+      .notNull()
+      .references(() => financeCardCatalog.id, { onDelete: "cascade" }),
+    detectedAt: timestamp("detected_at", { withTimezone: true }).notNull().defaultNow(),
+    /** Catalog version this change produced (applied) or would produce (pending). */
+    version: integer("version").notNull(),
+    changes: jsonb("changes").$type<{ field: string; before: unknown; after: unknown }[]>().notNull(),
+    /** Full proposed terms, so a pending change can be accepted as is. */
+    proposed: jsonb("proposed").notNull(),
+    sourceUrls: jsonb("source_urls").$type<string[]>().notNull().default(sql`'[]'::jsonb`),
+    status: text("status", { enum: ["applied", "pending", "rejected"] }).notNull(),
+    /** Why it was held for review. */
+    reason: text("reason"),
+    seen: boolean("seen").notNull().default(false),
+  },
+  (t) => [index("finance_catalog_changes_product_idx").on(t.productId, t.detectedAt)],
+);
 
 export const financeAdvisorReports = pgTable("finance_advisor_reports", {
   id: uuid("id").primaryKey().defaultRandom(),

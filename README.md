@@ -39,10 +39,11 @@ npm run lint && npm run typecheck && npm test && npm run build
 2. Set the variables from `.env.example` on the app service.
 3. Start command: `npm run db:migrate && npm start`.
 4. Add a second service from the same repo for cron: schedule `0 * * * *`,
-   start command `node scripts/cron.mjs simplefin-sync monthly-advisor`, variables `APP_URL`
+   start command `node scripts/cron.mjs simplefin-sync monthly-advisor card-catalog`, variables `APP_URL`
    (the app's public URL) and `CRON_SECRET`. The app only contacts SimpleFIN
-   at 7 AM and 7 PM in `HOUSEHOLD_TIMEZONE`, and runs the AI card
-   review on the 1st of each month.
+   at 7 AM and 7 PM in `HOUSEHOLD_TIMEZONE`, runs the AI card
+   review on the 1st of each month, and checks due card catalog entries
+   against issuer pages at 6 AM.
 
 ## First run
 
@@ -50,6 +51,7 @@ npm run lint && npm run typecheck && npm test && npm run build
 2. Finance → Connect SimpleFIN: paste a setup token from SimpleFIN Bridge.
 3. Finance → Accounts: give each card a display name, owner and type.
 4. Finance → Import Simplifi history: drop the Simplifi CSV export.
-5. Finance → Rewards: enter each card's fee, base rate, bonus categories and
+5. Finance → Rewards: link each card to its catalog entry (fills in fee,
+   base rate and bonus categories), or enter them by hand, and set the
    point value.
 6. Settings: pick Gemini or Claude and the fast/flagship models.

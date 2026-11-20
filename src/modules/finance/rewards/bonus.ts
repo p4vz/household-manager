@@ -25,7 +25,11 @@ export type SignupBonus = {
   deadline: string;
 };
 
-export type BonusCard = Card & { signup: SignupBonus | null };
+export type BonusCard = Card & {
+  signup: SignupBonus | null;
+  /** Cash-back bonuses are already in dollars; points are valued at centsPerUnit. Defaults to points. */
+  rewardType?: "points" | "cashback";
+};
 
 export type PlannedPurchase = {
   /** Caller's id, e.g. an itinerary item id. */
@@ -74,7 +78,8 @@ function daysBetween(from: string, to: string): number {
 }
 
 export function bonusValue(card: BonusCard): number {
-  return card.signup ? r2((card.signup.bonus * card.centsPerUnit) / 100) : 0;
+  if (!card.signup) return 0;
+  return card.rewardType === "cashback" ? r2(card.signup.bonus) : r2((card.signup.bonus * card.centsPerUnit) / 100);
 }
 
 /** Is the welcome offer still open and unmet on `today`? */

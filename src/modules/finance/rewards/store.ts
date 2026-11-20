@@ -5,7 +5,10 @@ import { db } from "@/core/db/client";
 import { isIncome } from "../analytics/load";
 import { financeAccounts, financeCardProfiles, financeCardRules, financeTransactions as t } from "../schema";
 import { planPurchases, type BonusCard, type PlannedPurchase } from "./bonus";
-import { auditRewards, nextFeeDate, type CardRule } from "./engine";
+import { rotatingRules } from "./catalog/categories";
+import { compareCatalog, type CatalogCard } from "./catalog/compare";
+import { heldProductIds, listCatalog } from "./catalog/store";
+import { auditRewards, nextFeeDate, type Card, type CardRule } from "./engine";
 
 const nameSql = sql<string>`coalesce(${financeAccounts.displayName}, ${financeAccounts.bankName})`;
 
@@ -23,27 +26,19 @@ export async function listCardsWithProfiles() {
   return cards.map((c) => ({ ...c, rules: rules.filter((r) => r.accountId === c.accountId) }));
 }
 
-export async function loadAuditCards(): Promise<(BonusCard & { owner: string })[]> {
-  const cards = await listCardsWithProfiles();
+/**
+ * Cards as the audit sees them: the card's own rules, plus the catalog's
+ * rotating quarterly categories for cards linked to the catalog. A quarter
+ * the household entered by hand (a rule with a date window overlapping it)
+ * wins over the catalog.
+ */
+export async function loadAuditCards(): Promise<(BonusCard & { owner: string; catalogProductId: string | null })[]> {
+  const [cards, catalog] = await Promise.all([listCardsWithProfiles(), listCatalog()]);
+  const byId = new Map(catalog.map((p) => [p.id, p]));
   return cards
     .filter((c) => c.profile)
-    .map((c) => ({
-      signup:
-        c.profile!.signupBonus != null && c.profile!.signupMinSpend != null && c.profile!.signupStart && c.profile!.signupDeadline
-          ? {
-              bonus: c.profile!.signupBonus,
-              minSpend: c.profile!.signupMinSpend,
-              start: c.profile!.signupStart,
-              deadline: c.profile!.signupDeadline,
-            }
-          : null,
-      accountId: c.accountId,
-      name: c.name,
-      owner: c.owner,
-      baseRate: c.profile!.baseRate,
-      centsPerUnit: c.profile!.centsPerUnit,
-      annualFee: c.profile!.annualFee,
-      rules: c.rules.map(
+    .map((c) => {
+      const own = c.rules.map(
         (r): CardRule => ({
           id: r.id,
           matchType: r.matchType,
@@ -54,9 +49,32 @@ export async function loadAuditCards(): Promise<(BonusCard & { owner: string })[
           validFrom: r.validFrom,
           validTo: r.validTo,
           label: r.label,
+          capGroup: r.capGroup ?? undefined,
         }),
-      ),
-    }));
+      );
+      const product = c.profile!.catalogProductId ? byId.get(c.profile!.catalogProductId) : undefined;
+      const rotating = product?.terms
+        ? rotatingRules(product.id, product.terms).filter(
+            (v) => !own.some((o) => o.validFrom && o.validTo && o.validFrom <= v.validTo! && o.validTo >= v.validFrom!),
+          )
+        : [];
+      const p = c.profile!;
+      return {
+        signup:
+          p.signupBonus != null && p.signupMinSpend != null && p.signupStart && p.signupDeadline
+            ? { bonus: p.signupBonus, minSpend: p.signupMinSpend, start: p.signupStart, deadline: p.signupDeadline }
+            : null,
+        rewardType: p.rewardType,
+        accountId: c.accountId,
+        name: c.name,
+        owner: c.owner,
+        catalogProductId: c.profile!.catalogProductId,
+        baseRate: c.profile!.baseRate,
+        centsPerUnit: c.profile!.centsPerUnit,
+        annualFee: c.profile!.annualFee,
+        rules: [...own, ...rotating],
+      };
+    });
 }
 
 export type ProfileInput = {
@@ -80,8 +98,8 @@ export async function saveCardProfile(accountId: string, p: ProfileInput, today 
   await publishAnnualFeeReminders(today, [accountId]);
 }
 
-export async function addCardRule(accountId: string, rule: Omit<CardRule, "id">) {
-  await db().insert(financeCardRules).values({ accountId, ...rule });
+export async function addCardRule(accountId: string, rule: Omit<CardRule, "id" | "capGroup">) {
+  await db().insert(financeCardRules).values({ accountId, ...rule, source: "user" });
 }
 
 export async function deleteCardRule(ruleId: string) {
@@ -112,9 +130,8 @@ export async function publishAnnualFeeReminders(today = new Date(), accountIds?:
   }
 }
 
-export async function runRewardsAudit(fromDate: string) {
-  const cards = await loadAuditCards();
-  if (cards.length === 0) return { cards, audit: null };
+async function loadSpend(accountIds: string[], fromDate: string) {
+  if (accountIds.length === 0) return [];
   const txns = await db()
     .select({
       id: t.id,
@@ -128,7 +145,7 @@ export async function runRewardsAudit(fromDate: string) {
     .from(t)
     .where(
       and(
-        inArray(t.accountId, cards.map((c) => c.accountId)),
+        inArray(t.accountId, accountIds),
         gte(t.postedDate, fromDate),
         eq(t.isTransfer, false),
         sql`${t.amount} < 0`,
@@ -136,7 +153,34 @@ export async function runRewardsAudit(fromDate: string) {
       ),
     )
     .orderBy(desc(t.postedDate));
-  return { cards, audit: auditRewards(cards, txns.map((x) => ({ ...x, amount: Number(x.amount) }))) };
+  return txns.map((x) => ({ ...x, amount: Number(x.amount) }));
+}
+
+export async function runRewardsAudit(fromDate: string) {
+  const cards = await loadAuditCards();
+  if (cards.length === 0) return { cards, audit: null };
+  const txns = await loadSpend(cards.map((c) => c.accountId), fromDate);
+  return { cards, audit: auditRewards(cards, txns) };
+}
+
+/**
+ * Every verified-or-seeded catalog card the household does not hold, priced
+ * against its spending since `fromDate`. Credit cards without a reward
+ * profile count as plain 1% cards, so their spend is not treated as free.
+ */
+export async function runCatalogComparison(fromDate: string) {
+  const [all, cards, catalog, held] = await Promise.all([listCardsWithProfiles(), loadAuditCards(), listCatalog(), heldProductIds()]);
+  const baseline: Card[] = [
+    ...cards,
+    ...all
+      .filter((c) => !c.profile)
+      .map((c) => ({ accountId: c.accountId, name: c.name, baseRate: 1, centsPerUnit: 1, annualFee: 0, rules: [] })),
+  ];
+  const txns = await loadSpend(all.map((c) => c.accountId), fromDate);
+  const candidates: CatalogCard[] = catalog
+    .filter((p) => p.terms && !held.has(p.id))
+    .map((p) => ({ id: p.id, issuer: p.issuer, name: p.name, terms: p.terms!, verifiedAt: p.verifiedAt }));
+  return compareCatalog(baseline, txns, candidates);
 }
 
 /**

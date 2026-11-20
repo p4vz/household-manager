@@ -30,7 +30,7 @@ update here and in the tests that enforce it.
 | --- | --- | --- |
 | `/signin` | anyone | shows the Google button, nothing else |
 | `/api/auth/*` | anyone | Auth.js OAuth flow; allowlist enforced in callbacks |
-| `/api/cron/simplefin-sync`, `/api/cron/monthly-advisor` | Railway cron only | `Authorization: Bearer $CRON_SECRET`, constant-time compare, fails closed if the secret is missing or short |
+| `/api/cron/simplefin-sync`, `/api/cron/monthly-advisor`, `/api/cron/card-catalog` | Railway cron only | `Authorization: Bearer $CRON_SECRET`, constant-time compare, fails closed if the secret is missing or short |
 | everything else | allowlisted users | session + allowlist (proxy and in-handler) |
 
 There is **no public API**. The module API and the event bus are plain
@@ -58,6 +58,16 @@ fails if `fetch(` is used anywhere else.
 The trips hosts receive only a place name or coordinates. No household
 data, names or credentials are sent to them.
 
+**Card catalog refresh adds no host.** Keeping card terms current needs
+the public web, but the search runs inside the AI provider (Gemini's Google
+Search grounding, Claude's web search tool) as part of the normal
+`generativelanguage.googleapis.com` / `api.anthropic.com` call. This server
+never connects to issuer or review sites. What goes out is the card's
+public product name and the terms already on file, nothing about the
+household. Answers are only stored if at least one cited page is on the
+issuer's own domain (`sourceDomains` per card, which Claude's search is
+also restricted to).
+
 The browser is held to the same origin by the Content-Security-Policy in
 `next.config.ts` (`connect-src 'self'`, `frame-ancestors 'none'`). The site
 also sends HSTS, `X-Frame-Options: DENY`, `nosniff`, and `noindex`.
@@ -83,6 +93,15 @@ SimpleFIN is contacted at most twice a day. Railway cron calls
 `/api/cron/simplefin-sync` hourly; the handler only proceeds in the 7 AM and
 7 PM hours of `HOUSEHOLD_TIMEZONE`, and refuses to run again within 4 hours
 of the last run whatever the trigger.
+
+## Card catalog refresh limits
+
+Railway cron calls `/api/cron/card-catalog` hourly; it only works in the
+6 AM hour of `HOUSEHOLD_TIMEZONE` and checks at most 6 cards per day (two
+AI calls each, the first with up to 5 searches). Cards the household holds
+are checked weekly, others monthly, rotating-category cards every 2 days
+until the quarter's categories are on file, and a failed check is not
+retried for a day.
 
 ## What the AI providers see
 

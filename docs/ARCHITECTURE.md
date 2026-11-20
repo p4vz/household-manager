@@ -188,6 +188,44 @@ What changed in the move:
   MCP endpoint and its OAuth server, Google Photos, Drive backup and the
   Calendar mirror. The offline service worker is also not ported yet.
 
+## Card catalog
+
+A stored, kept-current copy of each card product's published terms, so the
+audit, the advisor and other modules never have to look them up live.
+
+- `finance_card_catalog` holds one row per product (household cards and
+  about 20 well-known cards seeded from `rewards/catalog/seed.ts`): fee,
+  base rate, bonus categories with caps, rotating quarterly categories,
+  current sign-up offer, credits, perks, source URLs, `verifiedAt`, and a
+  `version` that increases on every change. Terms are validated by the Zod
+  schema in `rewards/catalog/terms.ts`.
+- Catalog categories (`dining`, `flights`, `merchant:Amazon` ...) map onto
+  the household's Simplifi category/subcategory names in
+  `rewards/catalog/categories.ts`. One multiplier over several names shares
+  one cap (`capGroup`).
+- **Refresh.** The daily `card-catalog` cron checks due cards with
+  `runWebResearch()` (provider web search, then a tool-free extraction into
+  the schema). Unchanged terms just get a new `verifiedAt`. Changes are
+  saved and logged in `finance_card_catalog_changes` as `applied`, except
+  when a person edited that card's terms or the change looks too large (fee
+  moves by more than $100, base rate changes, most categories vanish): then
+  it is `pending` until accepted on the catalog page. Rotating quarters
+  already on file are never dropped by a refresh.
+- **Household cards.** A card profile can link to a catalog product.
+  Linking (or "Apply") copies fee, base rate and the catalog's multipliers
+  as rules with `source = 'catalog'`; rules a person added (`source =
+  'user'`) are never touched. When the catalog version moves past the one
+  applied, the Rewards page shows what changed with Apply / Keep mine. The
+  catalog's rotating quarters are added to the audit at run time for linked
+  cards, unless the card has its own dated rule overlapping that quarter.
+- **Comparison.** `runCatalogComparison()` prices every catalog card the
+  household does not hold against the last 12 months of card spending:
+  value added on top of held cards (best card per purchase, caps honoured)
+  minus fee, with the sign-up bonus shown separately. The advisor receives
+  the top 8 with their offers and verified dates, plus the stored credits,
+  perks and current rotating categories of held cards.
+- Other modules read stored terms through `heldCardTerms()` in `api.ts`.
+
 ## Database
 
 Drizzle ORM on Postgres. Migrations live in `drizzle/` and are generated with
