@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
 import { CATEGORY_MATCHERS, matchersFor, rotatingRules, rulesFromTerms } from "@/modules/finance/rewards/catalog/categories";
 import { compareCatalog, signupDollars } from "@/modules/finance/rewards/catalog/compare";
-import { isDue, issuerSources, rotatingGap, suspiciousReason } from "@/modules/finance/rewards/catalog/refresh";
+import { isDue, httpsOnly, issuerSources, rotatingGap, suspiciousReason } from "@/modules/finance/rewards/catalog/refresh";
 import { CATALOG_SEED } from "@/modules/finance/rewards/catalog/seed";
 import { CATALOG_CATEGORIES, CardTerms, diffTerms, mergeRotating, quarterBounds, quarterOf } from "@/modules/finance/rewards/catalog/terms";
 import { auditRewards, optimalValue, type Card, type SpendTxn } from "@/modules/finance/rewards/engine";
@@ -166,6 +166,17 @@ describe("refresh policy", () => {
         ["chase.com"],
       ),
     ).toEqual(["https://creditcards.chase.com/rewards-credit-cards/sapphire/preferred", "https://vertexaisearch.cloud.google.com/grounding-api-redirect/abc"]);
+  });
+
+  it("rejects non-https and off-domain URLs", () => {
+    const bad = ["javascript://chase.com/%0Aalert(1)", "data://chase.com/x", "http://www.chase.com/x", "https://evil.com/chase.com"];
+    expect(issuerSources(bad, ["chase.com"])).toEqual([]);
+    expect(issuerSources(bad.slice(0, 3).map((url) => ({ url, title: "chase.com" })), ["chase.com"])).toEqual([]);
+    expect(issuerSources(["https://www.chase.com/x"], ["chase.com"])).toEqual(["https://www.chase.com/x"]);
+  });
+
+  it("without issuer domains keeps only https URLs", () => {
+    expect(httpsOnly(["javascript:alert(1)", "data:text/html,x", "http://a.com", "nope", "https://a.com/x"])).toEqual(["https://a.com/x"]);
   });
 
   it("holds large changes for review", () => {

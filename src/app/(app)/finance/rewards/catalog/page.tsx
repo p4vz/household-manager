@@ -150,7 +150,16 @@ export default async function CardCatalogPage() {
   );
 }
 
-function Sources({ urls }: { urls: string[] }) {
+function isHttps(u: string) {
+  try {
+    return new URL(u).protocol === "https:";
+  } catch {
+    return false;
+  }
+}
+
+function Sources({ urls: all }: { urls: string[] }) {
+  const urls = all.filter(isHttps);
   if (!urls.length) return null;
   return (
     <p className="text-xs text-muted-foreground">
