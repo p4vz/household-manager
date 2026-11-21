@@ -3,7 +3,7 @@ import { and, asc, count, desc, eq, gte, inArray, isNull, lt, max, min, sql, typ
 import type { ModuleName } from "@/core/bus/events";
 import { db } from "@/core/db/client";
 import { categorizeUncategorized, setMerchantCategory } from "./ai/categorize";
-import { rangeMonths, type OwnerFilter, type RangeKey } from "./analytics/compute";
+import { applyFilters, cashFlow, categoryBreakdown, rangeMonths, topMerchants, type OwnerFilter, type RangeKey } from "./analytics/compute";
 import { isIncome, loadCategoryFacts, loadMerchantFacts } from "./analytics/load";
 import {
   acceptAllSuggestions,
@@ -181,6 +181,30 @@ export async function dashboardData(today = new Date()) {
       .orderBy(asc(financeAccounts.owner)),
   ]);
   return { today: today.toISOString().slice(0, 10), categoryFacts, merchantFacts, accounts };
+}
+
+export type { OwnerFilter, RangeKey };
+
+/** Spending by category (with subcategories) and top merchants over a range. Aggregates only. */
+export async function spendingSummary(range: RangeKey, owner: OwnerFilter = "all", today = new Date()) {
+  const months = rangeMonths(range, today);
+  const from = `${months[0]}-01`;
+  const [cats, merchants] = await Promise.all([loadCategoryFacts(from), loadMerchantFacts(from)]);
+  const f = { owner, accountIds: null, months };
+  const catFacts = applyFilters(cats, f);
+  return {
+    months,
+    byCategory: categoryBreakdown(catFacts),
+    byMonth: cashFlow(catFacts, months).series.map((m) => ({ month: m.month, spend: m.spend })),
+    topMerchants: topMerchants(applyFilters(merchants, f), 15),
+  };
+}
+
+/** Income vs spending per month, with the savings rate. No forecasting. */
+export async function cashFlowSummary(range: RangeKey, owner: OwnerFilter = "all", today = new Date()) {
+  const months = rangeMonths(range, today);
+  const facts = applyFilters(await loadCategoryFacts(`${months[0]}-01`), { owner, accountIds: null, months });
+  return cashFlow(facts, months);
 }
 
 export type DrillDown = {

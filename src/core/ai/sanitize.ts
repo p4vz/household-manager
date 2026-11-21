@@ -38,8 +38,33 @@ const NUMBER_PATTERNS: RegExp[] = [
 ];
 const ENDING_IN = /\b(ending|ends)\s+(in|with)\s+\d+/gi;
 
+/**
+ * Identifiers that are never shared, whatever their digit count: crypto
+ * wallet addresses, IBANs, email addresses, and booking/confirmation-style
+ * codes (6+ capital letters and digits mixed, e.g. "K7Q2XZ", passport and
+ * ticket numbers). Applied by both scrubbers below.
+ */
+const IDENTIFIER_PATTERNS: RegExp[] = [
+  /\b0x[a-fA-F0-9]{40}\b/g, // Ethereum and EVM wallets
+  /\b(?:bc1|tb1|ltc1)[a-z0-9]{20,90}\b/gi, // bech32 wallets (Bitcoin, Litecoin)
+  /\b[13mn2][a-km-zA-HJ-NP-Z1-9]{25,34}\b/g, // base58 Bitcoin addresses
+  /\b(?=[A-Za-z0-9]*\d)(?=[A-Za-z0-9]*[A-Za-z])[A-Za-z0-9]{26,}\b/g, // any other long key-like token (Solana, XRP, API keys)
+  /\b[A-Z]{2}\d{2}(?:\s?[A-Z0-9]{4}){2,7}(?:\s?[A-Z0-9]{1,4})?\b/g, // IBAN
+  /[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\.[A-Za-z]{2,}/g, // email addresses
+];
+// Booking / confirmation codes: 6-20 capitals and digits, at least two of each.
+const BOOKING_CODE = /\b(?=[A-Z0-9]*\d[A-Z0-9]*\d)(?=[A-Z0-9]*[A-Z][A-Z0-9]*[A-Z])[A-Z0-9]{6,20}\b/g;
+// Flight numbers ("UA1234", "B6123") look similar but are not identifiers.
+const FLIGHT_NUMBER = /^[A-Z][A-Z0-9]\d{1,4}$/;
+
+export function scrubIdentifiers(input: string): string {
+  let out = input;
+  for (const p of IDENTIFIER_PATTERNS) out = out.replace(p, REDACTED);
+  return out.replace(BOOKING_CODE, (m) => (FLIGHT_NUMBER.test(m) ? m : REDACTED));
+}
+
 export function scrubText(input: string, legalNames: readonly string[] = []): string {
-  let out = input.replace(ENDING_IN, REDACTED);
+  let out = scrubIdentifiers(input.replace(ENDING_IN, REDACTED));
   for (const p of NUMBER_PATTERNS) out = out.replace(p, REDACTED);
   for (const name of legalNames) {
     for (const part of nameParts(name)) {
@@ -137,7 +162,7 @@ function isDateKey(key: string): boolean {
 const LONG_NUMBER_PATTERNS: RegExp[] = [/[*xX•#]{2,}[\s-]*\d{2,}/g, /\b\d(?:[\s-]?\d){5,}\b/g];
 
 export function scrubReferenceText(input: string, legalNames: readonly string[] = []): string {
-  let out = input.replace(ENDING_IN, REDACTED);
+  let out = scrubIdentifiers(input.replace(ENDING_IN, REDACTED));
   for (const p of LONG_NUMBER_PATTERNS) out = out.replace(p, REDACTED);
   for (const name of legalNames) {
     for (const part of nameParts(name)) {

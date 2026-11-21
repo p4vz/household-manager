@@ -5,7 +5,7 @@ import { authedAction } from "@/core/actions/authed-action";
 import { AiSettingsSchema } from "@/core/ai/settings";
 import { saveAiSettings } from "@/core/ai/store";
 import { z } from "zod";
-import { revokeAllConnections, revokeConnection } from "@/core/oauth/server";
+import { revokeAllConnections, revokeConnection, setConnectionPermissions } from "@/core/oauth/server";
 
 const save = authedAction(AiSettingsSchema, async (settings) => {
   await saveAiSettings(settings);
@@ -37,5 +37,17 @@ const disconnectAll = authedAction(z.object({}), async () => {
 
 export async function disconnectAllAssistantsAction() {
   await disconnectAll({});
+  revalidatePath("/settings");
+}
+
+const savePermissions = authedAction(
+  z.object({ id: z.uuid(), perm: z.array(z.string().max(60)).max(50) }),
+  async ({ id, perm }) => {
+    await setConnectionPermissions(id, perm);
+  },
+);
+
+export async function saveAssistantPermissionsAction(form: FormData) {
+  await savePermissions({ id: form.get("id"), perm: form.getAll("perm").filter((v) => typeof v === "string") });
   revalidatePath("/settings");
 }

@@ -4,6 +4,7 @@ import { and, count, desc, eq, gt, isNull, lt, notExists, or, sql } from "drizzl
 import { isAllowedEmail, ownerLabelFor, parseAllowlist, type OwnerLabel } from "@/core/auth/allowlist";
 import { db } from "@/core/db/client";
 import { coreOauthClients, coreOauthCodes, coreOauthGrants } from "@/core/db/core-schema";
+import { grantPermissions, normalizePermissions, type PermissionKey } from "./permissions";
 import {
   ACCESS_TTL_MS,
   CODE_TTL_MS,
@@ -95,6 +96,8 @@ export type AuthorizeRequest = {
   codeChallenge: string;
   scope: string;
   resource: string;
+  /** Sections the member ticked; defaults when omitted. */
+  permissions?: readonly string[];
 };
 
 /** Called only from the consent action, after requireUser(). */
@@ -115,6 +118,7 @@ export async function createAuthorizationCode(req: AuthorizeRequest, email: stri
       scope: req.scope,
       resource: req.resource,
       codeChallenge: req.codeChallenge,
+      permissions: req.permissions ? normalizePermissions(req.permissions) : null,
       expiresAt: new Date(now.getTime() + CODE_TTL_MS),
     });
   return code;
@@ -174,6 +178,7 @@ export async function exchangeCode(
       email: record.email,
       scope: record.scope,
       resource: record.resource,
+      permissions: grantPermissions(record.permissions),
       accessHash: hashSecret(access),
       accessExpiresAt: new Date(now.getTime() + ACCESS_TTL_MS),
       refreshHash: hashSecret(refresh),
@@ -226,7 +231,16 @@ export async function revokeToken(token: string, now = new Date()) {
     .where(and(or(eq(coreOauthGrants.accessHash, h), eq(coreOauthGrants.refreshHash, h)), isNull(coreOauthGrants.revokedAt)));
 }
 
-export type McpCaller = { grantId: string; clientId: string; email: string; owner: OwnerLabel; scopes: string[]; expiresAt: number };
+export type McpCaller = {
+  grantId: string;
+  clientId: string;
+  email: string;
+  owner: OwnerLabel;
+  scopes: string[];
+  /** What this assistant may see, as set on the consent screen or in Settings. */
+  permissions: PermissionKey[];
+  expiresAt: number;
+};
 
 /**
  * Resolves a bearer token for the MCP endpoint. The member's address is
@@ -252,6 +266,7 @@ export async function verifyAccessToken(token: string | null, config: OauthConfi
     email: grant.email,
     owner,
     scopes: grant.scope.split(" "),
+    permissions: grantPermissions(grant.permissions),
     expiresAt: Math.floor(grant.accessExpiresAt.getTime() / 1000),
   };
 }
@@ -269,17 +284,27 @@ export async function listConnections() {
       createdAt: coreOauthGrants.createdAt,
       lastUsedAt: coreOauthGrants.lastUsedAt,
       refreshExpiresAt: coreOauthGrants.refreshExpiresAt,
+      permissions: coreOauthGrants.permissions,
     })
     .from(coreOauthGrants)
     .innerJoin(coreOauthClients, eq(coreOauthClients.clientId, coreOauthGrants.clientId))
     .where(isNull(coreOauthGrants.revokedAt))
     .orderBy(desc(coreOauthGrants.createdAt));
   const list = allowlist();
-  return rows.map(({ email, redirectUris, ...r }) => ({
+  return rows.map(({ email, redirectUris, permissions, ...r }) => ({
     ...r,
+    permissions: grantPermissions(permissions),
     host: hostOf(redirectUris[0]),
     owner: ownerLabelFor(email, list) ?? "Removed member",
   }));
+}
+
+/** Change what a connected assistant may see. Takes effect on its next call. */
+export async function setConnectionPermissions(id: string, permissions: Iterable<unknown>) {
+  await db()
+    .update(coreOauthGrants)
+    .set({ permissions: normalizePermissions(permissions) })
+    .where(and(eq(coreOauthGrants.id, id), isNull(coreOauthGrants.revokedAt)));
 }
 
 export async function revokeConnection(id: string, now = new Date()) {

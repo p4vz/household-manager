@@ -18,6 +18,21 @@ to the app's consent page. Sign in with an allowlisted Google account and
 click Approve. Whoever approves is the "User 1" or "User 2" the assistant
 talks to.
 
+## What each assistant can see
+
+The consent page lists every section of the app as checkboxes: Travel
+(trips, itinerary, bookings), Financial manager (cards and benefits, card
+advice, sign-up bonuses, points left on the table, card catalog, aggregate
+spending, transactions, income, balances, crypto), House upkeep and
+Calendar. Travel and card features start ticked; spending, transactions,
+income, balances, house upkeep and calendar start unticked. Change them any
+time under Settings > AI assistants; the assistant sees the change on its
+next request.
+
+Whatever is ticked: account numbers, card numbers, crypto wallets,
+confirmation codes, emails and other identifiers are never shared, and
+full names are never shared or stored (the server cannot make purchases).
+
 ## Claude (web, desktop, mobile)
 
 Settings > Connectors > Add custom connector. Name it "Household", paste

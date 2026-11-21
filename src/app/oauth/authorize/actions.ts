@@ -17,13 +17,14 @@ const Input = z.object({
   resource: z.string().max(2048).optional(),
   state: z.string().max(MAX_STATE).optional(),
   response_type: z.string().max(20),
+  perm: z.array(z.string().max(60)).max(50),
 });
 
 /**
  * The only place access is ever granted. Every field round-tripped through
  * the browser, so the whole request is validated again here.
  */
-const decide = authedAction(Input, async ({ decision, ...params }, user) => {
+const decide = authedAction(Input, async ({ decision, perm, ...params }, user) => {
   const config = oauthConfig();
   if (!config) throw new Error("Assistant access is turned off");
   const check = await checkAuthorizeRequest(params, config);
@@ -31,11 +32,11 @@ const decide = authedAction(Input, async ({ decision, ...params }, user) => {
   if (check.kind === "redirect") return check.url;
   const r = check.request;
   if (decision === "deny") return clientRedirect(r.redirectUri, { error: "access_denied", state: r.state }, config);
-  const code = await createAuthorizationCode(r, user.email);
+  const code = await createAuthorizationCode({ ...r, permissions: perm }, user.email);
   return clientRedirect(r.redirectUri, { code, state: r.state }, config);
 });
 
 export async function decideAuthorization(form: FormData) {
-  const raw = Object.fromEntries([...form.entries()].filter(([, v]) => typeof v === "string"));
-  redirect(await decide(raw));
+  const raw = Object.fromEntries([...form.entries()].filter(([k, v]) => k !== "perm" && typeof v === "string"));
+  redirect(await decide({ ...raw, perm: form.getAll("perm").filter((v) => typeof v === "string") }));
 }
