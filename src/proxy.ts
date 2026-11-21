@@ -37,6 +37,11 @@ export const proxy = auth((req) => {
   return NextResponse.redirect(url);
 });
 
+/**
+ * `.well-known/` is skipped: those discovery documents are public and
+ * cacheable (`Cache-Control: public`), and running them through auth() would
+ * attach Auth.js cookies that a shared cache could store and replay.
+ */
 export const config = {
-  matcher: ["/((?!_next/static|_next/image|favicon.ico).*)"],
+  matcher: ["/((?!_next/static|_next/image|favicon.ico|\\.well-known/).*)"],
 };
