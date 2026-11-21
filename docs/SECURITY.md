@@ -85,8 +85,8 @@ app runs a small OAuth 2.1 authorization server (`src/core/oauth`):
 card numbers, routing numbers, crypto wallet addresses, or any other
 sensitive identifier (passport, Social Security, confirmation and booking
 codes, email addresses, phone numbers). Full names are shared only in a
-limited capacity and only when making a purchase approved by User 1 and/or
-User 2, and are never stored in memory. The assistant endpoint cannot make
+limited capacity and only when making a purchase approved by Pavel and/or
+Raisa, and are never stored in memory. The assistant endpoint cannot make
 purchases, so it never shares full names at all. The rule is shown on the
 consent screen and in Settings, sent to every assistant in the server
 instructions (with "do not save names or identifiers to memory"), and

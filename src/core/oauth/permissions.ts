@@ -9,9 +9,11 @@
  * not by asking the assistant nicely.
  */
 
+// Pavel asked for the approvers to be named here (first names only), even
+// though everything else labels members User 1 / User 2.
 export const THE_RULE = [
   "Never share account numbers, card numbers, routing numbers, crypto wallet addresses, or any other sensitive identifier (passport, Social Security, confirmation and booking codes, email addresses, phone numbers).",
-  "Full names are shared only in a limited capacity and only when making a purchase approved by User 1 and/or User 2. They are never stored in memory.",
+  "Full names are shared only in a limited capacity and only when making a purchase approved by Pavel and/or Raisa. They are never stored in memory.",
   "This server cannot make purchases, so it never shares full names at all.",
 ] as const;
 
