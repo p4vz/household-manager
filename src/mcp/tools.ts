@@ -1,0 +1,351 @@
+import "server-only";
+import { z } from "zod";
+import type { OwnerLabel } from "@/core/auth/allowlist";
+import * as finance from "@/modules/finance/api";
+import * as trips from "@/modules/trips/api";
+import { ownerLabel, type ScrubMode } from "./sanitize";
+
+/**
+ * The assistant's tools. Every one is read-only and calls module APIs only
+ * (never tables), the same way pages do. Answers are built field by field
+ * and scrubbed by the server (see ./sanitize.ts) before they leave.
+ */
+
+export type ToolContext = { owner: OwnerLabel; now: Date };
+
+export type AssistantTool = {
+  name: string;
+  title: string;
+  description: string;
+  input: z.ZodRawShape;
+  scrub: ScrubMode;
+  run: (args: Record<string, unknown>, ctx: ToolContext) => Promise<unknown>;
+};
+
+const r2 = (n: number) => Math.round(n * 100) / 100;
+const isoDay = (d: Date) => d.toISOString().slice(0, 10);
+const dollars = (cents: number) => r2(cents / 100);
+/** Copy of `obj` without internal keys (account ids and the like). */
+function without<T extends object, K extends keyof T>(obj: T, ...keys: K[]): Omit<T, K> {
+  const out = { ...obj };
+  for (const k of keys) delete out[k];
+  return out;
+}
+const dayOf = (v: Date | string | null | undefined) => (v == null ? null : typeof v === "string" ? v.slice(0, 10) : isoDay(v));
+
+function capText(amount: number | null, period: string | null) {
+  return amount == null ? null : `first $${amount.toLocaleString("en-US")} per ${period ?? "year"}`;
+}
+
+function quarterOf(day: string) {
+  const [y, m] = day.split("-").map(Number);
+  return `${y}-Q${Math.floor((m - 1) / 3) + 1}`;
+}
+
+/** Terms of held cards by account id, for FX fees, credits and perks. */
+async function termsByAccount() {
+  return new Map((await finance.heldCardTerms()).map((t) => [t.accountId, t]));
+}
+
+async function findTrip(slug: string) {
+  const trip = await trips.getTrip(slug);
+  if (!trip) throw new Error(`No trip "${slug}". Call list_trips for the trip ids.`);
+  return trip;
+}
+
+const purchaseInput = z.object({
+  description: z.string().min(1).max(80).describe('What it is, e.g. "Marriott Rome, 3 nights" or "United PHL-ZRH"'),
+  amount: z.number().positive().max(100_000).describe("Expected charge in US dollars"),
+  kind: z.enum(finance.PURCHASE_KINDS).describe("Spend category the charge will code to"),
+  merchant: z.string().max(60).optional().describe('Who charges the card, e.g. "Marriott", "Delta", "Amazon"'),
+  chargeDate: z.iso.date().optional().describe("When the charge posts (YYYY-MM-DD). Default today. For prepaid bookings this is the booking date, not the travel date."),
+  international: z.boolean().optional().describe("True when charged in a foreign currency or by a foreign merchant"),
+});
+
+export const TOOLS: AssistantTool[] = [
+  {
+    name: "list_my_cards",
+    title: "List household cards and benefits",
+    description:
+      "The household's active credit cards with owner label, annual fee, base earn rate, point value, bonus categories with caps, this quarter's rotating categories, statement credits, perks, foreign transaction fee, and any open sign-up bonus with progress. Start here for any question about card benefits.",
+    input: {
+      owner: z.enum(["all", "User 1", "User 2", "Joint"]).optional().describe("Only cards held by this person (default all)"),
+    },
+    scrub: "finance",
+    async run(args, { now }) {
+      const today = isoDay(now);
+      const [cards, terms, bonuses] = await Promise.all([finance.listCardsWithProfiles(), termsByAccount(), finance.signupBonusOverview(now)]);
+      const quarter = quarterOf(today);
+      const bonusBy = new Map(bonuses.map((b) => [b.accountId, b]));
+      return cards
+        .map((c) => {
+          const t = terms.get(c.accountId);
+          const p = c.profile;
+          const rotating = t?.terms.rotating;
+          const thisQuarter = rotating?.quarters.find((q) => q.quarter === quarter);
+          const b = bonusBy.get(c.accountId);
+          return {
+            card: c.name,
+            owner: ownerLabel(c.owner),
+            product: t?.product ?? null,
+            rewardsSetUp: Boolean(p),
+            rewardType: p?.rewardType ?? t?.terms.rewardType ?? null,
+            rewardCurrency: t?.terms.rewardCurrency ?? null,
+            annualFee: p?.annualFee ?? t?.terms.annualFee ?? null,
+            annualFeeMonth: p?.annualFeeMonth ?? null,
+            baseRate: p?.baseRate ?? null,
+            pointValueCents: p?.centsPerUnit ?? null,
+            bonusCategories: c.rules
+              .filter((r) => !r.validTo || r.validTo >= today)
+              .map((r) => ({
+                on: r.label ?? `${r.matchType} ${r.match}`,
+                rate: r.rate,
+                cap: capText(r.capAmount, r.capPeriod),
+                validFrom: r.validFrom,
+                validTo: r.validTo,
+              })),
+            rotatingThisQuarter: rotating
+              ? {
+                  quarter,
+                  categories: thisQuarter?.description ?? "not announced or not on file yet",
+                  rate: rotating.rate,
+                  cap: capText(rotating.capAmount, "quarter"),
+                  activationRequired: rotating.activationRequired,
+                }
+              : null,
+            foreignTransactionFee: t?.terms.foreignTransactionFee ?? null,
+            credits: t?.terms.credits ?? [],
+            perks: t?.terms.perks ?? [],
+            signupBonus: b
+              ? { minSpend: b.minSpend, spent: b.spent, remaining: b.remaining, deadline: b.deadline, daysLeft: b.daysLeft, bonusValue: b.bonusValue }
+              : null,
+            termsVerifiedDate: dayOf(t?.verifiedAt),
+          };
+        })
+        .filter((c) => !args.owner || args.owner === "all" || c.owner === args.owner);
+    },
+  },
+  {
+    name: "best_card_for_purchases",
+    title: "Best card for a purchase or booking",
+    description:
+      "Which household card to put one or more planned purchases on (flights, hotels, dinners, anything). Uses each card's real multipliers, caps already used this year, rotating categories and open sign-up bonuses: when a welcome bonus still needs spend before its deadline, purchases are routed there first if that actually completes it. Returns the recommendation, why, the value earned on each card, and bonus progress including the planned spend. Plans only; nothing is booked or charged.",
+    input: { purchases: z.array(purchaseInput).min(1).max(20) },
+    scrub: "finance",
+    async run(args, { now }) {
+      const items = z.array(purchaseInput).parse(args.purchases);
+      const today = isoDay(now);
+      const planned = items.map((p, i) => ({
+        ref: `p${i + 1}`,
+        date: p.chargeDate && p.chargeDate > today ? p.chargeDate : today,
+        amount: p.amount,
+        merchant: p.merchant ?? p.description,
+        ...finance.PURCHASE_CATEGORY[p.kind],
+      }));
+      const [plan, terms] = await Promise.all([finance.planCardsForPurchases(planned, now), termsByAccount()]);
+      if (plan.cards.length === 0) {
+        return { note: "No card has a rewards profile yet. Set them up under Finance > Rewards in the app first." };
+      }
+      const hasFxFee = (accountId: string) => terms.get(accountId)?.terms.foreignTransactionFee ?? null;
+      const byRef = new Map(plan.purchases.map((p) => [p.ref, p]));
+      return {
+        purchases: items.map((item, i) => {
+          const p = byRef.get(`p${i + 1}`);
+          if (!p) return { description: item.description, note: "Nothing to plan for this amount" };
+          const fx = item.international ? hasFxFee(p.recommended.accountId) : null;
+          const noFee = item.international ? p.options.find((o) => hasFxFee(o.accountId) === false) : undefined;
+          return {
+            description: item.description,
+            amount: item.amount,
+            useCard: p.recommended.card,
+            reason: p.reason === "bonus" ? "completes an open sign-up bonus" : "highest earn on this purchase",
+            rewardValue: dollars(p.recommended.cents),
+            bestOnMultiplierAlone: p.reason === "bonus" ? { card: p.bestMultiplier.card, rewardValue: dollars(p.bestMultiplier.cents) } : null,
+            foreignTransactionFeeWarning:
+              fx === true ? `${p.recommended.card} charges a foreign transaction fee (about 3%).${noFee ? ` ${noFee.card} does not.` : ""}` : null,
+            allCards: p.options.map((o) => ({ card: o.card, rewardValue: dollars(o.cents), foreignTransactionFee: hasFxFee(o.accountId) })),
+          };
+        }),
+        signupBonuses: plan.bonuses.map((b) => without(b, "accountId")),
+        note: "Reward values are in dollars at each card's stored point value. Statement credits and perks are in list_my_cards.",
+      };
+    },
+  },
+  {
+    name: "signup_bonus_progress",
+    title: "Sign-up bonus progress",
+    description: "Open welcome offers on household cards: minimum spend, spent so far (purchases net of refunds), what is left, deadline and the bonus value.",
+    input: {},
+    scrub: "finance",
+    async run(_args, { now }) {
+      return (await finance.signupBonusOverview(now)).map((b) => without(b, "accountId", "planned", "metWithPlan"));
+    },
+  },
+  {
+    name: "points_left_on_the_table",
+    title: "Points left on the table",
+    description:
+      "Audit of actual card use: rewards earned vs what the best household card would have earned on the same purchases, by category, by card (earned minus annual fee) and the biggest single misses. Use it to suggest which card to use for what.",
+    input: { range: z.enum(["3M", "6M", "12M", "YTD"]).optional().describe("Period to audit (default 12M)") },
+    scrub: "finance",
+    async run(args, { now }) {
+      const { cards, audit } = await finance.rewardsAudit((args.range as "3M" | "6M" | "12M" | "YTD" | undefined) ?? "12M", now);
+      if (!audit) return { note: "No card has a rewards profile yet.", cards: cards.length };
+      return {
+        totalEarned: audit.totalEarned,
+        totalMissed: audit.totalMissed,
+        perCard: audit.perCard,
+        missedByCategory: audit.byCategory.slice(0, 12),
+        biggestMisses: audit.topMisses.slice(0, 10).map((m) => ({
+          date: m.date,
+          merchant: m.merchant,
+          category: [m.category, m.subcategory].filter(Boolean).join(" / ") || null,
+          amount: m.amount,
+          usedCard: m.actualCard,
+          bestCard: m.bestCard,
+          missed: dollars(m.missedCents),
+        })),
+      };
+    },
+  },
+  {
+    name: "cards_worth_getting",
+    title: "Cards worth adding",
+    description:
+      "Cards from the stored catalog the household does not hold, priced against the last 12 months of real spending: yearly rewards added on top of current cards, minus the fee, with the current sign-up offer and credits listed separately.",
+    input: { limit: z.number().int().min(1).max(15).optional().describe("How many to return (default 5)") },
+    scrub: "finance",
+    async run(args, { now }) {
+      const rows = await finance.catalogComparison("12M", now);
+      return rows.slice(0, (args.limit as number | undefined) ?? 5).map((r) => ({
+        ...without(r, "id", "verifiedAt"),
+        termsVerifiedDate: dayOf(r.verifiedAt),
+      }));
+    },
+  },
+  {
+    name: "lookup_card_terms",
+    title: "Look up a card's published terms",
+    description:
+      "Stored, regularly refreshed terms of a card product by name (held or not): fee, earn rates, rotating categories, sign-up offer, credits, perks, the date they were last verified against the issuer, and sources.",
+    input: { query: z.string().min(2).max(60).describe('e.g. "Sapphire Reserve", "Amex Gold", "Freedom Flex"') },
+    scrub: "reference",
+    async run(args) {
+      const words = String(args.query).toLowerCase().split(/\s+/).filter(Boolean);
+      const all = await finance.cardCatalog();
+      const hits = all.filter((p) => {
+        const hay = `${p.issuer} ${p.name}`.toLowerCase();
+        return words.every((w) => hay.includes(w));
+      });
+      if (hits.length === 0) return { note: "Not in the catalog.", available: all.map((p) => `${p.issuer} ${p.name}`) };
+      return hits.slice(0, 5).map((p) => ({
+        card: `${p.issuer} ${p.name}`,
+        householdHoldsIt: p.held,
+        terms: p.terms,
+        termsVerifiedDate: dayOf(p.verifiedAt),
+        sources: p.sourceUrls,
+      }));
+    },
+  },
+  {
+    name: "list_trips",
+    title: "List trips",
+    description: "Household trips with dates, places, budget and status. The `trip` value is the id other trip tools take.",
+    input: { includePast: z.boolean().optional().describe("Include trips that have ended (default false)") },
+    scrub: "reference",
+    async run(args, { now }) {
+      const today = isoDay(now);
+      return (await trips.listTrips())
+        .filter((t) => args.includePast || t.endDate >= today)
+        .map((t) => ({ trip: t.slug, name: t.name, places: t.destination, startDate: t.startDate, endDate: t.endDate, budget: t.budget, status: t.status }));
+    },
+  },
+  {
+    name: "get_trip",
+    title: "Trip itinerary",
+    description:
+      "One trip's places and itinerary: each step's kind, times (UTC, with departure and arrival time zones), place, provider, booking status, when booking opens, re-check date, cost and which card paid. Confirmation numbers, documents and traveller names are not available.",
+    input: { trip: z.string().min(1).max(120).describe("Trip id from list_trips") },
+    scrub: "reference",
+    async run(args) {
+      const trip = await findTrip(String(args.trip));
+      const [items, cards] = await Promise.all([trips.listItinerary(trip.id), trips.listCreditCards()]);
+      const cardName = new Map(cards.map((c) => [c.accountId, c.name]));
+      return {
+        trip: trip.slug,
+        name: trip.name,
+        startDate: trip.startDate,
+        endDate: trip.endDate,
+        budget: trip.budget,
+        status: trip.status,
+        places: trip.destinations.map((d) => ({ name: d.name, country: d.country, arriveOn: d.arriveOn, departOn: d.departOn })),
+        itinerary: items.map((i) => ({
+          kind: i.kind,
+          title: i.title,
+          startsAt: i.startsAt,
+          endsAt: i.endsAt,
+          timezone: i.timezone,
+          endTimezone: i.endTimezone,
+          location: i.location,
+          provider: i.provider,
+          bookingStatus: i.bookingStatus,
+          bookingOpensOn: i.bookingOpensOn,
+          verifyBy: i.verifyBy,
+          cost: i.cost,
+          paidWith: i.paidWithAccountId ? (cardName.get(i.paidWithAccountId) ?? "an inactive card") : null,
+          notes: i.notes,
+        })),
+      };
+    },
+  },
+  {
+    name: "trip_card_plan",
+    title: "Which card for each trip booking",
+    description:
+      "For a trip's unpaid bookings with a cost: the card to book each one with (open sign-up bonuses first, then the best multiplier) and how the trip's spend moves each bonus toward its minimum.",
+    input: { trip: z.string().min(1).max(120).describe("Trip id from list_trips") },
+    scrub: "finance",
+    async run(args, { now }) {
+      const trip = await findTrip(String(args.trip));
+      const plan = await trips.tripCardPlan(trip.id, now);
+      if (!plan.hasProfiles) return { note: "No card has a rewards profile yet." };
+      return {
+        trip: trip.name,
+        steps: plan.steps.map((s) => ({
+          kind: s.kind,
+          title: s.title,
+          provider: s.provider,
+          cost: s.cost,
+          chargeDate: s.chargeDate,
+          bookingStatus: s.bookingStatus,
+          alreadyPaidWith: s.paidWith,
+          useCard: s.plan?.recommended.card ?? null,
+          reason: s.plan ? (s.plan.reason === "bonus" ? "completes an open sign-up bonus" : "highest earn") : null,
+          rewardValue: s.plan ? dollars(s.plan.recommended.cents) : null,
+        })),
+        signupBonuses: plan.bonuses.map((b) => without(b, "accountId")),
+      };
+    },
+  },
+  {
+    name: "booking_checklist",
+    title: "Bookings still to do",
+    description: "Across upcoming trips: steps still to book, and booked steps with a re-check date, soonest deadline first.",
+    input: {},
+    scrub: "reference",
+    async run(_args, { now }) {
+      return (await trips.outstandingBookings(isoDay(now))).map((r) => ({ trip: r.tripSlug, ...without(r, "id", "tripSlug") }));
+    },
+  },
+];
+
+export function serverInstructions(owner: OwnerLabel) {
+  return [
+    "This is one household's private finance and travel assistant (two members, labelled User 1 and User 2; some accounts are Joint).",
+    `You are talking with ${owner}. Never ask for or guess names, card numbers or account numbers; cards are known by nickname only.`,
+    "All tools are read-only. Nothing is booked, paid or changed from here; give advice and let the person act.",
+    "For card questions call list_my_cards first. For where to put a purchase or booking call best_card_for_purchases (or trip_card_plan for a whole trip). A sign-up bonus close to its deadline usually beats a better multiplier.",
+    "Card terms come from a stored catalog checked against issuers; mention the verified date when it matters and suggest confirming time-limited offers with the issuer.",
+    "Someone in the family has coeliac disease. Treat gluten as a medical restriction, never a preference.",
+  ].join("\n");
+}

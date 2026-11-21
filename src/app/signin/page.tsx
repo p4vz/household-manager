@@ -3,12 +3,14 @@ import { signIn } from "@/core/auth/config";
 import { currentUser } from "@/core/auth/guard";
 
 export default async function SignInPage({ searchParams }: PageProps<"/signin">) {
-  if (await currentUser()) redirect("/");
-  const { error } = await searchParams;
+  const { error, callbackUrl } = await searchParams;
+  // Only the assistant consent screen may be returned to; anything else goes home.
+  const target = typeof callbackUrl === "string" && /^\/oauth\/authorize\?[^\\]*$/.test(callbackUrl) ? callbackUrl : "/";
+  if (await currentUser()) redirect(target);
 
   async function signInWithGoogle() {
     "use server";
-    await signIn("google", { redirectTo: "/" });
+    await signIn("google", { redirectTo: target });
   }
 
   return (

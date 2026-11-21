@@ -15,7 +15,9 @@ const csp = [
   "img-src 'self' data: https://lh3.googleusercontent.com",
   "font-src 'self'",
   `connect-src 'self'${isDev ? " ws:" : ""}`,
-  "form-action 'self' https://accounts.google.com",
+  // The assistant consent form ends in a redirect to the assistant's own
+  // callback (see DEFAULT_REDIRECT_HOSTS in src/core/oauth/policy.ts).
+  "form-action 'self' https://accounts.google.com https://claude.ai https://claude.com https://chatgpt.com https://oauth-redirect.googleusercontent.com http://localhost:* http://127.0.0.1:*",
   "frame-ancestors 'none'",
   "base-uri 'self'",
   "object-src 'none'",

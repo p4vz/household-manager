@@ -184,9 +184,10 @@ What changed in the move:
   "adult" or "child, age 8", never by name.
 - Documents download through a server action that returns the decrypted
   bytes to the signed-in member, because the app has no file routes.
-- Not ported yet, because each needs public routes or new OAuth scopes: the
-  MCP endpoint and its OAuth server, Google Photos, Drive backup and the
-  Calendar mirror. The offline service worker is also not ported yet.
+- The old MCP endpoint and OAuth server came back as the household-wide,
+  read-only assistant endpoint (see "Assistant (MCP) endpoint"). Not ported
+  yet, because each needs new OAuth scopes: Google Photos, Drive backup and
+  the Calendar mirror. The offline service worker is also not ported yet.
 
 ## Card catalog
 
@@ -225,6 +226,27 @@ audit, the advisor and other modules never have to look them up live.
   the top 8 with their offers and verified dates, plus the stored credits,
   perks and current rotating categories of held cards.
 - Other modules read stored terms through `heldCardTerms()` in `api.ts`.
+
+## Assistant (MCP) endpoint
+
+Lets Claude, ChatGPT and Gemini read household card and trip data through
+custom connectors. Security rules are in SECURITY.md ("Assistant access");
+setup in MCP.md.
+
+```
+core/oauth/     OAuth 2.1 authorization server (policy.ts pure, server.ts storage)
+mcp/            tools.ts (read-only tools over module APIs), server.ts, sanitize.ts
+app/api/mcp     Streamable HTTP endpoint (stateless, JSON responses)
+app/api/oauth   register / token / revoke
+app/oauth/authorize   consent screen
+```
+
+`src/mcp` is wiring like `app/`: it may import module `api.ts` files only
+(enforced by the boundary tests). Planning tools reuse finance's
+`planCardsForPurchases()` (the trips "Which card" logic), with
+`PURCHASE_CATEGORY` mapping a purchase kind (`hotels`, `dining`, ...) to the
+category a charge would land in. Tables: `core_oauth_clients`,
+`core_oauth_codes`, `core_oauth_grants`.
 
 ## Database
 

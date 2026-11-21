@@ -77,12 +77,39 @@ describe("module boundaries", () => {
 });
 
 describe("external surface", () => {
-  it("exposes only the auth and cron HTTP routes", () => {
+  // The assistant (MCP) routes, reviewed in docs/SECURITY.md ("Assistant access").
+  const ASSISTANT_ROUTES = [
+    "app/.well-known/oauth-authorization-server/[[...path]]/route.ts",
+    "app/.well-known/oauth-protected-resource/[[...path]]/route.ts",
+    "app/.well-known/openid-configuration/route.ts",
+    "app/api/mcp/route.ts",
+    "app/api/oauth/register/route.ts",
+    "app/api/oauth/revoke/route.ts",
+    "app/api/oauth/token/route.ts",
+  ];
+
+  it("exposes only the auth, cron and reviewed assistant HTTP routes", () => {
     const routes = files
       .map(rel)
       .filter((p) => p.startsWith("app/") && /\/route\.(ts|tsx)$/.test(p))
-      .filter((p) => !/^app\/api\/(auth\/\[\.\.\.nextauth\]|cron\/[^/]+)\/route\.ts$/.test(p));
+      .filter((p) => !/^app\/api\/(auth\/\[\.\.\.nextauth\]|cron\/[^/]+)\/route\.ts$/.test(p))
+      .filter((p) => !ASSISTANT_ROUTES.includes(p));
     expect(routes, "new HTTP routes need a security review; see docs/SECURITY.md").toEqual([]);
+  });
+
+  it("assistant routes are off unless configured, and the MCP route checks its bearer token", () => {
+    for (const p of ASSISTANT_ROUTES) {
+      expect(readFileSync(join(SRC, p), "utf8"), p).toMatch(/oauthConfig\(\)[\s\S]*notFound\(\)/);
+    }
+    expect(readFileSync(join(SRC, "app/api/mcp/route.ts"), "utf8")).toMatch(/verifyAccessToken\(/);
+  });
+
+  it("the assistant layer reaches modules only through api.ts", () => {
+    const violations = files
+      .filter((f) => rel(f).startsWith("mcp/"))
+      .flatMap((f) => imports(f).map((s) => [rel(f), resolveImport(f, s)?.replace(/\.(ts|tsx)$/, "")] as const))
+      .filter(([, t]) => t?.startsWith("modules/") && !/^modules\/[^/]+\/api$/.test(t));
+    expect(violations).toEqual([]);
   });
 
   it("cron routes check the cron secret", () => {
@@ -117,7 +144,7 @@ describe("external surface", () => {
   it("server-side code that touches secrets or the DB is marked server-only", () => {
     const mustBeServerOnly = files
       .map(rel)
-      .filter((p) => /^(core\/(env|db\/client|ai\/(provider|run|store)|net\/(outbound|cron)|auth\/(config|guard))|modules\/[^/]+\/api)\.ts$/.test(p));
+      .filter((p) => /^(core\/(env|db\/client|ai\/(provider|run|store)|net\/(outbound|cron)|auth\/(config|guard)|oauth\/(server|authorize|http))|modules\/[^/]+\/api|mcp\/(server|tools))\.ts$/.test(p));
     for (const p of mustBeServerOnly) {
       expect(readFileSync(join(SRC, p), "utf8"), p).toMatch(/^import "server-only";/m);
     }
