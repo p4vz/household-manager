@@ -58,8 +58,8 @@ app runs a small OAuth 2.1 authorization server (`src/core/oauth`):
 
 - Clients register themselves (RFC 7591). Registration is open but grants
   nothing: no secret is issued (public clients), redirect URIs must be https
-  on `claude.ai`, `claude.com`, `chatgpt.com` or
-  `oauth-redirect.googleusercontent.com` (plus `MCP_EXTRA_REDIRECT_HOSTS`),
+  on `claude.ai`, `claude.com`, `chatgpt.com`,
+  `oauth-redirect{,-sandbox,-test}.googleusercontent.com` (Gemini; path must start with `/r/` or `/a/`), plus `MCP_EXTRA_REDIRECT_HOSTS`,
   or http on loopback for desktop clients. Exact-match redirect URIs only.
   At most 50 clients; clients nobody approved within a day are deleted.
 - Access is granted only on `/oauth/authorize`, by an allowlisted member

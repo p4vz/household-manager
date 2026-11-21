@@ -3,7 +3,7 @@
 import { redirect } from "next/navigation";
 import { z } from "zod";
 import { authedAction } from "@/core/actions/authed-action";
-import { checkAuthorizeRequest, clientRedirect } from "@/core/oauth/authorize";
+import { MAX_STATE, checkAuthorizeRequest, clientRedirect } from "@/core/oauth/authorize";
 import { oauthConfig } from "@/core/oauth/policy";
 import { createAuthorizationCode } from "@/core/oauth/server";
 
@@ -15,7 +15,7 @@ const Input = z.object({
   code_challenge_method: z.string().max(10),
   scope: z.string().max(500).optional(),
   resource: z.string().max(2048).optional(),
-  state: z.string().max(2048).optional(),
+  state: z.string().max(MAX_STATE).optional(),
   response_type: z.string().max(20),
 });
 

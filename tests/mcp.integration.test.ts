@@ -79,6 +79,29 @@ describe("assistant access", () => {
     expect(await (await prm.GET()).json()).toMatchObject({ resource: `${ORIGIN}/api/mcp`, authorization_servers: [ORIGIN] });
   });
 
+  it("registers Gemini with all six callbacks and returns its long state unchanged", async () => {
+    const uris = ["oauth-redirect", "oauth-redirect-sandbox", "oauth-redirect-test"].flatMap((h) =>
+      ["r", "a"].map((p) => `https://${h}.googleusercontent.com/${p}/user_bound_custom-mcp-1`),
+    );
+    const reg = await register.POST(post("/api/oauth/register", JSON.stringify({ client_name: "Gemini", redirect_uris: uris })));
+    expect(reg.status).toBe(201);
+    const { client_id } = await reg.json();
+    const state = `${"AbC-_.~+/=%20&?#".repeat(90)}`; // ~1,440 chars with characters that need encoding
+    const { checkAuthorizeRequest, clientRedirect } = await import("@/core/oauth/authorize");
+    const config = { issuer: ORIGIN, resource: `${ORIGIN}/api/mcp` };
+    const check = await checkAuthorizeRequest(
+      { response_type: "code", client_id, redirect_uri: uris[0], code_challenge: CHALLENGE, code_challenge_method: "S256", state },
+      config,
+    );
+    expect(check.kind).toBe("ok");
+    if (check.kind !== "ok") return;
+    expect(check.request.state).toBe(state);
+    const back = new URL(clientRedirect(check.request.redirectUri, { code: "c", state: check.request.state }, config));
+    expect(back.origin + back.pathname).toBe(uris[0]);
+    expect(back.searchParams.get("state")).toBe(state);
+    expect(back.searchParams.get("iss")).toBe(ORIGIN);
+  });
+
   it("refuses registration for redirect hosts that are not allowed", async () => {
     const res = await register.POST(post("/api/oauth/register", JSON.stringify({ redirect_uris: ["https://evil.example/cb"] })));
     expect(res.status).toBe(400);

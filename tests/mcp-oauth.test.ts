@@ -49,6 +49,31 @@ describe("assistant OAuth policy", () => {
     expect(isAllowedRedirectUri("https://mcp.example.org/cb", redirectHosts({ MCP_EXTRA_REDIRECT_HOSTS: "mcp.example.org" }))).toBe(true);
   });
 
+  it("accepts Gemini's six callback prefixes and nothing near them", () => {
+    const hosts = redirectHosts({});
+    for (const host of ["oauth-redirect", "oauth-redirect-sandbox", "oauth-redirect-test"]) {
+      for (const prefix of ["r", "a"]) {
+        const uri = `https://${host}.googleusercontent.com/${prefix}/user_bound_custom-mcp-abc123`;
+        expect(isAllowedRedirectUri(uri, hosts), uri).toBe(true);
+      }
+    }
+    for (const bad of [
+      "https://oauth-redirect.googleusercontent.com/",
+      "https://oauth-redirect.googleusercontent.com/r/",
+      "https://oauth-redirect.googleusercontent.com/x/abc",
+      "https://oauth-redirect.googleusercontent.com/rr/abc",
+      "https://oauth-redirect.googleusercontent.com/r/../x/abc",
+      "http://oauth-redirect.googleusercontent.com/r/abc",
+      "https://oauth-redirect.googleusercontent.com:8443/r/abc",
+      "https://evil-oauth-redirect.googleusercontent.com/r/abc",
+      "https://oauth-redirect.googleusercontent.com.evil.example/r/abc",
+      "https://oauth-redirect-prod.googleusercontent.com/r/abc",
+      "https://user@oauth-redirect.googleusercontent.com/r/abc",
+    ]) {
+      expect(isAllowedRedirectUri(bad, hosts), bad).toBe(false);
+    }
+  });
+
   it("verifies PKCE S256 and the resource indicator", () => {
     const verifier = "a".repeat(43);
     const challenge = createHash("sha256").update(verifier).digest("base64url");

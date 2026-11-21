@@ -22,15 +22,37 @@ export const MAX_CLIENTS = 50;
 
 /**
  * Hosts an assistant may ask to be redirected to after approval. Exact
- * match on the host, https only. These are the callback hosts of the three
- * apps this server is for; anything else needs MCP_EXTRA_REDIRECT_HOSTS.
+ * match on the host, https only, any path. Anything else needs
+ * MCP_EXTRA_REDIRECT_HOSTS.
  */
 export const DEFAULT_REDIRECT_HOSTS = [
   "claude.ai", // Claude custom connectors (web, desktop, mobile)
   "claude.com",
   "chatgpt.com", // ChatGPT connectors (developer mode)
-  "oauth-redirect.googleusercontent.com", // Gemini custom apps
 ] as const;
+
+/**
+ * Gemini's account-linking callbacks, per Google's MCP OAuth guide: three
+ * hosts (production, sandbox, test), and only paths under /r/ or /a/.
+ * Exact host, https, default port, and the path must start with the prefix.
+ */
+export const GOOGLE_REDIRECT_PREFIXES = [
+  "https://oauth-redirect.googleusercontent.com/r/",
+  "https://oauth-redirect-sandbox.googleusercontent.com/r/",
+  "https://oauth-redirect-test.googleusercontent.com/r/",
+  "https://oauth-redirect.googleusercontent.com/a/",
+  "https://oauth-redirect-sandbox.googleusercontent.com/a/",
+  "https://oauth-redirect-test.googleusercontent.com/a/",
+] as const;
+
+function matchesGooglePrefix(u: URL): boolean {
+  if (u.protocol !== "https:" || u.port !== "") return false;
+  return GOOGLE_REDIRECT_PREFIXES.some((p) => {
+    const prefix = new URL(p);
+    // Compare parsed parts, so "%2e%2e" tricks and host look-alikes cannot pass.
+    return u.hostname === prefix.hostname && u.pathname.startsWith(prefix.pathname) && u.pathname.length > prefix.pathname.length;
+  });
+}
 
 type Env = Record<string, string | undefined>;
 
@@ -66,9 +88,9 @@ export function redirectHosts(env: Env = process.env): Set<string> {
 const LOOPBACK = new Set(["localhost", "127.0.0.1", "[::1]"]);
 
 /**
- * A redirect URI an assistant may register: https on an allowed host, or
- * http on loopback (desktop clients, RFC 8252). No credentials, no
- * fragment, at most 2 KB.
+ * A redirect URI an assistant may register and be sent back to: https on
+ * an allowed host, one of Gemini's prefixes, or http on loopback (desktop
+ * clients, RFC 8252). No credentials, no fragment, at most 2 KB.
  */
 export function isAllowedRedirectUri(uri: string, hosts: ReadonlySet<string> = redirectHosts()): boolean {
   if (uri.length > 2048) return false;
@@ -80,6 +102,7 @@ export function isAllowedRedirectUri(uri: string, hosts: ReadonlySet<string> = r
   }
   if (u.username || u.password || u.hash) return false;
   if (u.protocol === "http:") return LOOPBACK.has(u.hostname);
+  if (matchesGooglePrefix(u)) return true;
   return u.protocol === "https:" && (u.port === "" || u.port === "443") && hosts.has(u.hostname.toLowerCase());
 }
 
