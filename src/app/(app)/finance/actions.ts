@@ -317,18 +317,27 @@ export async function refreshCatalogCardAction(_prev: CatalogState, form: FormDa
   }
 }
 
-const editTerms = authedAction(z.object({ productId, terms: CardTerms }), ({ productId, terms }) => saveCatalogTermsByUser(productId, terms));
+// The allowlist check runs before the submitted JSON is parsed or validated.
+const editTerms = authedAction(
+  z.object({ productId, terms: z.string().max(100_000) }),
+  async ({ productId, terms }): Promise<CatalogState> => {
+    let raw: unknown;
+    try {
+      raw = JSON.parse(terms);
+    } catch {
+      return { ok: false, error: "Not valid JSON" };
+    }
+    const parsed = CardTerms.safeParse(raw);
+    if (!parsed.success) return { ok: false, error: parsed.error.issues.map((i) => `${i.path.join(".")}: ${i.message}`).slice(0, 3).join("; ") };
+    await saveCatalogTermsByUser(productId, parsed.data);
+    return { ok: true, message: "Saved" };
+  },
+);
 export async function saveCatalogTermsAction(_prev: CatalogState, form: FormData): Promise<CatalogState> {
-  let terms: unknown;
-  try {
-    terms = JSON.parse(String(form.get("terms") ?? ""));
-  } catch {
-    return { ok: false, error: "Not valid JSON" };
+  const result = await editTerms({ productId: form.get("productId"), terms: String(form.get("terms") ?? "") });
+  if (result?.ok) {
+    revalidatePath("/finance/rewards/catalog");
+    revalidatePath("/finance/rewards");
   }
-  const parsed = CardTerms.safeParse(terms);
-  if (!parsed.success) return { ok: false, error: parsed.error.issues.map((i) => `${i.path.join(".")}: ${i.message}`).slice(0, 3).join("; ") };
-  await editTerms({ productId: form.get("productId"), terms: parsed.data });
-  revalidatePath("/finance/rewards/catalog");
-  revalidatePath("/finance/rewards");
-  return { ok: true, message: "Saved" };
+  return result;
 }
