@@ -77,6 +77,13 @@ export const tripsTrips = pgTable(
     slug: text("slug").notNull(),
     notes: text("notes"),
     archived: boolean("archived").notNull().default(false),
+    /**
+     * Trip-wide switch: may connected assistants read this trip's booking
+     * confirmation codes? Off by default. Codes still only reach an
+     * assistant whose connection also has the "travel.booking_codes"
+     * permission (src/core/oauth/permissions.ts).
+     */
+    shareBookingCodes: boolean("share_booking_codes").notNull().default(false),
     createdAt: ts("created_at").notNull().defaultNow(),
   },
   (t) => [uniqueIndex("trips_trips_slug_uq").on(t.slug)],

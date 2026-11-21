@@ -140,3 +140,70 @@ describe("per-assistant permissions", () => {
     expect(init.result.instructions).toMatch(/not shared it with you/);
   });
 });
+
+describe("booking codes", () => {
+  const step = {
+    destinationId: null,
+    endsAt: null,
+    timezone: null,
+    endTimezone: null,
+    location: null,
+    bookingUrl: null,
+    bookingOpensOn: null,
+    gfVetted: false,
+  };
+  async function tripWithCodes() {
+    const { id, slug } = await trips.createTrip({ name: "Alps 2027", startDate: "2027-11-20", endDate: "2027-11-30", places: [], budget: null });
+    await trips.addItineraryItem(id, { ...step, kind: "flight", title: "PHL to ZRH, UA52", startsAt: new Date("2027-11-20T23:35:00Z"), provider: "United", confirmation: "K7Q2XZ", notes: "PNR K7Q2XZ", cost: 2400 });
+    await trips.addItineraryItem(id, { ...step, kind: "lodging", title: "Hotel", startsAt: new Date("2027-11-22T15:00:00Z"), provider: "Marriott", confirmation: "4111111111111111", notes: null, cost: 900 });
+    await trips.addItineraryItem(id, { ...step, kind: "activity", title: "Ski school", startsAt: new Date("2027-11-23T09:00:00Z"), provider: null, confirmation: null, notes: null, cost: null });
+    return { id, slug };
+  }
+  const TRAVEL = ["travel.trips", "travel.itinerary", "travel.bookings"];
+  const linkShape = (slug: string) => new RegExp(`^${ORIGIN}/trips/${slug}/itinerary#step-[0-9a-f-]{36}$`);
+
+  it("is a separate permission that starts off", () => {
+    expect(PERMISSION_KEYS).toContain("travel.booking_codes");
+    expect(DEFAULT_PERMISSIONS).not.toContain("travel.booking_codes");
+  });
+
+  it("keeps codes in the app by default and links every step to its page", async () => {
+    const { slug } = await tripWithCodes();
+    const access = await connect([...TRAVEL, "travel.booking_codes"]);
+    const { data } = await call(access, "get_trip", { trip: slug });
+    expect(JSON.stringify(data)).not.toMatch(/K7Q2XZ|4111/);
+    expect(data.bookingCodes).toMatch(/kept in the app/);
+    expect(data.itinerary.map((i: { codeInApp?: boolean }) => i.codeInApp ?? false)).toEqual([true, true, false]);
+    for (const i of data.itinerary) expect(i.link).toMatch(linkShape(slug));
+    const checklist = await call(access, "booking_checklist");
+    expect(checklist.data.every((r: { link: string }) => linkShape(slug).test(r.link))).toBe(true);
+  });
+
+  it("shares codes only when both the trip switch and the permission are on", async () => {
+    const { id, slug } = await tripWithCodes();
+    await trips.setBookingCodeSharing(id, true);
+
+    const without = await connect(TRAVEL);
+    expect(JSON.stringify((await call(without, "get_trip", { trip: slug })).data)).not.toMatch(/K7Q2XZ/);
+
+    const withCodes = await connect([...TRAVEL, "travel.booking_codes"]);
+    const { data } = await call(withCodes, "get_trip", { trip: slug });
+    expect(data.bookingCodes).toBe("shared for this trip");
+    const [flight, hotel, ski] = data.itinerary;
+    expect(flight.bookingCode).toBe("K7Q2XZ");
+    // A card number typed into the confirmation field is still never shared.
+    expect(hotel.bookingCode).toBe("[redacted]");
+    expect(ski.bookingCode).toBeUndefined();
+    // Free text keeps its scrub: only the bookingCode field carries codes.
+    expect(flight.notes).toBe("PNR [redacted]");
+
+    await trips.setBookingCodeSharing(id, false);
+    expect(JSON.stringify((await call(withCodes, "get_trip", { trip: slug })).data)).not.toMatch(/K7Q2XZ/);
+  });
+
+  it("tells the assistant to send the link instead of asking for a code", async () => {
+    const access = await connect(TRAVEL);
+    const init = await rpc(access, "initialize", { protocolVersion: "2025-06-18", capabilities: {}, clientInfo: { name: "t", version: "1" } });
+    expect(init.result.instructions).toMatch(/give them that link/);
+  });
+});

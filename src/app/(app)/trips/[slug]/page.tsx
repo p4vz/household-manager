@@ -11,6 +11,7 @@ import {
   archiveTripAction,
   cancelTripAction,
   deleteDestinationAction,
+  setBookingCodeSharingAction,
   updateDestinationAction,
   updateTripAction,
 } from "../actions";
@@ -145,6 +146,28 @@ export default async function TripOverview({ params, searchParams }: PageProps<"
             <Field label="Arrive"><input name="arriveOn" type="date" className={inputCls} /></Field>
             <Field label="Leave"><input name="departOn" type="date" className={inputCls} /></Field>
             <Button size="sm" variant="outline">Add</Button>
+          </form>
+        </CardContent>
+      </Card>
+
+      <Card>
+        <CardHeader>
+          <CardTitle>AI assistants</CardTitle>
+          <CardDescription>
+            Booking codes for this trip are {trip.shareBookingCodes ? "shared" : "not shared"} with connected assistants.
+          </CardDescription>
+        </CardHeader>
+        <CardContent className="space-y-2 text-sm">
+          <p className="text-muted-foreground">
+            {trip.shareBookingCodes
+              ? "Assistants that also have the Booking codes permission (Settings > AI assistants) can read this trip's confirmation codes."
+              : "Assistants see each booking with a link to its step on the itinerary, where you can read the code yourself."}
+          </p>
+          <form action={setBookingCodeSharingAction}>
+            <input type="hidden" name="tripId" value={trip.id} />
+            <input type="hidden" name="back" value={back} />
+            <input type="hidden" name="on" value={trip.shareBookingCodes ? "false" : "true"} />
+            <Button size="sm" variant="outline">{trip.shareBookingCodes ? "Stop sharing booking codes" : "Share booking codes with assistants"}</Button>
           </form>
         </CardContent>
       </Card>

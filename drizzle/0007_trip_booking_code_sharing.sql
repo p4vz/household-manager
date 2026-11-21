@@ -1,0 +1,1 @@
+ALTER TABLE "trips_trips" ADD COLUMN "share_booking_codes" boolean DEFAULT false NOT NULL;

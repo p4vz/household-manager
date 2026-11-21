@@ -136,3 +136,24 @@ describe("identifier scrub (the rule)", () => {
     expect(forAssistant({ card: "Gold", accountNumber: "x", confirmation: "y", email: "z", travelerFullName: "w" }, "finance", [])).toEqual({ card: "Gold" });
   });
 });
+
+describe("booking code and link exceptions", () => {
+  it("passes a wrapped booking code only when it is shaped like one", async () => {
+    const { SharedBookingCode, isShareableBookingCode } = await import("@/mcp/sanitize");
+    for (const ok of ["K7Q2XZ", "83749201", "ABC-12345", "1Z9X"]) expect(isShareableBookingCode(ok), ok).toBe(true);
+    for (const bad of ["4111111111111111", "4111-1111-1111-1111", "DE89370400440532013000", "0x52908400098527886E0F7030069857D2E4169EE7", "a@b.co", "two words"]) {
+      expect(isShareableBookingCode(bad), bad).toBe(false);
+    }
+    expect(forAssistant({ bookingCode: new SharedBookingCode("K7Q2XZ") }, "reference", [])).toEqual({ bookingCode: "K7Q2XZ" });
+    expect(forAssistant({ bookingCode: new SharedBookingCode("4111111111111111") }, "reference", [])).toEqual({ bookingCode: "[redacted]" });
+    // An unwrapped code under the same key is scrubbed like any other text.
+    expect(forAssistant({ bookingCode: "K7Q2XZ" }, "reference", [])).toEqual({ bookingCode: "[redacted]" });
+  });
+
+  it("passes only app booking links of the exact shape", async () => {
+    const { AppLink } = await import("@/mcp/sanitize");
+    const href = "https://home.example.com/trips/alps-2027/itinerary#step-123456ab-1234-4234-8234-123456789012";
+    expect(forAssistant({ link: new AppLink(href) }, "finance", [])).toEqual({ link: href });
+    expect(forAssistant({ link: new AppLink("https://evil.example/?card=4111111111111111") }, "finance", [])).toEqual({});
+  });
+});

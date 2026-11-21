@@ -6,7 +6,7 @@ import * as calendar from "@/modules/calendar/api";
 import * as finance from "@/modules/finance/api";
 import * as maintenance from "@/modules/maintenance/api";
 import * as trips from "@/modules/trips/api";
-import { ownerLabel, type ScrubMode } from "./sanitize";
+import { AppLink, SharedBookingCode, ownerLabel, type ScrubMode } from "./sanitize";
 
 /**
  * The assistant's tools. Every one is read-only and calls module APIs only
@@ -18,7 +18,13 @@ import { ownerLabel, type ScrubMode } from "./sanitize";
  * a further permission (`can(...)`) are left out unless it was granted too.
  */
 
-export type ToolContext = { owner: OwnerLabel; now: Date; permissions: ReadonlySet<PermissionKey> };
+export type ToolContext = {
+  owner: OwnerLabel;
+  now: Date;
+  permissions: ReadonlySet<PermissionKey>;
+  /** This app's origin, for links back to its pages. */
+  appUrl: string | null;
+};
 
 export type AssistantTool = {
   name: string;
@@ -53,6 +59,15 @@ function quarterOf(day: string) {
 /** Terms of held cards by account id, for FX fees, credits and perks. */
 async function termsByAccount() {
   return new Map((await finance.heldCardTerms()).map((t) => [t.accountId, t]));
+}
+
+/**
+ * Link to one booking on the trip's itinerary page, where the person sees
+ * its confirmation code. Lets an assistant point to the code without
+ * reading it.
+ */
+function bookingLink(appUrl: string | null, tripSlug: string, stepId: string) {
+  return appUrl ? new AppLink(`${appUrl}/trips/${tripSlug}/itinerary#step-${stepId}`) : undefined;
 }
 
 async function findTrip(slug: string) {
@@ -280,13 +295,15 @@ export const TOOLS: AssistantTool[] = [
     name: "get_trip",
     title: "Trip itinerary",
     description:
-      "One trip's places and itinerary: each step's kind, times (UTC, with departure and arrival time zones), place, provider, booking status, when booking opens, re-check date, cost and which card paid. Confirmation numbers, documents and traveller names are not available.",
+      "One trip's places and itinerary: each step's kind, times (UTC, with departure and arrival time zones), place, provider, booking status, when booking opens, re-check date, cost, which card paid, and a link to the step's page in the household app. Booking codes are included only where the household shared them (`bookingCode`); otherwise `codeInApp` says the code is on that page. Documents and traveller names are not available.",
     input: { trip: z.string().min(1).max(120).describe("Trip id from list_trips") },
     requires: ["travel.trips", "travel.itinerary"],
     scrub: "reference",
-    async run(args, { permissions }) {
+    async run(args, { permissions, appUrl }) {
       const trip = await findTrip(String(args.trip));
       const bookings = permissions.has("travel.bookings");
+      // Codes need both switches: this connection's permission and the trip's own.
+      const codes = bookings && permissions.has("travel.booking_codes") && trip.shareBookingCodes;
       const [items, cards] = await Promise.all([trips.listItinerary(trip.id), trips.listCreditCards()]);
       const cardName = new Map(cards.map((c) => [c.accountId, c.name]));
       return {
@@ -296,6 +313,13 @@ export const TOOLS: AssistantTool[] = [
         endDate: trip.endDate,
         budget: trip.budget,
         status: trip.status,
+        ...(bookings
+          ? {
+              bookingCodes: codes
+                ? "shared for this trip"
+                : "kept in the app: send the person the step's link, where the code is shown. Never ask for or guess a code.",
+            }
+          : {}),
         places: trip.destinations.map((d) => ({ name: d.name, country: d.country, arriveOn: d.arriveOn, departOn: d.departOn })),
         itinerary: items.map((i) => ({
           kind: i.kind,
@@ -307,9 +331,12 @@ export const TOOLS: AssistantTool[] = [
           location: i.location,
           provider: i.provider,
           notes: i.notes,
+          link: bookingLink(appUrl, trip.slug, i.id),
           ...(bookings
             ? {
                 bookingStatus: i.bookingStatus,
+                bookingCode: codes && i.confirmation ? new SharedBookingCode(i.confirmation) : undefined,
+                codeInApp: !codes && Boolean(i.confirmation?.trim()) ? true : undefined,
                 bookingOpensOn: i.bookingOpensOn,
                 verifyBy: i.verifyBy,
                 cost: i.cost,
@@ -328,7 +355,7 @@ export const TOOLS: AssistantTool[] = [
     input: { trip: z.string().min(1).max(120).describe("Trip id from list_trips") },
     requires: ["travel.trips", "travel.bookings", "finance.card_advice"],
     scrub: "finance",
-    async run(args, { now, permissions }) {
+    async run(args, { now, permissions, appUrl }) {
       const trip = await findTrip(String(args.trip));
       const plan = await trips.tripCardPlan(trip.id, now);
       if (!plan.hasProfiles) return { note: "No card has a rewards profile yet." };
@@ -345,6 +372,7 @@ export const TOOLS: AssistantTool[] = [
           useCard: s.plan?.recommended.card ?? null,
           reason: s.plan ? (s.plan.reason === "bonus" ? "completes an open sign-up bonus" : "highest earn") : null,
           rewardValue: s.plan ? dollars(s.plan.recommended.cents) : null,
+          link: bookingLink(appUrl, trip.slug, s.id),
         })),
         signupBonuses: permissions.has("finance.signup_bonuses") ? plan.bonuses.map((b) => without(b, "accountId")) : undefined,
       };
@@ -353,12 +381,16 @@ export const TOOLS: AssistantTool[] = [
   {
     name: "booking_checklist",
     title: "Bookings still to do",
-    description: "Across upcoming trips: steps still to book, and booked steps with a re-check date, soonest deadline first.",
+    description: "Across upcoming trips: steps still to book, and booked steps with a re-check date, soonest deadline first. Each has a link to its page in the household app.",
     input: {},
     requires: ["travel.bookings"],
     scrub: "reference",
-    async run(_args, { now }) {
-      return (await trips.outstandingBookings(isoDay(now))).map((r) => ({ trip: r.tripSlug, ...without(r, "id", "tripSlug") }));
+    async run(_args, { now, appUrl }) {
+      return (await trips.outstandingBookings(isoDay(now))).map((r) => ({
+        trip: r.tripSlug,
+        ...without(r, "id", "tripSlug"),
+        link: bookingLink(appUrl, r.tripSlug, r.id),
+      }));
     },
   },
   {
@@ -485,6 +517,7 @@ export function serverInstructions(owner: OwnerLabel, tools: readonly AssistantT
     "This is one household's private finance and travel assistant (two members, labelled User 1 and User 2; some accounts are Joint).",
     `You are talking with ${owner}. Never ask for or guess names, card numbers or account numbers; cards are known by nickname only.`,
     "All tools are read-only. Nothing is booked, paid or changed from here; give advice and let the person act.",
+    "Trip steps carry a `link` to their page in the household app. When the person needs a booking's confirmation code and it is not in the answer, give them that link: the code is shown there.",
     tools.length < TOOLS.length
       ? "This connection was only given access to some sections of the app; if a question needs data you have no tool for, say that the household has not shared it with you and that it can be enabled under Settings > AI assistants."
       : "",
