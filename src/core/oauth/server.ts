@@ -6,6 +6,7 @@ import { db } from "@/core/db/client";
 import { coreOauthClients, coreOauthCodes, coreOauthGrants } from "@/core/db/core-schema";
 import { grantPermissions, normalizePermissions, type PermissionKey } from "./permissions";
 import {
+  assistantName,
   ACCESS_TTL_MS,
   CODE_TTL_MS,
   MAX_CLIENTS,
@@ -293,6 +294,7 @@ export async function listConnections() {
   const list = allowlist();
   return rows.map(({ email, redirectUris, permissions, ...r }) => ({
     ...r,
+    assistant: assistantName(redirectUris[0], r.client),
     permissions: grantPermissions(permissions),
     host: hostOf(redirectUris[0]),
     owner: ownerLabelFor(email, list) ?? "Removed member",

@@ -41,7 +41,7 @@ export default async function AuthorizePage({ searchParams }: PageProps<"/oauth/
   return (
     <main className="flex flex-1 items-center justify-center p-6">
       <form action={decideAuthorization} className="w-full max-w-2xl space-y-4 rounded-xl border p-8">
-        <h1 className="text-xl font-semibold">Connect {r.clientName}?</h1>
+        <h1 className="text-xl font-semibold">Connect {r.assistant}?</h1>
         <p className="text-sm opacity-80">
           An assistant at <strong>{hostOf(r.redirectUri)}</strong> is asking to read your household data as{" "}
           <strong>{user.owner}</strong>. Only approve if you just started connecting it yourself.

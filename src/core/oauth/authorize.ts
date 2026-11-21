@@ -1,6 +1,6 @@
 import "server-only";
 import { getClient } from "./server";
-import { MCP_SCOPE, grantedScopes, isAllowedRedirectUri, isValidChallenge, resourceMatches, type OauthConfig } from "./policy";
+import { MCP_SCOPE, assistantName, grantedScopes, isAllowedRedirectUri, isValidChallenge, resourceMatches, type OauthConfig } from "./policy";
 
 export type AuthorizeParams = Partial<
   Record<"response_type" | "client_id" | "redirect_uri" | "code_challenge" | "code_challenge_method" | "scope" | "state" | "resource", string>
@@ -11,6 +11,8 @@ export const MAX_STATE = 8192;
 export type CheckedRequest = {
   clientId: string;
   clientName: string;
+  /** Claude, ChatGPT or Gemini, from the redirect host; else the registered name. */
+  assistant: string;
   redirectUri: string;
   codeChallenge: string;
   scope: string;
@@ -69,6 +71,7 @@ export async function checkAuthorizeRequest(p: AuthorizeParams, config: OauthCon
     request: {
       clientId: client.clientId,
       clientName: client.name,
+      assistant: assistantName(p.redirect_uri, client.name),
       redirectUri: p.redirect_uri,
       codeChallenge: p.code_challenge!,
       scope: scopes.join(" "),

@@ -74,7 +74,10 @@ export default async function SettingsPage() {
                   <li key={c.id} className="space-y-3 rounded-lg border p-4">
                     <div className="flex items-start gap-3">
                       <div className="flex-1">
-                        <div className="font-medium">{c.client} <span className="opacity-60">({c.host})</span></div>
+                        <div className="font-medium">{c.assistant}</div>
+                        <div className="opacity-60">
+                          {c.client !== c.assistant ? `${c.client}, ` : ""}{c.host}
+                        </div>
                         <div className="opacity-60">
                           Approved by {c.owner} on {c.createdAt.toISOString().slice(0, 10)}
                           {c.lastUsedAt ? `, last used ${c.lastUsedAt.toISOString().slice(0, 10)}` : ", not used yet"}
@@ -87,7 +90,7 @@ export default async function SettingsPage() {
                     </div>
                     <form action={saveAssistantPermissionsAction} className="space-y-3">
                       <input type="hidden" name="id" value={c.id} />
-                      <p className="font-medium">What {c.client} can see</p>
+                      <p className="font-medium">What {c.assistant} can see</p>
                       <PermissionCheckboxes selected={c.permissions} idPrefix={c.id} />
                       <button type="submit" className="rounded-lg bg-foreground px-3 py-1.5 text-background">Save access</button>
                     </form>

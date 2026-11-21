@@ -54,6 +54,26 @@ function matchesGooglePrefix(u: URL): boolean {
   });
 }
 
+/**
+ * The assistant a client belongs to, named by where it is redirected after
+ * approval rather than by the client_name it registered with, which any
+ * caller can set. Unknown hosts (MCP_EXTRA_REDIRECT_HOSTS, loopback) keep
+ * their registered name.
+ */
+export function assistantName(redirectUri: string | undefined, registeredName: string): string {
+  let u: URL;
+  try {
+    u = new URL(redirectUri ?? "");
+  } catch {
+    return registeredName;
+  }
+  if (u.protocol !== "https:") return registeredName;
+  if (u.hostname === "claude.ai" || u.hostname === "claude.com") return "Claude";
+  if (u.hostname === "chatgpt.com") return "ChatGPT";
+  if (matchesGooglePrefix(u)) return "Gemini";
+  return registeredName;
+}
+
 type Env = Record<string, string | undefined>;
 
 export type OauthConfig = { issuer: string; resource: string };
