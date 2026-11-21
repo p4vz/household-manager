@@ -3,6 +3,8 @@ import { currentUser } from "@/core/auth/guard";
 import { checkAuthorizeRequest, type AuthorizeParams } from "@/core/oauth/authorize";
 import { oauthConfig } from "@/core/oauth/policy";
 import { hostOf } from "@/core/oauth/server";
+import { AssistantRule, PermissionCheckboxes } from "@/components/assistant-permissions";
+import { DEFAULT_PERMISSIONS } from "@/core/oauth/permissions";
 import { decideAuthorization } from "./actions";
 
 export const dynamic = "force-dynamic";
@@ -38,22 +40,17 @@ export default async function AuthorizePage({ searchParams }: PageProps<"/oauth/
 
   return (
     <main className="flex flex-1 items-center justify-center p-6">
-      <form action={decideAuthorization} className="w-full max-w-md space-y-4 rounded-xl border p-8">
+      <form action={decideAuthorization} className="w-full max-w-2xl space-y-4 rounded-xl border p-8">
         <h1 className="text-xl font-semibold">Connect {r.clientName}?</h1>
         <p className="text-sm opacity-80">
           An assistant at <strong>{hostOf(r.redirectUri)}</strong> is asking to read your household data as{" "}
           <strong>{user.owner}</strong>. Only approve if you just started connecting it yourself.
         </p>
-        <div className="space-y-1 text-sm">
-          <p className="font-medium">It will be able to read:</p>
-          <ul className="list-disc space-y-1 pl-5 opacity-80">
-            <li>Your credit cards by nickname, their reward rates, credits, perks and sign-up bonus progress</li>
-            <li>Card advice for purchases and bookings, and the points-left-on-the-table summary</li>
-            <li>Your trips and itineraries (no confirmation numbers, documents or traveller names)</li>
-          </ul>
-          <p className="pt-1 opacity-70">
-            It cannot change anything, and never sees account numbers or legal names. You can disconnect it any time in Settings.
-          </p>
+        <div className="space-y-3 text-sm">
+          <p className="font-medium">Choose what it can read. You can change this any time in Settings.</p>
+          <PermissionCheckboxes selected={DEFAULT_PERMISSIONS} idPrefix="consent" />
+          <AssistantRule />
+          <p className="opacity-70">It cannot change, book or buy anything.</p>
         </div>
         {FIELDS.map((f) =>
           params[f] !== undefined ? <input key={f} type="hidden" name={f} value={params[f]} /> : null,

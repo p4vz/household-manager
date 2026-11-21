@@ -119,3 +119,20 @@ describe("assistant output scrub", () => {
     });
   });
 });
+
+describe("identifier scrub (the rule)", () => {
+  it("removes wallets, IBANs, emails and booking codes but keeps flight numbers and years", async () => {
+    const { scrubText, scrubReferenceText } = await import("@/core/ai/sanitize");
+    const eth = "0x52908400098527886E0F7030069857D2E4169EE7";
+    expect(scrubText(`send to ${eth}`)).toBe("send to [redacted]");
+    expect(scrubReferenceText("btc bc1qar0srrr7xfkvy5l643lydnw9re59gtzzwf5mdq")).toBe("btc [redacted]");
+    expect(scrubReferenceText("old 1BvBMSEYstWetqTFn5Au4m4GFg7xJaNVN2 wallet")).toBe("old [redacted] wallet");
+    expect(scrubReferenceText("IBAN DE89 3704 0044 0532 0130 00")).toBe("IBAN [redacted]");
+    expect(scrubReferenceText("mail raisa.x@gmail.com")).toBe("mail [redacted]");
+    expect(scrubReferenceText("PNR K7Q2XZ on UA1234 in 2026")).toBe("PNR [redacted] on UA1234 in 2026");
+  });
+
+  it("drops forbidden keys from assistant answers", () => {
+    expect(forAssistant({ card: "Gold", accountNumber: "x", confirmation: "y", email: "z", travelerFullName: "w" }, "finance", [])).toEqual({ card: "Gold" });
+  });
+});

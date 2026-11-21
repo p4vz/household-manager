@@ -1,7 +1,10 @@
 import "server-only";
 import { z } from "zod";
 import type { OwnerLabel } from "@/core/auth/allowlist";
+import { THE_RULE, type PermissionKey } from "@/core/oauth/permissions";
+import * as calendar from "@/modules/calendar/api";
 import * as finance from "@/modules/finance/api";
+import * as maintenance from "@/modules/maintenance/api";
 import * as trips from "@/modules/trips/api";
 import { ownerLabel, type ScrubMode } from "./sanitize";
 
@@ -9,15 +12,20 @@ import { ownerLabel, type ScrubMode } from "./sanitize";
  * The assistant's tools. Every one is read-only and calls module APIs only
  * (never tables), the same way pages do. Answers are built field by field
  * and scrubbed by the server (see ./sanitize.ts) before they leave.
+ *
+ * Each tool lists the permissions it needs (`requires`, all of them); the
+ * server only registers tools the connection was granted. Fields that need
+ * a further permission (`can(...)`) are left out unless it was granted too.
  */
 
-export type ToolContext = { owner: OwnerLabel; now: Date };
+export type ToolContext = { owner: OwnerLabel; now: Date; permissions: ReadonlySet<PermissionKey> };
 
 export type AssistantTool = {
   name: string;
   title: string;
   description: string;
   input: z.ZodRawShape;
+  requires: PermissionKey[];
   scrub: ScrubMode;
   run: (args: Record<string, unknown>, ctx: ToolContext) => Promise<unknown>;
 };
@@ -71,8 +79,9 @@ export const TOOLS: AssistantTool[] = [
     input: {
       owner: z.enum(["all", "User 1", "User 2", "Joint"]).optional().describe("Only cards held by this person (default all)"),
     },
+    requires: ["finance.cards"],
     scrub: "finance",
-    async run(args, { now }) {
+    async run(args, { now, permissions }) {
       const today = isoDay(now);
       const [cards, terms, bonuses] = await Promise.all([finance.listCardsWithProfiles(), termsByAccount(), finance.signupBonusOverview(now)]);
       const quarter = quarterOf(today);
@@ -116,7 +125,7 @@ export const TOOLS: AssistantTool[] = [
             foreignTransactionFee: t?.terms.foreignTransactionFee ?? null,
             credits: t?.terms.credits ?? [],
             perks: t?.terms.perks ?? [],
-            signupBonus: b
+            signupBonus: b && permissions.has("finance.signup_bonuses")
               ? { minSpend: b.minSpend, spent: b.spent, remaining: b.remaining, deadline: b.deadline, daysLeft: b.daysLeft, bonusValue: b.bonusValue }
               : null,
             termsVerifiedDate: dayOf(t?.verifiedAt),
@@ -131,8 +140,9 @@ export const TOOLS: AssistantTool[] = [
     description:
       "Which household card to put one or more planned purchases on (flights, hotels, dinners, anything). Uses each card's real multipliers, caps already used this year, rotating categories and open sign-up bonuses: when a welcome bonus still needs spend before its deadline, purchases are routed there first if that actually completes it. Returns the recommendation, why, the value earned on each card, and bonus progress including the planned spend. Plans only; nothing is booked or charged.",
     input: { purchases: z.array(purchaseInput).min(1).max(20) },
+    requires: ["finance.card_advice"],
     scrub: "finance",
-    async run(args, { now }) {
+    async run(args, { now, permissions }) {
       const items = z.array(purchaseInput).parse(args.purchases);
       const today = isoDay(now);
       const planned = items.map((p, i) => ({
@@ -166,7 +176,7 @@ export const TOOLS: AssistantTool[] = [
             allCards: p.options.map((o) => ({ card: o.card, rewardValue: dollars(o.cents), foreignTransactionFee: hasFxFee(o.accountId) })),
           };
         }),
-        signupBonuses: plan.bonuses.map((b) => without(b, "accountId")),
+        signupBonuses: permissions.has("finance.signup_bonuses") ? plan.bonuses.map((b) => without(b, "accountId")) : undefined,
         note: "Reward values are in dollars at each card's stored point value. Statement credits and perks are in list_my_cards.",
       };
     },
@@ -176,6 +186,7 @@ export const TOOLS: AssistantTool[] = [
     title: "Sign-up bonus progress",
     description: "Open welcome offers on household cards: minimum spend, spent so far (purchases net of refunds), what is left, deadline and the bonus value.",
     input: {},
+    requires: ["finance.signup_bonuses"],
     scrub: "finance",
     async run(_args, { now }) {
       return (await finance.signupBonusOverview(now)).map((b) => without(b, "accountId", "planned", "metWithPlan"));
@@ -187,8 +198,9 @@ export const TOOLS: AssistantTool[] = [
     description:
       "Audit of actual card use: rewards earned vs what the best household card would have earned on the same purchases, by category, by card (earned minus annual fee) and the biggest single misses. Use it to suggest which card to use for what.",
     input: { range: z.enum(["3M", "6M", "12M", "YTD"]).optional().describe("Period to audit (default 12M)") },
+    requires: ["finance.rewards_audit"],
     scrub: "finance",
-    async run(args, { now }) {
+    async run(args, { now, permissions }) {
       const { cards, audit } = await finance.rewardsAudit((args.range as "3M" | "6M" | "12M" | "YTD" | undefined) ?? "12M", now);
       if (!audit) return { note: "No card has a rewards profile yet.", cards: cards.length };
       return {
@@ -196,7 +208,8 @@ export const TOOLS: AssistantTool[] = [
         totalMissed: audit.totalMissed,
         perCard: audit.perCard,
         missedByCategory: audit.byCategory.slice(0, 12),
-        biggestMisses: audit.topMisses.slice(0, 10).map((m) => ({
+        // Individual purchases only with the transactions permission.
+        biggestMisses: !permissions.has("finance.transactions") ? undefined : audit.topMisses.slice(0, 10).map((m) => ({
           date: m.date,
           merchant: m.merchant,
           category: [m.category, m.subcategory].filter(Boolean).join(" / ") || null,
@@ -214,6 +227,7 @@ export const TOOLS: AssistantTool[] = [
     description:
       "Cards from the stored catalog the household does not hold, priced against the last 12 months of real spending: yearly rewards added on top of current cards, minus the fee, with the current sign-up offer and credits listed separately.",
     input: { limit: z.number().int().min(1).max(15).optional().describe("How many to return (default 5)") },
+    requires: ["finance.card_catalog"],
     scrub: "finance",
     async run(args, { now }) {
       const rows = await finance.catalogComparison("12M", now);
@@ -229,6 +243,7 @@ export const TOOLS: AssistantTool[] = [
     description:
       "Stored, regularly refreshed terms of a card product by name (held or not): fee, earn rates, rotating categories, sign-up offer, credits, perks, the date they were last verified against the issuer, and sources.",
     input: { query: z.string().min(2).max(60).describe('e.g. "Sapphire Reserve", "Amex Gold", "Freedom Flex"') },
+    requires: ["finance.card_catalog"],
     scrub: "reference",
     async run(args) {
       const words = String(args.query).toLowerCase().split(/\s+/).filter(Boolean);
@@ -252,6 +267,7 @@ export const TOOLS: AssistantTool[] = [
     title: "List trips",
     description: "Household trips with dates, places, budget and status. The `trip` value is the id other trip tools take.",
     input: { includePast: z.boolean().optional().describe("Include trips that have ended (default false)") },
+    requires: ["travel.trips"],
     scrub: "reference",
     async run(args, { now }) {
       const today = isoDay(now);
@@ -266,9 +282,11 @@ export const TOOLS: AssistantTool[] = [
     description:
       "One trip's places and itinerary: each step's kind, times (UTC, with departure and arrival time zones), place, provider, booking status, when booking opens, re-check date, cost and which card paid. Confirmation numbers, documents and traveller names are not available.",
     input: { trip: z.string().min(1).max(120).describe("Trip id from list_trips") },
+    requires: ["travel.trips", "travel.itinerary"],
     scrub: "reference",
-    async run(args) {
+    async run(args, { permissions }) {
       const trip = await findTrip(String(args.trip));
+      const bookings = permissions.has("travel.bookings");
       const [items, cards] = await Promise.all([trips.listItinerary(trip.id), trips.listCreditCards()]);
       const cardName = new Map(cards.map((c) => [c.accountId, c.name]));
       return {
@@ -288,12 +306,16 @@ export const TOOLS: AssistantTool[] = [
           endTimezone: i.endTimezone,
           location: i.location,
           provider: i.provider,
-          bookingStatus: i.bookingStatus,
-          bookingOpensOn: i.bookingOpensOn,
-          verifyBy: i.verifyBy,
-          cost: i.cost,
-          paidWith: i.paidWithAccountId ? (cardName.get(i.paidWithAccountId) ?? "an inactive card") : null,
           notes: i.notes,
+          ...(bookings
+            ? {
+                bookingStatus: i.bookingStatus,
+                bookingOpensOn: i.bookingOpensOn,
+                verifyBy: i.verifyBy,
+                cost: i.cost,
+                paidWith: i.paidWithAccountId ? (cardName.get(i.paidWithAccountId) ?? "an inactive card") : null,
+              }
+            : {}),
         })),
       };
     },
@@ -304,8 +326,9 @@ export const TOOLS: AssistantTool[] = [
     description:
       "For a trip's unpaid bookings with a cost: the card to book each one with (open sign-up bonuses first, then the best multiplier) and how the trip's spend moves each bonus toward its minimum.",
     input: { trip: z.string().min(1).max(120).describe("Trip id from list_trips") },
+    requires: ["travel.trips", "travel.bookings", "finance.card_advice"],
     scrub: "finance",
-    async run(args, { now }) {
+    async run(args, { now, permissions }) {
       const trip = await findTrip(String(args.trip));
       const plan = await trips.tripCardPlan(trip.id, now);
       if (!plan.hasProfiles) return { note: "No card has a rewards profile yet." };
@@ -323,7 +346,7 @@ export const TOOLS: AssistantTool[] = [
           reason: s.plan ? (s.plan.reason === "bonus" ? "completes an open sign-up bonus" : "highest earn") : null,
           rewardValue: s.plan ? dollars(s.plan.recommended.cents) : null,
         })),
-        signupBonuses: plan.bonuses.map((b) => without(b, "accountId")),
+        signupBonuses: permissions.has("finance.signup_bonuses") ? plan.bonuses.map((b) => without(b, "accountId")) : undefined,
       };
     },
   },
@@ -332,20 +355,143 @@ export const TOOLS: AssistantTool[] = [
     title: "Bookings still to do",
     description: "Across upcoming trips: steps still to book, and booked steps with a re-check date, soonest deadline first.",
     input: {},
+    requires: ["travel.bookings"],
     scrub: "reference",
     async run(_args, { now }) {
       return (await trips.outstandingBookings(isoDay(now))).map((r) => ({ trip: r.tripSlug, ...without(r, "id", "tripSlug") }));
     },
   },
+  {
+    name: "spending_summary",
+    title: "Spending by category",
+    description: "Aggregate spending (net of refunds, excluding transfers) by category with subcategories, by month, and the top merchants, for a period. Totals only, no individual transactions.",
+    input: {
+      range: z.enum(["3M", "6M", "12M", "YTD"]).optional().describe("Period (default 3M)"),
+      owner: z.enum(["all", "User 1", "User 2", "Joint"]).optional().describe("Whose accounts (default all)"),
+    },
+    requires: ["finance.spending"],
+    scrub: "finance",
+    async run(args, { now }) {
+      return finance.spendingSummary((args.range as finance.RangeKey | undefined) ?? "3M", ownerFilter(args.owner), now);
+    },
+  },
+  {
+    name: "income_and_savings",
+    title: "Income and savings rate",
+    description: "Income vs spending per month, totals, and the savings rate for a period. Historical actuals only.",
+    input: {
+      range: z.enum(["3M", "6M", "12M", "YTD"]).optional().describe("Period (default 12M)"),
+      owner: z.enum(["all", "User 1", "User 2", "Joint"]).optional().describe("Whose accounts (default all)"),
+    },
+    requires: ["finance.income"],
+    scrub: "finance",
+    async run(args, { now }) {
+      return finance.cashFlowSummary((args.range as finance.RangeKey | undefined) ?? "12M", ownerFilter(args.owner), now);
+    },
+  },
+  {
+    name: "list_transactions",
+    title: "Recent transactions",
+    description: "Individual transactions, newest first: date, merchant, category, amount (negative = spend), card or account nickname and owner label. Optional filters by date, category or merchant text.",
+    input: {
+      since: z.iso.date().optional().describe("Only on or after this date"),
+      category: z.string().max(60).optional().describe('Category or subcategory, e.g. "Travel", "Restaurants"'),
+      merchant: z.string().max(60).optional().describe("Text the merchant name contains"),
+      limit: z.number().int().min(1).max(100).optional().describe("Default 50"),
+    },
+    requires: ["finance.transactions"],
+    scrub: "finance",
+    async run(args) {
+      const cat = typeof args.category === "string" ? args.category.toLowerCase() : null;
+      const merch = typeof args.merchant === "string" ? args.merchant.toLowerCase() : null;
+      const since = typeof args.since === "string" ? args.since : null;
+      return (await finance.listRecentTransactions(500))
+        .filter((t) => !since || t.date >= since)
+        .filter((t) => !cat || t.category?.toLowerCase() === cat || t.subcategory?.toLowerCase() === cat)
+        .filter((t) => !merch || t.merchant.toLowerCase().includes(merch))
+        .slice(0, (args.limit as number | undefined) ?? 50)
+        .map((t) => ({
+          date: t.date,
+          merchant: t.merchant,
+          category: [t.category, t.subcategory].filter(Boolean).join(" / ") || null,
+          amount: t.amount,
+          pending: t.pending,
+          transfer: t.isTransfer,
+          account: t.account ?? "Unnamed account",
+          owner: ownerLabel(t.owner),
+        }));
+    },
+  },
+  {
+    name: "account_balances",
+    title: "Account balances",
+    description: "Active accounts by nickname with owner label, type (checking, savings, credit, loan, investment) and current balance. Never account numbers.",
+    input: {},
+    requires: ["finance.assets"],
+    scrub: "finance",
+    async run() {
+      const rows = (await finance.listAccounts()).filter((a) => a.active);
+      return rows.map((a) => ({
+        account: a.displayName ?? `${a.kind} account`,
+        owner: ownerLabel(a.owner),
+        type: a.kind,
+        balance: a.balance,
+        currency: a.currency,
+      }));
+    },
+  },
+  {
+    name: "house_upkeep_tasks",
+    title: "House upkeep tasks",
+    description: "Open home maintenance tasks with due dates and estimated costs.",
+    input: {},
+    requires: ["home.tasks"],
+    scrub: "reference",
+    async run() {
+      return (await maintenance.listOpenTasks()).map((t) => ({ task: t.title, dueDate: t.dueDate, estimatedCost: t.estimatedCost }));
+    },
+  },
+  {
+    name: "upcoming_events",
+    title: "Upcoming calendar events",
+    description: "Household calendar events from today on: trips, maintenance reminders, annual-fee reminders and others.",
+    input: { limit: z.number().int().min(1).max(50).optional().describe("Default 20") },
+    requires: ["calendar.events"],
+    scrub: "reference",
+    async run(args, { now }) {
+      return (await calendar.listUpcoming(isoDay(now), (args.limit as number | undefined) ?? 20)).map((e) => ({
+        title: e.title,
+        startDate: e.startDate,
+        endDate: e.endDate,
+        from: e.sourceModule,
+      }));
+    },
+  },
 ];
 
-export function serverInstructions(owner: OwnerLabel) {
+function ownerFilter(owner: unknown): finance.OwnerFilter {
+  return owner === "User 1" ? "user1" : owner === "User 2" ? "user2" : owner === "Joint" ? "joint" : "all";
+}
+
+/** Tools this connection may use: every required permission granted. */
+export function toolsFor(permissions: ReadonlySet<PermissionKey>): AssistantTool[] {
+  return TOOLS.filter((t) => t.requires.every((p) => permissions.has(p)));
+}
+
+export function serverInstructions(owner: OwnerLabel, tools: readonly AssistantTool[]) {
   return [
+    "RULES (always): " + THE_RULE.join(" "),
+    "Do not save names, account details or identifiers from this server into memory.",
     "This is one household's private finance and travel assistant (two members, labelled User 1 and User 2; some accounts are Joint).",
     `You are talking with ${owner}. Never ask for or guess names, card numbers or account numbers; cards are known by nickname only.`,
     "All tools are read-only. Nothing is booked, paid or changed from here; give advice and let the person act.",
+    tools.length < TOOLS.length
+      ? "This connection was only given access to some sections of the app; if a question needs data you have no tool for, say that the household has not shared it with you and that it can be enabled under Settings > AI assistants."
+      : "",
     "For card questions call list_my_cards first. For where to put a purchase or booking call best_card_for_purchases (or trip_card_plan for a whole trip). A sign-up bonus close to its deadline usually beats a better multiplier.",
     "Card terms come from a stored catalog checked against issuers; mention the verified date when it matters and suggest confirming time-limited offers with the issuer.",
     "Someone in the family has coeliac disease. Treat gluten as a medical restriction, never a preference.",
-  ].join("\n");
+  ]
+    .filter(Boolean)
+    .join("\n");
 }

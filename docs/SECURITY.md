@@ -81,13 +81,49 @@ app runs a small OAuth 2.1 authorization server (`src/core/oauth`):
 - CORS is open (`*`) only on discovery, registration, token and revocation:
   they use no cookies. `/api/mcp` sends no CORS headers.
 
+**The rule (always, whatever is ticked).** Never share account numbers,
+card numbers, routing numbers, crypto wallet addresses, or any other
+sensitive identifier (passport, Social Security, confirmation and booking
+codes, email addresses, phone numbers). Full names are shared only in a
+limited capacity and only when making a purchase approved by User 1 and/or
+User 2, and are never stored in memory. The assistant endpoint cannot make
+purchases, so it never shares full names at all. The rule is shown on the
+consent screen and in Settings, sent to every assistant in the server
+instructions (with "do not save names or identifiers to memory"), and
+enforced in code:
+
+1. Tools copy whitelisted fields only (no ids, masks, institution data,
+   confirmation numbers, documents, birthdates).
+2. `forAssistant()` drops any key that looks like an identifier
+   (`accountNumber`, `iban`, `wallet`, `confirmation`, `email`, `phone`,
+   `fullName`, `address`, `token`, ...).
+3. Every string is scrubbed (`scrubIdentifiers()` in `core/ai/sanitize.ts`,
+   also applied to everything sent to Gemini and Claude): masked and long
+   digit runs, crypto wallet addresses (EVM, bech32, base58, other long
+   key-like tokens), IBANs, email addresses and booking/confirmation-style
+   codes (flight numbers such as `UA1234` survive), plus the household's
+   legal names and every name in the trips travellers list.
+
+**Per-assistant permissions.** Each connection has its own checklist,
+grouped by app section (Travel, Financial manager, House upkeep, Calendar;
+see `core/oauth/permissions.ts`). It is chosen on the consent screen and can
+be changed any time in Settings; changes apply on the assistant's next call.
+Only tools whose permissions were all granted are advertised or callable,
+and fields that need a further permission (sign-up progress, individual
+purchases in the audit, booking details in an itinerary) are left out
+without it. Defaults: travel and card features on; aggregate spending,
+transactions, income, balances, house upkeep and calendar off. Crypto is
+listed but unavailable (not tracked yet). Grants made before permissions
+existed get the defaults.
+
 **What assistants can do.** One scope, `household:read`. Every tool is
 read-only (`readOnlyHint`), calls module `api.ts` functions only, and is
 stateless: a fresh MCP server per request, no sessions. Nothing is booked,
 paid or changed. Tools: cards and benefits, best card for purchases or
 bookings, sign-up bonus progress, points left on the table, cards worth
 adding, catalog card terms, trips, itinerary, trip card plan, booking
-checklist.
+checklist, and (off by default) spending summary, income and savings,
+transactions, account balances, house upkeep tasks, upcoming events.
 
 **What assistants see.** The same rules as the AI providers. Answers are
 built field by field from card nicknames, owner labels (`User 1` /

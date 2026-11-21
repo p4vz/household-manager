@@ -34,6 +34,8 @@ export const coreOauthCodes = pgTable(
     scope: text("scope").notNull(),
     resource: text("resource").notNull(),
     codeChallenge: text("code_challenge").notNull(),
+    /** What the member ticked on the consent screen (see core/oauth/permissions). */
+    permissions: jsonb("permissions").$type<string[]>(),
     expiresAt: timestamp("expires_at", { withTimezone: true }).notNull(),
     usedAt: timestamp("used_at", { withTimezone: true }),
   },
@@ -52,6 +54,8 @@ export const coreOauthGrants = pgTable(
     email: text("email").notNull(),
     scope: text("scope").notNull(),
     resource: text("resource").notNull(),
+    /** Sections this assistant may see. Null (grants from before this existed) means the defaults. */
+    permissions: jsonb("permissions").$type<string[]>(),
     accessHash: text("access_hash").notNull(),
     accessExpiresAt: timestamp("access_expires_at", { withTimezone: true }).notNull(),
     refreshHash: text("refresh_hash").notNull(),

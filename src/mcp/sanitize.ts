@@ -19,13 +19,26 @@ const ISO_QUARTER = /^\d{4}-Q[1-4]$/;
 
 export type ScrubMode = "finance" | "reference";
 
+/**
+ * Keys that may never leave, whatever a tool builds: a second line of
+ * defence behind the field whitelists (THE_RULE in core/oauth/permissions).
+ */
+const FORBIDDEN_KEY =
+  /^(id|accountId|.*(account|card|routing)(Number|No|Num|Mask)|.*iban.*|.*wallet.*|.*seed.*|.*ssn.*|.*passport.*|.*confirmation.*|.*email.*|.*phone.*|.*(legal|full)Name.*|.*birth.*|.*address.*|.*secret.*|.*token.*|simplefin.*|institution.*)$/i;
+
+export function isForbiddenKey(key: string): boolean {
+  return FORBIDDEN_KEY.test(key);
+}
+
 export function forAssistant<T>(value: T, mode: ScrubMode, legalNames = legalNamesFromEnv()): unknown {
   const scrub = mode === "finance" ? scrubText : scrubReferenceText;
   const walk = (v: unknown): unknown => {
     if (v instanceof Date) return v.toISOString();
     if (typeof v === "string") return ISO_DATE.test(v) || ISO_QUARTER.test(v) ? v : scrub(v, legalNames);
     if (Array.isArray(v)) return v.map(walk);
-    if (v && typeof v === "object") return Object.fromEntries(Object.entries(v).map(([k, x]) => [k, walk(x)]));
+    if (v && typeof v === "object") {
+      return Object.fromEntries(Object.entries(v).filter(([k]) => !isForbiddenKey(k)).map(([k, x]) => [k, walk(x)]));
+    }
     return v;
   };
   return walk(value);
