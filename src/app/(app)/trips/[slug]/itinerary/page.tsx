@@ -47,7 +47,7 @@ export default async function ItineraryPage({ params, searchParams }: PageProps<
             <h2 className="text-sm font-semibold text-muted-foreground">{formatDay(day)}</h2>
             {list.length === 0 ? <p className="text-sm text-muted-foreground">Nothing planned.</p> : null}
             {list.map((i) => (
-              <Card key={i.id} className="gap-2 py-3">
+              <Card key={i.id} id={`step-${i.id}`} className="scroll-mt-20 gap-2 py-3 target:ring-2 target:ring-primary">
                 <CardContent className="space-y-2">
                   <div className="flex flex-wrap items-center gap-2">
                     <span>{ITINERARY_ICONS[i.kind]}</span>

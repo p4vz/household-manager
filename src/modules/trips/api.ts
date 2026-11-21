@@ -163,6 +163,12 @@ export async function archiveTrip(tripId: string) {
   await db().update(tripsTrips).set({ archived: true }).where(eq(tripsTrips.id, tripId));
 }
 
+/** The trip's switch for letting assistants read its booking codes. */
+export async function setBookingCodeSharing(tripId: string, on: boolean) {
+  await one(db().select({ id: tripsTrips.id }).from(tripsTrips).where(eq(tripsTrips.id, tripId)), "Trip");
+  await db().update(tripsTrips).set({ shareBookingCodes: on }).where(eq(tripsTrips.id, tripId));
+}
+
 export async function listTrips(opts: { includeArchived?: boolean } = {}) {
   return db()
     .select()

@@ -3,6 +3,7 @@ import { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import { WebStandardStreamableHTTPServerTransport } from "@modelcontextprotocol/sdk/server/webStandardStreamableHttp.js";
 import type { McpCaller } from "@/core/oauth/server";
 import { legalNamesFromEnv } from "@/core/ai/sanitize";
+import { oauthConfig } from "@/core/oauth/policy";
 import * as trips from "@/modules/trips/api";
 import { forAssistant } from "./sanitize";
 import { serverInstructions, toolsFor } from "./tools";
@@ -24,6 +25,7 @@ async function namesToScrub(): Promise<string[]> {
  */
 export async function handleMcpRequest(req: Request, caller: McpCaller): Promise<Response> {
   const permissions = new Set(caller.permissions);
+  const appUrl = oauthConfig()?.issuer ?? null;
   // Only tools whose permissions were all granted are even advertised.
   const tools = toolsFor(permissions);
   const server = new McpServer(
@@ -41,7 +43,7 @@ export async function handleMcpRequest(req: Request, caller: McpCaller): Promise
       },
       async (args: Record<string, unknown>) => {
         try {
-          const raw = await tool.run(args ?? {}, { owner: caller.owner, now: new Date(), permissions });
+          const raw = await tool.run(args ?? {}, { owner: caller.owner, now: new Date(), permissions, appUrl });
           const result = forAssistant(raw, tool.scrub, await namesToScrub());
           return { content: [{ type: "text" as const, text: JSON.stringify(result, null, 1) }] };
         } catch (err) {
