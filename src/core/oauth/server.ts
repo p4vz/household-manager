@@ -41,8 +41,9 @@ export type ClientMetadata = { redirect_uris?: unknown; client_name?: unknown };
 
 export async function registerClient(body: ClientMetadata, now = new Date()) {
   const uris = Array.isArray(body.redirect_uris) ? body.redirect_uris : [];
-  if (uris.length === 0 || uris.length > 5 || !uris.every((u) => typeof u === "string")) {
-    throw new OauthError("invalid_redirect_uri", "Between 1 and 5 redirect_uris are required");
+  // Gemini may register all six of its callback prefixes at once.
+  if (uris.length === 0 || uris.length > 10 || !uris.every((u) => typeof u === "string")) {
+    throw new OauthError("invalid_redirect_uri", "Between 1 and 10 redirect_uris are required");
   }
   const bad = (uris as string[]).find((u) => !isAllowedRedirectUri(u));
   if (bad) throw new OauthError("invalid_redirect_uri", `Redirect URI not allowed by this server: ${bad.slice(0, 200)}`);

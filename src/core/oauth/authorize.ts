@@ -1,10 +1,12 @@
 import "server-only";
 import { getClient } from "./server";
-import { MCP_SCOPE, grantedScopes, isValidChallenge, resourceMatches, type OauthConfig } from "./policy";
+import { MCP_SCOPE, grantedScopes, isAllowedRedirectUri, isValidChallenge, resourceMatches, type OauthConfig } from "./policy";
 
 export type AuthorizeParams = Partial<
   Record<"response_type" | "client_id" | "redirect_uri" | "code_challenge" | "code_challenge_method" | "scope" | "state" | "resource", string>
 >;
+
+export const MAX_STATE = 8192;
 
 export type CheckedRequest = {
   clientId: string;
@@ -39,7 +41,18 @@ export async function checkAuthorizeRequest(p: AuthorizeParams, config: OauthCon
   if (!client.redirectUris.includes(p.redirect_uri)) {
     return { kind: "fatal", message: "That redirect URI was not registered by this application." };
   }
-  const state = p.state && p.state.length <= 2048 ? p.state : null;
+  // Checked again here, not only at registration, so tightening the list
+  // also stops clients that registered before.
+  if (!isAllowedRedirectUri(p.redirect_uri)) {
+    console.warn(`[oauth] refused authorize redirect: ${p.redirect_uri.slice(0, 200)}`);
+    return { kind: "fatal", message: "That redirect URI is not allowed by this server." };
+  }
+  // State goes back byte for byte (Gemini's is ~1,400 characters). Refuse
+  // rather than silently drop one that is absurdly long.
+  if (p.state !== undefined && p.state.length > MAX_STATE) {
+    return { kind: "fatal", message: "The state parameter is too long." };
+  }
+  const state = p.state ?? null;
   const fail = (error: string, description: string): AuthorizeCheck => ({
     kind: "redirect",
     url: clientRedirect(p.redirect_uri!, { error, error_description: description, state }, config),
