@@ -173,9 +173,22 @@ household. Answers are only stored if at least one cited page is on the
 issuer's own domain (`sourceDomains` per card, which Claude's search is
 also restricted to).
 
-The browser is held to the same origin by the Content-Security-Policy in
-`next.config.ts` (`connect-src 'self'`, `frame-ancestors 'none'`). The site
-also sends HSTS, `X-Frame-Options: DENY`, `nosniff`, and `noindex`.
+The browser is held to the same origin by the Content-Security-Policy
+(`connect-src 'self'`, `frame-ancestors 'none'`). The site also sends HSTS,
+`X-Frame-Options: DENY`, `nosniff`, and `noindex` (`next.config.ts`).
+
+**No inline scripts.** The proxy (`src/proxy.ts`) builds the CSP for every
+request with a fresh 128-bit nonce (`src/core/security/csp.ts`):
+`script-src 'self' 'nonce-…' 'strict-dynamic'` and `script-src-attr 'none'`.
+Next.js reads the nonce from the request header and stamps it on its own
+scripts, so an injected `<script>` or `onerror=` handler is refused by the
+browser. That is why every page renders per request (`await connection()` in
+the root layout); a page prerendered at build time would have no nonce and
+would not run. Styles keep `'unsafe-inline'` because Recharts and next/font
+use style attributes, which a nonce cannot cover; inline styles cannot run
+code. Development adds `'unsafe-eval'` and `ws:` for React's overlay and hot
+reload, never production. The app loads no third-party scripts; adding one
+needs a review here.
 
 ## Secrets
 
