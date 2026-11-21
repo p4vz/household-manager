@@ -23,7 +23,9 @@ export function seal(plaintext: string): string {
 export function open(sealed: string): string {
   const [v, iv, tag, body] = sealed.split(".");
   if (v !== "v1" || !iv || !tag || !body) throw new Error("Unrecognized sealed value");
-  const decipher = createDecipheriv("aes-256-gcm", key(), Buffer.from(iv, "base64"));
-  decipher.setAuthTag(Buffer.from(tag, "base64"));
+  const decipher = createDecipheriv("aes-256-gcm", key(), Buffer.from(iv, "base64"), { authTagLength: 16 });
+  const authTag = Buffer.from(tag, "base64");
+  if (authTag.length !== 16) throw new Error("Invalid auth tag");
+  decipher.setAuthTag(authTag);
   return Buffer.concat([decipher.update(Buffer.from(body, "base64")), decipher.final()]).toString("utf8");
 }

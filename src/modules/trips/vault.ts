@@ -29,7 +29,9 @@ export function sealBytes(plain: Buffer): Sealed {
 }
 
 export function openBytes({ cipherText, iv, authTag }: Sealed): Buffer {
-  const decipher = createDecipheriv("aes-256-gcm", key(), iv);
+  const decipher = createDecipheriv("aes-256-gcm", key(), iv, { authTagLength: 16 });
+  // A truncated tag would make forgery easier; GCM tags here are always 16 bytes.
+  if (authTag.length !== 16) throw new Error("Invalid auth tag");
   decipher.setAuthTag(authTag);
   return Buffer.concat([decipher.update(cipherText), decipher.final()]);
 }
