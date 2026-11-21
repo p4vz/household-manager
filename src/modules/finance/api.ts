@@ -261,6 +261,7 @@ export async function runMonthlyAdvisorIfDue(now = new Date()) {
 // household's cards and well-known cards it does not hold.
 
 export { CardTerms, CATALOG_CATEGORIES } from "./rewards/catalog/terms";
+export { PURCHASE_KINDS, PURCHASE_CATEGORY, type PurchaseKind } from "./rewards/catalog/categories";
 export {
   acceptCatalogChange,
   rejectCatalogChange,

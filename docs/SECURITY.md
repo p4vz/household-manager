@@ -31,12 +31,81 @@ update here and in the tests that enforce it.
 | `/signin` | anyone | shows the Google button, nothing else |
 | `/api/auth/*` | anyone | Auth.js OAuth flow; allowlist enforced in callbacks |
 | `/api/cron/simplefin-sync`, `/api/cron/monthly-advisor`, `/api/cron/card-catalog` | Railway cron only | `Authorization: Bearer $CRON_SECRET`, constant-time compare, fails closed if the secret is missing or short |
+| `/api/mcp` | assistants a member approved | OAuth bearer token (see "Assistant access"); 404 unless `MCP_ENABLED=true` |
+| `/api/oauth/register`, `/api/oauth/token`, `/api/oauth/revoke` | assistant apps | registration grants nothing; token needs a PKCE proof or refresh token; rate limited; 404 unless enabled |
+| `/.well-known/oauth-authorization-server`, `/.well-known/oauth-protected-resource`, `/.well-known/openid-configuration` | anyone | public discovery metadata only; 404 unless enabled |
+| `/oauth/authorize` | allowlisted users | consent screen; session + allowlist like any page |
 | everything else | allowlisted users | session + allowlist (proxy and in-handler) |
 
-There is **no public API**. The module API and the event bus are plain
+Apart from the read-only assistant endpoint below, there is **no public API**. The module API and the event bus are plain
 in-process function calls; no route, queue or socket exposes them.
 `tests/boundaries.test.ts` fails CI if a route handler appears outside
-`/api/auth` and `/api/cron`, or a cron route skips the secret check.
+`/api/auth`, `/api/cron` and the reviewed assistant routes, if a cron route
+skips the secret check, or if an assistant route can answer while the
+feature is off.
+
+## Assistant access (MCP)
+
+Claude, ChatGPT and Gemini can be connected as custom connectors to a
+read-only MCP endpoint at `/api/mcp`. Setup steps are in `docs/MCP.md`.
+
+**Off by default.** Every assistant route answers 404 unless
+`MCP_ENABLED=true` and `AUTH_URL` is the app's https origin. The issuer and
+resource URLs come only from `AUTH_URL`, never from a Host header.
+
+**Who can connect.** Remote assistants cannot send a fixed header, so the
+app runs a small OAuth 2.1 authorization server (`src/core/oauth`):
+
+- Clients register themselves (RFC 7591). Registration is open but grants
+  nothing: no secret is issued (public clients), redirect URIs must be https
+  on `claude.ai`, `claude.com`, `chatgpt.com` or
+  `oauth-redirect.googleusercontent.com` (plus `MCP_EXTRA_REDIRECT_HOSTS`),
+  or http on loopback for desktop clients. Exact-match redirect URIs only.
+  At most 50 clients; clients nobody approved within a day are deleted.
+- Access is granted only on `/oauth/authorize`, by an allowlisted member
+  signed in with Google, who sees the assistant's name and redirect host.
+  The consent action re-validates every field.
+- Authorization code flow with PKCE S256 only. Codes live 5 minutes, are
+  single use (redeeming one twice revokes what it produced), are bound to
+  client, redirect URI and resource (RFC 8707), and carry `iss` (RFC 9207).
+- Access tokens live 1 hour. Refresh tokens live 30 days, sliding, and are
+  not rotated because Gemini requires the same refresh token back. Codes and
+  tokens are 256-bit random values stored only as SHA-256 hashes.
+- The member's address is re-checked against `ALLOWED_EMAILS` on every MCP
+  call and refresh, so removing an address cuts off its assistants at once.
+  Settings lists connected assistants with Disconnect / Disconnect all.
+- Rate limits (in memory): registration 10 per hour per address and 30 per
+  day in total; token 60 per 10 minutes per address; MCP 300 per minute per
+  address and 120 per minute per connection. Requests with a browser
+  `Origin` other than the app are refused (DNS rebinding).
+- CORS is open (`*`) only on discovery, registration, token and revocation:
+  they use no cookies. `/api/mcp` sends no CORS headers.
+
+**What assistants can do.** One scope, `household:read`. Every tool is
+read-only (`readOnlyHint`), calls module `api.ts` functions only, and is
+stateless: a fresh MCP server per request, no sessions. Nothing is booked,
+paid or changed. Tools: cards and benefits, best card for purchases or
+bookings, sign-up bonus progress, points left on the table, cards worth
+adding, catalog card terms, trips, itinerary, trip card plan, booking
+checklist.
+
+**What assistants see.** The same rules as the AI providers. Answers are
+built field by field from card nicknames, owner labels (`User 1` /
+`User 2` / `Joint`), dates, merchants, categories and amounts, then every
+string is scrubbed of legal names and digit runs (4+ for finance answers,
+6+ for trip answers, so years survive) in `src/mcp/sanitize.ts`. Account
+ids, masks, institution data, confirmation numbers, booking URLs, documents
+and traveller names are never included. The assistant's own provider
+(Anthropic, OpenAI, Google) receives these answers under the member's
+account with that provider.
+
+**New attack surface, for review:** open client registration (spam is
+bounded by the caps above); the consent page as a phishing target (a
+member must be signed in and click Approve; it names the redirect host);
+bearer token theft from an assistant provider (read-only, 1-hour access,
+revocable in Settings); and prompt injection through stored text such as
+merchant names or trip notes reaching an assistant (tools cannot write, so
+the worst case is a misleading answer, not a change).
 
 ## What the server may call
 

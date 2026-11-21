@@ -36,6 +36,13 @@
       "when": 1795207966043,
       "tag": "0004_card_catalog",
       "breakpoints": true
+    },
+    {
+      "idx": 5,
+      "version": "7",
+      "when": 1795234523545,
+      "tag": "0005_mcp_oauth",
+      "breakpoints": true
     }
   ]
 }

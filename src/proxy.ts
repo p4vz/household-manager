@@ -1,7 +1,7 @@
 import { NextResponse } from "next/server";
 import { auth } from "@/core/auth/config";
 import { isAllowedEmail, parseAllowlist } from "@/core/auth/allowlist";
-import { isCronPath, isPublicPath } from "@/core/auth/public-paths";
+import { CONSENT_PATH, isAssistantPath, isCronPath, isPublicPath } from "@/core/auth/public-paths";
 
 /**
  * First gate for every request. Allowlisted Google session, or nothing.
@@ -12,6 +12,9 @@ export const proxy = auth((req) => {
   const { pathname } = req.nextUrl;
 
   if (isPublicPath(pathname)) return NextResponse.next();
+
+  // Assistant endpoints carry their own credential, checked in the handler.
+  if (isAssistantPath(pathname)) return NextResponse.next();
 
   if (isCronPath(pathname)) {
     return req.headers.get("authorization")?.startsWith("Bearer ")
@@ -30,6 +33,7 @@ export const proxy = auth((req) => {
   const url = req.nextUrl.clone();
   url.pathname = "/signin";
   url.search = "";
+  if (pathname === CONSENT_PATH) url.searchParams.set("callbackUrl", `${CONSENT_PATH}${req.nextUrl.search}`);
   return NextResponse.redirect(url);
 });
 

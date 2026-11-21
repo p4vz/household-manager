@@ -7,7 +7,7 @@
  * cap group, so a "$1,500 per quarter" cap is counted once across them.
  */
 import type { CardRule } from "../engine";
-import { quarterBounds, type CardTerms, type CatalogCategory } from "./terms";
+import { CATALOG_CATEGORIES, quarterBounds, type CardTerms, type CatalogCategory } from "./terms";
 
 type Matcher = Pick<CardRule, "matchType" | "match">;
 
@@ -82,3 +82,31 @@ export function rotatingRules(productId: string, terms: CardTerms): DerivedRule[
     );
   });
 }
+
+/**
+ * Kinds of purchase an assistant can ask about ("which card for a hotel?"),
+ * and the household category a charge of that kind lands in. Each pair is
+ * one the matchers above recognise, so card rules and catalog multipliers
+ * both apply. Travel kinds match trips' itinerary mapping.
+ */
+export const PURCHASE_KINDS = [...CATALOG_CATEGORIES, "other"] as const;
+export type PurchaseKind = (typeof PURCHASE_KINDS)[number];
+
+export const PURCHASE_CATEGORY: Record<PurchaseKind, { category: string | null; subcategory: string | null }> = {
+  dining: { category: "Food & Dining", subcategory: "Restaurants" },
+  groceries: { category: "Food & Dining", subcategory: "Groceries" },
+  gas: { category: "Auto & Transport", subcategory: "Gas & Fuel" },
+  ev_charging: { category: "Auto & Transport", subcategory: "EV Charging" },
+  travel: { category: "Travel", subcategory: null },
+  flights: { category: "Travel", subcategory: "Air Travel" },
+  hotels: { category: "Travel", subcategory: "Hotel" },
+  car_rental: { category: "Travel", subcategory: "Rental Car & Taxi" },
+  transit: { category: "Travel", subcategory: "Public Transportation" },
+  streaming: { category: "Entertainment", subcategory: "Streaming" },
+  entertainment: { category: "Entertainment", subcategory: null },
+  drugstores: { category: "Health & Fitness", subcategory: "Pharmacy" },
+  home_improvement: { category: "Home", subcategory: "Home Improvement" },
+  utilities: { category: "Bills & Utilities", subcategory: null },
+  online_shopping: { category: "Shopping", subcategory: "Online Shopping" },
+  other: { category: null, subcategory: null },
+};
