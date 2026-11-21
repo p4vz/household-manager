@@ -1,4 +1,4 @@
-import { NextResponse } from "next/server";
+import { NextResponse, type NextFetchEvent, type NextRequest } from "next/server";
 import { auth } from "@/core/auth/config";
 import { isAllowedEmail, parseAllowlist } from "@/core/auth/allowlist";
 import { CONSENT_PATH, isAssistantPath, isCronPath, isPublicPath } from "@/core/auth/public-paths";
@@ -8,13 +8,10 @@ import { CONSENT_PATH, isAssistantPath, isCronPath, isPublicPath } from "@/core/
  * Cron paths pass through only with a bearer header and are verified in
  * their handler with a constant-time secret compare.
  */
-export const proxy = auth((req) => {
+const gate = auth((req) => {
   const { pathname } = req.nextUrl;
 
   if (isPublicPath(pathname)) return NextResponse.next();
-
-  // Assistant endpoints carry their own credential, checked in the handler.
-  if (isAssistantPath(pathname)) return NextResponse.next();
 
   if (isCronPath(pathname)) {
     return req.headers.get("authorization")?.startsWith("Bearer ")
@@ -36,6 +33,17 @@ export const proxy = auth((req) => {
   if (pathname === CONSENT_PATH) url.searchParams.set("callbackUrl", `${CONSENT_PATH}${req.nextUrl.search}`);
   return NextResponse.redirect(url);
 });
+
+/**
+ * Assistant endpoints carry their own credential, checked in the handler.
+ * They bypass Auth.js entirely: its wrapper sets CSRF and callback-url
+ * cookies, which must not ride on the publicly cached discovery documents.
+ */
+export function proxy(req: NextRequest, event: NextFetchEvent) {
+  if (isAssistantPath(req.nextUrl.pathname)) return NextResponse.next();
+  // auth() is overloaded for route handlers too; in the proxy Next passes (request, event).
+  return (gate as unknown as (r: NextRequest, e: NextFetchEvent) => ReturnType<typeof gate>)(req, event);
+}
 
 export const config = {
   matcher: ["/((?!_next/static|_next/image|favicon.ico).*)"],
