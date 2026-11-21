@@ -112,6 +112,14 @@ describe("external surface", () => {
     expect(violations).toEqual([]);
   });
 
+  it("member first names are used only by on-screen pages, never by anything sent out", () => {
+    const users = files
+      .filter((f) => imports(f).some((s) => resolveImport(f, s)?.replace(/\.(ts|tsx)$/, "") === "core/auth/display-name"))
+      .map(rel)
+      .sort();
+    expect(users).toEqual(["app/(app)/settings/page.tsx", "app/oauth/authorize/page.tsx"]);
+  });
+
   it("cron routes check the cron secret", () => {
     const cron = files.map(rel).filter((p) => /^app\/api\/cron\/.+\/route\.ts$/.test(p));
     for (const p of cron) {
