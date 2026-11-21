@@ -5,26 +5,11 @@ import type { NextConfig } from "next";
  * is never embedded, so framing is denied and the browser may only talk to
  * our own origin. All third-party calls (SimpleFIN, Gemini, Anthropic,
  * Google OAuth token exchange) happen server-side; see docs/SECURITY.md.
+ *
+ * The Content-Security-Policy is not here: it carries a per-request script
+ * nonce, so the proxy sets it (src/proxy.ts, src/core/security/csp.ts).
  */
-const isDev = process.env.NODE_ENV !== "production";
-
-const csp = [
-  "default-src 'self'",
-  `script-src 'self' 'unsafe-inline'${isDev ? " 'unsafe-eval'" : ""}`,
-  "style-src 'self' 'unsafe-inline'",
-  "img-src 'self' data: https://lh3.googleusercontent.com",
-  "font-src 'self'",
-  `connect-src 'self'${isDev ? " ws:" : ""}`,
-  // The assistant consent form ends in a redirect to the assistant's own
-  // callback (see DEFAULT_REDIRECT_HOSTS in src/core/oauth/policy.ts).
-  "form-action 'self' https://accounts.google.com https://claude.ai https://claude.com https://chatgpt.com https://oauth-redirect.googleusercontent.com https://oauth-redirect-sandbox.googleusercontent.com https://oauth-redirect-test.googleusercontent.com http://localhost:* http://127.0.0.1:*",
-  "frame-ancestors 'none'",
-  "base-uri 'self'",
-  "object-src 'none'",
-].join("; ");
-
 const securityHeaders = [
-  { key: "Content-Security-Policy", value: csp },
   { key: "X-Frame-Options", value: "DENY" },
   { key: "X-Content-Type-Options", value: "nosniff" },
   { key: "Referrer-Policy", value: "same-origin" },
