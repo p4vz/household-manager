@@ -20,6 +20,7 @@ import {
   addTraveler,
   archiveTrip,
   cancelTrip,
+  setBookingCodeSharing,
   createEmptyList,
   createTemplate,
   createTrip,
@@ -137,6 +138,11 @@ export async function cancelTripAction(f: FormData) {
 export async function archiveTripAction(f: FormData) {
   await guarded("/trips", () => archive({ tripId: str(f, "tripId") }));
   redirect("/trips");
+}
+
+const codeSharing = authedAction(z.object({ tripId: id, on: z.boolean() }), ({ tripId, on }) => setBookingCodeSharing(tripId, on));
+export async function setBookingCodeSharingAction(f: FormData) {
+  await guarded(backTo(f), () => codeSharing({ tripId: str(f, "tripId"), on: str(f, "on") === "true" }));
 }
 
 // ---------- destinations ----------

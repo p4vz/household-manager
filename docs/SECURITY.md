@@ -104,6 +104,24 @@ enforced in code:
    codes (flight numbers such as `UA1234` survive), plus the household's
    legal names and every name in the trips travellers list.
 
+**Booking codes, the one opt-in exception.** Pavel asked for a way to let
+an assistant read a trip's confirmation codes. A code reaches an assistant
+only when both switches are on: the connection's "Booking confirmation
+codes" permission (`travel.booking_codes`, off by default) and the trip's
+own "Share booking codes with assistants" switch on its overview page (off
+by default). Even then only `get_trip`'s `bookingCode` field carries it: the
+tool wraps the stored value in `SharedBookingCode`, and `forAssistant()`
+passes it unscrubbed only if it is shaped like a booking code (3-24 letters,
+digits and dashes; not 13+ digits, an IBAN, a wallet or an email), so a card
+number typed into the field is still redacted. Notes and every other field
+keep the full scrub. Without both switches the step says `codeInApp: true`.
+
+Every trip step an assistant sees (`get_trip`, `booking_checklist`,
+`trip_card_plan`) carries a `link` to its card on the itinerary page
+(`/trips/<trip>/itinerary#step-<id>`), which needs a normal sign-in, so an
+assistant can point to a code without reading it. Links are wrapped in
+`AppLink` and pass only when they match that exact shape.
+
 **Per-assistant permissions.** Each connection has its own checklist,
 grouped by app section (Travel, Financial manager, House upkeep, Calendar;
 see `core/oauth/permissions.ts`). It is chosen on the consent screen and can

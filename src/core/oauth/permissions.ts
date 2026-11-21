@@ -15,6 +15,7 @@ export const THE_RULE = [
   "Never share account numbers, card numbers, routing numbers, crypto wallet addresses, or any other sensitive identifier (passport, Social Security, confirmation and booking codes, email addresses, phone numbers).",
   "Full names are shared only in a limited capacity and only when making a purchase approved by Pavel and/or Raisa. They are never stored in memory.",
   "This server cannot make purchases, so it never shares full names at all.",
+  "The one exception is booking confirmation codes: they are shared only for trips where the household switched code sharing on, and only with assistants given the Booking codes permission. Everywhere else each booking carries a link to its page in the app, where the code is shown.",
 ] as const;
 
 export type PermissionItem = {
@@ -37,6 +38,12 @@ export const PERMISSION_SECTIONS = [
       { key: "travel.trips", label: "Trips: names, dates, places and budget", defaultOn: true },
       { key: "travel.itinerary", label: "Itinerary: steps, times, places, providers and notes", defaultOn: true },
       { key: "travel.bookings", label: "Bookings: what still needs booking, deadlines, costs and the card used", defaultOn: true },
+      {
+        key: "travel.booking_codes",
+        label: "Booking confirmation codes",
+        defaultOn: false,
+        note: "only for trips with code sharing switched on",
+      },
     ],
   },
   {
