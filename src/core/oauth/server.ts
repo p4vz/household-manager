@@ -156,7 +156,8 @@ export async function exchangeCode(
   }
   if (record.expiresAt <= now) throw new OauthError("invalid_grant", "Authorization code expired");
   if (record.clientId !== form.clientId) throw new OauthError("invalid_grant", "Code was issued to another client");
-  if (form.redirectUri !== null && form.redirectUri !== record.redirectUri) {
+  // OAuth 2.1: required, because the authorization request always carries one.
+  if (form.redirectUri !== record.redirectUri) {
     throw new OauthError("invalid_grant", "redirect_uri does not match");
   }
   if (!verifyPkce(form.verifier, record.codeChallenge)) throw new OauthError("invalid_grant", "PKCE verification failed");

@@ -110,8 +110,23 @@ describe("assistant access", () => {
       { clientId, redirectUri: REDIRECT, codeChallenge: CHALLENGE, scope: "household:read", resource: `${ORIGIN}/api/mcp` },
       "one@example.com",
     );
-    const badPkce = new URLSearchParams({ grant_type: "authorization_code", code: code2, code_verifier: "w".repeat(50), client_id: clientId });
-    expect((await token.POST(post("/api/oauth/token", badPkce.toString()))).status).toBe(400);
+    const badPkce = new URLSearchParams({ grant_type: "authorization_code", code: code2, code_verifier: "w".repeat(50), client_id: clientId, redirect_uri: REDIRECT });
+    const badPkceRes = await token.POST(post("/api/oauth/token", badPkce.toString()));
+    expect(badPkceRes.status).toBe(400);
+    expect((await badPkceRes.json()).error_description).toMatch(/PKCE/);
+  });
+
+  it("requires the redirect_uri at the token endpoint", async () => {
+    const reg = await register.POST(post("/api/oauth/register", JSON.stringify({ client_name: "Claude", redirect_uris: [REDIRECT] })));
+    const { client_id } = await reg.json();
+    const code = await oauth.createAuthorizationCode(
+      { clientId: client_id, redirectUri: REDIRECT, codeChallenge: CHALLENGE, scope: "household:read", resource: `${ORIGIN}/api/mcp` },
+      "one@example.com",
+    );
+    const form = new URLSearchParams({ grant_type: "authorization_code", code, code_verifier: VERIFIER, client_id });
+    const res = await token.POST(post("/api/oauth/token", form.toString()));
+    expect(res.status).toBe(400);
+    expect(await res.json()).toMatchObject({ error: "invalid_grant", error_description: "redirect_uri does not match" });
   });
 
   it("refreshes, keeps the refresh token, and revokes", async () => {
