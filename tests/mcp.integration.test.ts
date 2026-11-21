@@ -110,8 +110,20 @@ describe("assistant access", () => {
       { clientId, redirectUri: REDIRECT, codeChallenge: CHALLENGE, scope: "household:read", resource: `${ORIGIN}/api/mcp` },
       "one@example.com",
     );
-    const badPkce = new URLSearchParams({ grant_type: "authorization_code", code: code2, code_verifier: "w".repeat(50), client_id: clientId });
+    const badPkce = new URLSearchParams({ grant_type: "authorization_code", code: code2, code_verifier: "w".repeat(50), client_id: clientId, redirect_uri: REDIRECT });
     expect((await token.POST(post("/api/oauth/token", badPkce.toString()))).status).toBe(400);
+  });
+
+  it("requires the redirect_uri on code exchange", async () => {
+    const { clientId } = await connect();
+    const code = await oauth.createAuthorizationCode(
+      { clientId, redirectUri: REDIRECT, codeChallenge: CHALLENGE, scope: "household:read", resource: `${ORIGIN}/api/mcp` },
+      "one@example.com",
+    );
+    const noRedirect = new URLSearchParams({ grant_type: "authorization_code", code, code_verifier: VERIFIER, client_id: clientId, resource: `${ORIGIN}/api/mcp` });
+    const res = await token.POST(post("/api/oauth/token", noRedirect.toString()));
+    expect(res.status).toBe(400);
+    expect((await res.json()).error).toBe("invalid_grant");
   });
 
   it("refreshes, keeps the refresh token, and revokes", async () => {
