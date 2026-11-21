@@ -129,6 +129,27 @@ describe("assistant access", () => {
     expect((await token.POST(post("/api/oauth/token", form.toString()))).status).toBe(400);
   });
 
+  it("binds a refresh token to its client and ends the grant after 90 days", async () => {
+    const { clientId, tokens } = await connect();
+    const refresh = (extra: Record<string, string>) =>
+      token.POST(post("/api/oauth/token", new URLSearchParams({ grant_type: "refresh_token", refresh_token: tokens.refresh_token, ...extra }).toString()));
+    // Public clients must identify themselves.
+    expect((await (await refresh({})).json()).error).toBe("invalid_request");
+    expect((await (await refresh({ client_id: "hm_client_other" })).json()).error).toBe("invalid_grant");
+    expect((await refresh({ client_id: clientId })).status).toBe(200);
+
+    // Sliding expiry never goes past 90 days from approval.
+    const day = 86_400_000;
+    const late = new Date(Date.now() + 89 * day);
+    await oauth.refreshAccess({ refreshToken: tokens.refresh_token, clientId }, new Date(Date.now() + 25 * day));
+    await oauth.refreshAccess({ refreshToken: tokens.refresh_token, clientId }, new Date(Date.now() + 50 * day));
+    await oauth.refreshAccess({ refreshToken: tokens.refresh_token, clientId }, new Date(Date.now() + 75 * day));
+    await expect(oauth.refreshAccess({ refreshToken: tokens.refresh_token, clientId }, late)).resolves.toBeTruthy();
+    await expect(
+      oauth.refreshAccess({ refreshToken: tokens.refresh_token, clientId }, new Date(Date.now() + 91 * day)),
+    ).rejects.toMatchObject({ code: "invalid_grant" });
+  });
+
   it("cuts off a member removed from the allowlist", async () => {
     const { tokens } = await connect("two@example.com");
     vi.stubEnv("ALLOWED_EMAILS", "one@example.com");

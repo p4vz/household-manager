@@ -7,6 +7,7 @@ import { coreOauthClients, coreOauthCodes, coreOauthGrants } from "@/core/db/cor
 import {
   ACCESS_TTL_MS,
   CODE_TTL_MS,
+  GRANT_MAX_AGE_MS,
   MAX_CLIENTS,
   REFRESH_TTL_MS,
   hashSecret,
@@ -184,18 +185,25 @@ export async function exchangeCode(
 /**
  * New access token for a refresh token. The refresh token itself is kept
  * (with a sliding 30-day expiry) because Gemini requires the same refresh
- * token back; the access token it unlocks lives one hour.
+ * token back; the access token it unlocks lives one hour. To make up for
+ * that, a refresh token works only for the client it was issued to
+ * (client_id is required, as OAuth 2.1 requires of public clients) and only
+ * until GRANT_MAX_AGE_MS after approval.
  */
 export async function refreshAccess(
   form: { refreshToken: string; clientId: string | null },
   now = new Date(),
 ): Promise<TokenResponse> {
+  if (!form.clientId) throw new OauthError("invalid_request", "client_id is required");
   const [grant] = await db()
     .select()
     .from(coreOauthGrants)
     .where(eq(coreOauthGrants.refreshHash, hashSecret(form.refreshToken)));
-  if (!grant || grant.revokedAt || grant.refreshExpiresAt <= now) throw new OauthError("invalid_grant", "Refresh token is not valid");
-  if (form.clientId && form.clientId !== grant.clientId) throw new OauthError("invalid_grant", "Refresh token belongs to another client");
+  const endsAt = grant ? Math.min(grant.createdAt.getTime() + GRANT_MAX_AGE_MS, now.getTime() + REFRESH_TTL_MS) : 0;
+  if (!grant || grant.revokedAt || grant.refreshExpiresAt <= now || endsAt <= now.getTime()) {
+    throw new OauthError("invalid_grant", "Refresh token is not valid");
+  }
+  if (form.clientId !== grant.clientId) throw new OauthError("invalid_grant", "Refresh token belongs to another client");
   if (!isAllowedEmail(grant.email, allowlist())) {
     await db().update(coreOauthGrants).set({ revokedAt: now }).where(eq(coreOauthGrants.id, grant.id));
     throw new OauthError("invalid_grant", "Member is no longer allowed");
@@ -206,7 +214,7 @@ export async function refreshAccess(
     .set({
       accessHash: hashSecret(access),
       accessExpiresAt: new Date(now.getTime() + ACCESS_TTL_MS),
-      refreshExpiresAt: new Date(now.getTime() + REFRESH_TTL_MS),
+      refreshExpiresAt: new Date(endsAt),
     })
     .where(eq(coreOauthGrants.id, grant.id));
   return tokenResponse(access, form.refreshToken, grant.scope);

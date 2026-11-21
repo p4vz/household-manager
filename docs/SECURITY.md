@@ -69,7 +69,9 @@ app runs a small OAuth 2.1 authorization server (`src/core/oauth`):
   single use (redeeming one twice revokes what it produced), are bound to
   client, redirect URI and resource (RFC 8707), and carry `iss` (RFC 9207).
 - Access tokens live 1 hour. Refresh tokens live 30 days, sliding, and are
-  not rotated because Gemini requires the same refresh token back. Codes and
+  not rotated because Gemini requires the same refresh token back. To bound
+  a leaked one, a refresh must name the client it was issued to, and a grant
+  ends 90 days after approval however often it is refreshed. Codes and
   tokens are 256-bit random values stored only as SHA-256 hashes.
 - The member's address is re-checked against `ALLOWED_EMAILS` on every MCP
   call and refresh, so removing an address cuts off its assistants at once.
