@@ -3,6 +3,7 @@ import { currentUser } from "@/core/auth/guard";
 import { checkAuthorizeRequest, type AuthorizeParams } from "@/core/oauth/authorize";
 import { oauthConfig } from "@/core/oauth/policy";
 import { hostOf } from "@/core/oauth/server";
+import { memberDisplayName } from "@/core/auth/display-name";
 import { AssistantRule, PermissionCheckboxes } from "@/components/assistant-permissions";
 import { DEFAULT_PERMISSIONS } from "@/core/oauth/permissions";
 import { decideAuthorization } from "./actions";
@@ -44,7 +45,7 @@ export default async function AuthorizePage({ searchParams }: PageProps<"/oauth/
         <h1 className="text-xl font-semibold">Connect {r.assistant}?</h1>
         <p className="text-sm opacity-80">
           An assistant at <strong>{hostOf(r.redirectUri)}</strong> is asking to read your household data as{" "}
-          <strong>{user.owner}</strong>. Only approve if you just started connecting it yourself.
+          <strong>{memberDisplayName(user.owner)}</strong>. Only approve if you just started connecting it yourself.
         </p>
         <div className="space-y-3 text-sm">
           <p className="font-medium">Choose what it can read. You can change this any time in Settings.</p>

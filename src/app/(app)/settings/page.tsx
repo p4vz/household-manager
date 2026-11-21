@@ -3,6 +3,7 @@ import { getAiSettings } from "@/core/ai/store";
 import { requireUserOrRedirect } from "@/core/auth/guard";
 import { oauthConfig } from "@/core/oauth/policy";
 import { listConnections } from "@/core/oauth/server";
+import { memberDisplayName } from "@/core/auth/display-name";
 import { AssistantRule, PermissionCheckboxes } from "@/components/assistant-permissions";
 import {
   disconnectAllAssistantsAction,
@@ -79,7 +80,7 @@ export default async function SettingsPage() {
                           {c.client !== c.assistant ? `${c.client}, ` : ""}{c.host}
                         </div>
                         <div className="opacity-60">
-                          Approved by {c.owner} on {c.createdAt.toISOString().slice(0, 10)}
+                          Approved by {memberDisplayName(c.owner)} on {c.createdAt.toISOString().slice(0, 10)}
                           {c.lastUsedAt ? `, last used ${c.lastUsedAt.toISOString().slice(0, 10)}` : ", not used yet"}
                         </div>
                       </div>

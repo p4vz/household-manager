@@ -26,3 +26,12 @@ describe("THE_RULE", () => {
     expect(THE_RULE.join(" ")).toContain("approved by Pavel and/or Raisa");
   });
 });
+
+describe("memberDisplayName", () => {
+  it("shows first names on screen and passes other labels through", async () => {
+    const { memberDisplayName } = await import("@/core/auth/display-name");
+    expect(memberDisplayName("User 1")).toBe("Pavel");
+    expect(memberDisplayName("User 2")).toBe("Raisa");
+    expect(memberDisplayName("Removed member")).toBe("Removed member");
+  });
+});
