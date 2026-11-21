@@ -3,6 +3,7 @@
 import { revalidatePath } from "next/cache";
 import { z } from "zod";
 import { authedAction } from "@/core/actions/authed-action";
+import { requireUser } from "@/core/auth/guard";
 import {
   ACCOUNT_KINDS,
   OWNERS,
@@ -317,11 +318,16 @@ export async function refreshCatalogCardAction(_prev: CatalogState, form: FormDa
   }
 }
 
+const MAX_TERMS_CHARS = 100_000;
 const editTerms = authedAction(z.object({ productId, terms: CardTerms }), ({ productId, terms }) => saveCatalogTermsByUser(productId, terms));
 export async function saveCatalogTermsAction(_prev: CatalogState, form: FormData): Promise<CatalogState> {
+  // Check the session before touching the input; editTerms re-checks it too.
+  await requireUser();
+  const raw = String(form.get("terms") ?? "");
+  if (raw.length > MAX_TERMS_CHARS) return { ok: false, error: "Terms are too long" };
   let terms: unknown;
   try {
-    terms = JSON.parse(String(form.get("terms") ?? ""));
+    terms = JSON.parse(raw);
   } catch {
     return { ok: false, error: "Not valid JSON" };
   }
