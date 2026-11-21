@@ -56,7 +56,20 @@ export const RefreshAnswer = z.object({
   caveats: z.string().max(400).nullable(),
 });
 
-/** Host (or Gemini's grounding title, which is the domain) under one of `domains`. */
+const GROUNDING_REDIRECT_HOST = "vertexaisearch.cloud.google.com";
+
+/** Only https URLs may become stored (and rendered) source links. */
+export function httpsOnly(urls: string[]): string[] {
+  return urls.filter((u) => {
+    try {
+      return new URL(u).protocol === "https:";
+    } catch {
+      return false;
+    }
+  });
+}
+
+/** Https URLs whose host (or Gemini's grounding title, which is the domain) is under one of `domains`. */
 export function issuerSources(sources: (WebSource | string)[], domains: string[]): string[] {
   const ok = (host: string) => domains.some((d) => host === d || host.endsWith(`.${d}`));
   const out = new Set<string>();
@@ -65,11 +78,14 @@ export function issuerSources(sources: (WebSource | string)[], domains: string[]
     const title = typeof s === "string" ? null : s.title;
     let host = "";
     try {
-      host = new URL(url).hostname.toLowerCase();
+      const u = new URL(url);
+      if (u.protocol !== "https:") continue;
+      host = u.hostname.toLowerCase();
     } catch {
       continue;
     }
-    if (ok(host) || (title && ok(title.trim().toLowerCase()))) out.add(url);
+    // The title fallback is only for Gemini grounding redirects, whose title is the real domain.
+    if (ok(host) || (host === GROUNDING_REDIRECT_HOST && title && ok(title.trim().toLowerCase()))) out.add(url);
   }
   return [...out];
 }
@@ -140,7 +156,10 @@ export async function refreshCatalogProduct(productId: string, now = new Date())
   }
 
   const domains = product.sourceDomains;
-  const trusted = domains.length ? issuerSources([...sources, ...answer.sourceUrls], domains) : answer.sourceUrls;
+  // Model-written URLs are untrusted. Without issuer domains, only https URLs the search provider itself reported count.
+  const trusted = domains.length
+    ? issuerSources([...sources, ...answer.sourceUrls], domains)
+    : [...new Set(httpsOnly(sources.map((s) => s.url)))];
   if (!answer.found) return fail(answer.caveats ?? "Card not found");
   if (trusted.length === 0) return fail(`No source from ${domains.join(", ") || "the issuer"} was found`);
 
