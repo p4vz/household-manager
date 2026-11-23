@@ -1,6 +1,7 @@
 import { bus } from "@/core/bus";
 import type { EventBus } from "@/core/bus/bus";
 import { calendarModule } from "./calendar/module";
+import { familyModule } from "./family/module";
 import { financeModule } from "./finance/module";
 import { maintenanceModule } from "./maintenance/module";
 import { tripsModule } from "./trips/module";
@@ -11,6 +12,7 @@ export const MODULE_DEFINITIONS: readonly ModuleDefinition[] = [
   maintenanceModule,
   calendarModule,
   tripsModule,
+  familyModule,
 ];
 
 const g = globalThis as unknown as { __hmRegistered?: WeakSet<EventBus> };

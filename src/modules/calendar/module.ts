@@ -22,6 +22,9 @@ export const calendarModule: ModuleDefinition = {
         { title: `Maintenance: ${e.title}`, startDate: e.dueDate },
       ).then(() => undefined),
     );
+    bus.subscribe("maintenance.taskCancelled", "calendar", (e) =>
+      removeEventFromSource({ module: "maintenance", ref: e.taskId }),
+    );
     bus.subscribe("finance.annualFeeUpcoming", "calendar", (e) =>
       upsertEventFromSource(
         { module: "finance", ref: `annual-fee:${e.accountId}:${e.dueDate}` },

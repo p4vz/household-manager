@@ -1,7 +1,8 @@
 import { NextResponse, type NextFetchEvent, type NextRequest } from "next/server";
 import { auth } from "@/core/auth/config";
 import { isAllowedEmail, parseAllowlist } from "@/core/auth/allowlist";
-import { CONSENT_PATH, isAssistantPath, isCronPath, isPublicPath } from "@/core/auth/public-paths";
+import { CONSENT_PATH, KIOSK_PAIR_PATH, isAssistantPath, isCronPath, isKioskPath, isPublicPath } from "@/core/auth/public-paths";
+import { KIOSK_COOKIE, isTokenShaped } from "@/core/kiosk/pairing";
 import { contentSecurityPolicy, createNonce } from "@/core/security/csp";
 
 const CSP = "Content-Security-Policy";
@@ -36,6 +37,16 @@ const gate = (policy: string) =>
     const email = req.auth?.user?.email;
     if (isAllowedEmail(email, parseAllowlist(process.env.ALLOWED_EMAILS))) {
       return pass(req, policy);
+    }
+
+    // The kitchen screen: a device cookie opens /kiosk only. The page and
+    // every kiosk action check the token against the database.
+    if (isKioskPath(pathname)) {
+      if (isTokenShaped(req.cookies.get(KIOSK_COOKIE)?.value)) return pass(req, policy);
+      const url = req.nextUrl.clone();
+      url.pathname = KIOSK_PAIR_PATH;
+      url.search = "";
+      return NextResponse.redirect(url);
     }
 
     if (pathname.startsWith("/api/")) {

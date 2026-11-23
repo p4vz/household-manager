@@ -14,6 +14,9 @@ export const financeModule: ModuleDefinition = {
         { title: e.title, date: e.dueDate, amount: e.estimatedCost, category: "Home Maintenance" },
       );
     });
+    bus.subscribe("maintenance.taskCancelled", "finance", (e) =>
+      removeExpectedExpense({ module: "maintenance", ref: e.taskId }),
+    );
     bus.subscribe("maintenance.costRecorded", "finance", (e) =>
       upsertExpectedExpense(
         { module: "maintenance", ref: e.taskId },

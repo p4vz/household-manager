@@ -93,3 +93,24 @@
     @apply bg-background text-foreground;
   }
 }
+
+/* 58 mm receipt print-preview fallback (src/modules/family/ui/print-slip.tsx). */
+@media print {
+  @page {
+    size: 58mm auto;
+    margin: 2mm;
+  }
+  body:has(.receipt-print) * {
+    visibility: hidden;
+  }
+  body:has(.receipt-print) .receipt-print,
+  body:has(.receipt-print) .receipt-print * {
+    visibility: visible;
+  }
+  .receipt-print {
+    position: absolute;
+    top: 0;
+    left: 0;
+    width: 54mm;
+  }
+}

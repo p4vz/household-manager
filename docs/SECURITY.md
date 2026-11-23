@@ -29,8 +29,10 @@ update here and in the tests that enforce it.
 | Path | Who | How it is protected |
 | --- | --- | --- |
 | `/signin` | anyone | shows the Google button, nothing else |
+| `/kiosk/pair` | anyone | a code box; its one action trades a one-time pairing code for a kiosk cookie (see "Kitchen kiosk") |
+| `/kiosk` | allowlisted users or a paired kiosk device | session, or a device token checked against the database by the page and every kiosk action |
 | `/api/auth/*` | anyone | Auth.js OAuth flow; allowlist enforced in callbacks |
-| `/api/cron/simplefin-sync`, `/api/cron/monthly-advisor`, `/api/cron/card-catalog` | Railway cron only | `Authorization: Bearer $CRON_SECRET`, constant-time compare, fails closed if the secret is missing or short |
+| `/api/cron/simplefin-sync`, `/api/cron/monthly-advisor`, `/api/cron/card-catalog`, `/api/cron/family-hub` | Railway cron only | `Authorization: Bearer $CRON_SECRET`, constant-time compare, fails closed if the secret is missing or short |
 | `/api/mcp` | assistants a member approved | OAuth bearer token (see "Assistant access"); 404 unless `MCP_ENABLED=true` |
 | `/api/oauth/register`, `/api/oauth/token`, `/api/oauth/revoke` | assistant apps | registration grants nothing; token needs a PKCE proof or refresh token; rate limited; 404 unless enabled |
 | `/.well-known/oauth-authorization-server`, `/.well-known/oauth-protected-resource`, `/.well-known/openid-configuration` | anyone | public discovery metadata only; 404 unless enabled |
@@ -43,6 +45,43 @@ in-process function calls; no route, queue or socket exposes them.
 `/api/auth`, `/api/cron` and the reviewed assistant routes, if a cron route
 skips the secret check, or if an assistant route can answer while the
 feature is off.
+
+## Kitchen kiosk
+
+The kitchen wall screen (a Samsung DeX device in kiosk browser mode) is
+shared by the whole family, so it does not sign in with a household Google
+account. Pavel chose a paired device token (2026-11-23):
+
+- **Pairing.** A signed-in member taps "Make pairing code" in Settings and
+  types the code at `/kiosk/pair` on the screen. Codes are 8 characters
+  from a 31-letter alphabet (about 40 bits), live 10 minutes, work once
+  (checked and consumed in one UPDATE), and at most 3 are open. Code entry
+  is rate limited to 5 tries per 10 minutes per address and 30 per hour in
+  total. Only SHA-256 hashes of codes are stored.
+- **Device token.** Pairing sets a 256-bit random token as the `hm_kiosk`
+  cookie: httpOnly, `Secure` in production, `SameSite=Strict`, path
+  `/kiosk`, one year. The database keeps only its SHA-256 hash
+  (`core_kiosk_devices`). Settings lists paired screens with "Unpair",
+  which revokes the token on its next request.
+- **What it opens.** The proxy honours the cookie only for the exact path
+  `/kiosk` (the page and its Server Actions, which post to that path);
+  every other path still needs an allowlisted Google session. The page and
+  each kiosk action (`kioskAction()` in `core/actions/kiosk-action.ts`)
+  verify the token against the database. All other actions use
+  `authedAction()`, which a kiosk cookie never satisfies, so posting another
+  page's action id to `/kiosk` is refused.
+- **What the kiosk can do.** Read: family Google calendars, household
+  calendar entries other than finance reminders, chores, shopping, returns,
+  upkeep due in two weeks. Write: tick or un-tick a chore, add a one-time
+  chore, add or tick a shopping item, restock staples, add a return or move
+  its status, mark an upkeep task done, refresh the calendar. Deleting
+  anything, adding kids or recurring chores, and every finance, trips and
+  settings page stay member-only. `tests/boundaries.test.ts` checks this.
+- **Risk accepted.** Anyone standing at the screen can use those kiosk
+  actions, and someone who takes the device can keep using the kiosk until
+  it is unpaired. Return notes and order references are shown on the wall,
+  so text holding a card-number-shaped number (13 to 19 digits passing the
+  Luhn check) is refused.
 
 ## Assistant access (MCP)
 
@@ -170,7 +209,7 @@ fails if `fetch(` is used anywhere else.
 
 | Host | Why |
 | --- | --- |
-| `accounts.google.com`, `oauth2.googleapis.com`, `openidconnect.googleapis.com`, `www.googleapis.com` | Google sign-in |
+| `accounts.google.com`, `oauth2.googleapis.com`, `openidconnect.googleapis.com`, `www.googleapis.com` | Google sign-in; Google Calendar (read-only kiosk sync, `calendar.readonly`) |
 | `bridge.simplefin.org`, `beta-bridge.simplefin.org` | bank sync |
 | `generativelanguage.googleapis.com` | Gemini |
 | `api.anthropic.com` | Claude |
@@ -211,7 +250,8 @@ needs a review here.
 ## Secrets
 
 `DATABASE_URL`, `AUTH_SECRET`, `AUTH_GOOGLE_SECRET`, `CRON_SECRET`,
-`SIMPLEFIN_ACCESS_URL`, `GEMINI_API_KEY`, `ANTHROPIC_API_KEY` and `DOC_VAULT_KEY` are read
+`SIMPLEFIN_ACCESS_URL`, `GEMINI_API_KEY`, `ANTHROPIC_API_KEY`, `DOC_VAULT_KEY`,
+`GOOGLE_CALENDAR_SERVICE_ACCOUNT`, `GOOGLE_CALENDAR_REFRESH_TOKEN` and `GOOGLE_CALENDARS` are read
 only by server code. Files that read them import `server-only`, so a Client
 Component importing them breaks the build. No variable uses the
 `NEXT_PUBLIC_` prefix (CI checks this). Secrets live in Railway variables,
@@ -222,6 +262,18 @@ The SimpleFIN access URL is the one secret the app obtains at runtime. If
 the setup screen is stored in `core_settings` encrypted with AES-256-GCM
 under a key derived from `AUTH_SECRET` (HKDF). It is never sent to the
 browser. Rotating `AUTH_SECRET` means reconnecting SimpleFIN.
+
+## Google Calendar sync
+
+The kiosk shows a copy of the family's Google calendars stored in
+`calendar_google_events`: title, time range, location and all-day only,
+from yesterday through the next 9 days. Calendar ids (often email
+addresses) stay in `GOOGLE_CALENDARS` and are never stored or sent to a
+browser; rows carry the label ("Pavel", "Kids") instead. Credentials are
+either a service account the calendars are shared with (preferred, it can
+only read what was shared) or a member's refresh token with the
+`calendar.readonly` scope. Sync runs at most once a minute, every 15
+minutes while the kiosk is on, and hourly from cron.
 
 ## Bank sync limits
 

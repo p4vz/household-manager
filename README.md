@@ -39,11 +39,12 @@ npm run lint && npm run typecheck && npm test && npm run build
 2. Set the variables from `.env.example` on the app service.
 3. Start command: `npm run db:migrate && npm start`.
 4. Add a second service from the same repo for cron: schedule `0 * * * *`,
-   start command `node scripts/cron.mjs simplefin-sync monthly-advisor card-catalog`, variables `APP_URL`
+   start command `node scripts/cron.mjs simplefin-sync monthly-advisor card-catalog family-hub`, variables `APP_URL`
    (the app's public URL) and `CRON_SECRET`. The app only contacts SimpleFIN
    at 7 AM and 7 PM in `HOUSEHOLD_TIMEZONE`, runs the AI card
-   review on the 1st of each month, and checks due card catalog entries
-   against issuer pages at 6 AM.
+   review on the 1st of each month, checks due card catalog entries
+   against issuer pages at 6 AM, and refreshes the kitchen kiosk's Google
+   Calendar copy every hour.
 
 ## First run
 
@@ -55,3 +56,8 @@ npm run lint && npm run typecheck && npm test && npm run build
    base rate and bonus categories), or enter them by hand, and set the
    point value.
 6. Settings: pick Gemini or Claude and the fast/flagship models.
+7. Kitchen kiosk: on your phone, Family hub → Setup to add the kids, their
+   chores and your default staples. Set `GOOGLE_CALENDARS` and a calendar
+   credential (see `.env.example`). On the wall screen open `/kiosk/pair`,
+   and type the code from Settings → Kitchen kiosk. Pair the Bluetooth
+   printer from the first Print tap (Chrome asks which device).

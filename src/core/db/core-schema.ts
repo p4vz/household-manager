@@ -69,3 +69,38 @@ export const coreOauthGrants = pgTable(
     uniqueIndex("core_oauth_grants_refresh_uq").on(t.refreshHash),
   ],
 );
+
+// ---------------------------------------------------------------------------
+// Kitchen kiosk devices. A wall screen is paired once with a short one-time
+// code made in Settings by a signed-in member; it then carries a device
+// cookie that opens /kiosk and nothing else. See src/core/kiosk and
+// docs/SECURITY.md ("Kitchen kiosk"). Codes and tokens are stored only as
+// SHA-256 hashes.
+// ---------------------------------------------------------------------------
+
+export const coreKioskPairingCodes = pgTable(
+  "core_kiosk_pairing_codes",
+  {
+    codeHash: text("code_hash").primaryKey(),
+    /** Owner label (User 1 / User 2) of the member who made the code. */
+    createdBy: text("created_by").notNull(),
+    expiresAt: timestamp("expires_at", { withTimezone: true }).notNull(),
+    usedAt: timestamp("used_at", { withTimezone: true }),
+    createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+  },
+  (t) => [index("core_kiosk_pairing_codes_expires_idx").on(t.expiresAt)],
+);
+
+export const coreKioskDevices = pgTable(
+  "core_kiosk_devices",
+  {
+    id: uuid("id").primaryKey().defaultRandom(),
+    name: text("name").notNull(),
+    tokenHash: text("token_hash").notNull(),
+    createdBy: text("created_by").notNull(),
+    createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+    lastSeenAt: timestamp("last_seen_at", { withTimezone: true }),
+    revokedAt: timestamp("revoked_at", { withTimezone: true }),
+  },
+  (t) => [uniqueIndex("core_kiosk_devices_token_uq").on(t.tokenHash)],
+);

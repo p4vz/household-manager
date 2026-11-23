@@ -20,6 +20,7 @@ src/
     maintenance/        home maintenance tasks and costs
     calendar/           household calendar
     trips/              trip planner
+    family/             kids' chores, shopping lists, returns (kitchen kiosk + phone view)
     registry.ts         wires each module's subscriptions onto the bus
   app/                  routes and pages (thin; call module APIs)
   proxy.ts              request gate (Next 16 replacement for middleware)
@@ -48,6 +49,7 @@ publishes an event. Subscribers react on their own.
 | `trips.tripPlanned` | trips | calendar adds the trip; finance adds the trip budget (or, with no budget, the sum of step costs) as an expected expense. Re-published whenever dates, places or costs change |
 | `trips.tripCancelled` | trips | calendar removes the trip; finance drops the expected expense |
 | `maintenance.taskScheduled` | maintenance | calendar adds a reminder; finance adds the estimated cost as an expected expense |
+| `maintenance.taskCancelled` | maintenance | calendar removes the reminder; finance drops the expected expense |
 | `maintenance.costRecorded` | maintenance | finance updates the expected expense with the actual cost |
 | `finance.annualFeeUpcoming` | finance | calendar adds an annual-fee reminder |
 | `finance.transactionsSynced` | finance | (none yet) |
@@ -247,6 +249,45 @@ app/oauth/authorize   consent screen
 `PURCHASE_CATEGORY` mapping a purchase kind (`hotels`, `dining`, ...) to the
 category a charge would land in. Tables: `core_oauth_clients`,
 `core_oauth_codes`, `core_oauth_grants`.
+
+## Kitchen kiosk and family hub
+
+`/kiosk` is a single 1920x1080 touch screen (no page scroll): calendar on
+the left 55%, the kids' chore board top right, Shopping / Returns / Upkeep
+tabs bottom right. `/family` is the phone companion (390-430 px) with the
+same lists plus setup. Both are thin pages over module APIs:
+
+- **family** owns `family_kids`, `family_chores`,
+  `family_chore_completions` (`kid_id`, `chore_id`, `completed_at`,
+  `date_bucket`, `stars`), `family_shopping_items` and
+  `family_purchase_returns`.
+- **Chore resets need no job.** A completion is stored against its period:
+  the chore day (4 AM `America/New_York` rollover) for daily and one-time
+  chores, the Monday of the chore week for weekly ones (rolls over Monday
+  4 AM, i.e. Sunday night). The board shows a chore as done only if it has
+  a completion in the current period, so a missed cron run can never leave
+  yesterday's ticks on the wall. Stats (today, week %, streak of fully done
+  days, stars) are computed from the stored history (`family/stats.ts`).
+- **Upkeep** stays in the maintenance module. Tasks now have an optional
+  repeat interval; `completeTask()` schedules the next one from the day it
+  was done, which publishes `maintenance.taskScheduled` as usual (calendar
+  reminder, expected expense). The kiosk lists tasks due within 14 days.
+- **Calendar** owns the Google sync (`calendar/google.ts`) and
+  `kioskCalendar()`, which merges Google events with household entries
+  (trips, events typed by hand; never finance reminders).
+- **Live updates** without new HTTP routes: the kiosk calls
+  `router.refresh()` every 30 s while visible, and every action
+  revalidates `/kiosk` and `/family`.
+- **Printing** (`src/lib/thermal/`): `receipt.ts` lays out 32-column text
+  and encodes ESC/POS (bold, centre, double size, divider, `[ ]`
+  checkboxes, feed and cut); `thermalPrinter.ts` writes it over Web
+  Bluetooth (service `0x18F0`, then any writable characteristic on known
+  vendor services) in 100-byte chunks. Without Web Bluetooth (iPhone,
+  Firefox) or on failure, a 58 mm print preview goes through the browser
+  print dialog.
+- Cron `/api/cron/family-hub` (hourly) refreshes Google events and clears
+  bought one-time shopping items after 12 hours and returned items after 30
+  days.
 
 ## Database
 
