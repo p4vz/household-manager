@@ -18,6 +18,8 @@ export const SCOPES = [MCP_SCOPE] as const;
 export const CODE_TTL_MS = 5 * 60 * 1000;
 export const ACCESS_TTL_MS = 60 * 60 * 1000;
 export const REFRESH_TTL_MS = 30 * 24 * 60 * 60 * 1000;
+/** A grant ends this long after approval, however often it is refreshed. */
+export const GRANT_MAX_AGE_MS = 90 * 24 * 60 * 60 * 1000;
 export const MAX_CLIENTS = 50;
 
 /**

@@ -152,6 +152,22 @@ describe("assistant access", () => {
     expect((await token.POST(post("/api/oauth/token", form.toString()))).status).toBe(400);
   });
 
+  it("requires the right client_id on refresh and ends a grant 90 days after approval", async () => {
+    const { clientId, tokens } = await connect();
+    const noClient = new URLSearchParams({ grant_type: "refresh_token", refresh_token: tokens.refresh_token });
+    expect((await token.POST(post("/api/oauth/token", noClient.toString()))).status).toBe(400);
+    await expect(oauth.refreshAccess({ refreshToken: tokens.refresh_token, clientId: "someone-else" })).rejects.toThrow(/another client/);
+
+    const day = 24 * 60 * 60 * 1000;
+    let now = Date.now();
+    // Refreshing every 20 days would slide the 30-day expiry forever; the grant still ends at 90 days.
+    for (let i = 0; i < 4; i++) {
+      now += 20 * day;
+      await oauth.refreshAccess({ refreshToken: tokens.refresh_token, clientId }, new Date(now));
+    }
+    await expect(oauth.refreshAccess({ refreshToken: tokens.refresh_token, clientId }, new Date(Date.now() + 91 * day))).rejects.toThrow(/not valid/);
+  });
+
   it("cuts off a member removed from the allowlist", async () => {
     const { tokens } = await connect("two@example.com");
     vi.stubEnv("ALLOWED_EMAILS", "one@example.com");
