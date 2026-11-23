@@ -1,9 +1,23 @@
 import "server-only";
-import { and, asc, eq, gte } from "drizzle-orm";
+import { and, asc, eq, gte, isNull, lte, or } from "drizzle-orm";
 import { bus } from "@/core/bus";
 import type { ModuleName } from "@/core/bus/events";
 import { db } from "@/core/db/client";
+import { addDays, householdTimeZone, zonedMidnight, zonedParts } from "@/core/time/zoned";
+import { buildAgenda, type AgendaDay } from "./agenda";
+import {
+  calendarSources,
+  googleCalendarConfigured,
+  googleSyncState,
+  storedGoogleEvents,
+  syncGoogleCalendars,
+  type GoogleSyncState,
+} from "./google";
 import { calendarEvents } from "./schema";
+
+export type { AgendaDay, AgendaItem } from "./agenda";
+export type { GoogleSyncState } from "./google";
+export { syncGoogleCalendars };
 
 /**
  * Calendar module public API. Other modules call these functions directly
@@ -70,4 +84,58 @@ export async function listUpcoming(fromDate: string, limit = 20) {
     .where(gte(calendarEvents.startDate, fromDate))
     .orderBy(asc(calendarEvents.startDate))
     .limit(limit);
+}
+
+/** Module sources whose events the family wall screen may show (not finance reminders). */
+const KIOSK_SOURCES = ["trips"];
+
+export type KioskCalendar = {
+  days: AgendaDay[];
+  legend: { label: string; color: string }[];
+  configured: boolean;
+  sync: GoogleSyncState;
+};
+
+/**
+ * Day-by-day agenda for the kitchen kiosk: the family's Google calendars
+ * plus household entries (trips, events typed by hand). Finance and upkeep
+ * reminders are left out: the kiosk shows upkeep in its own panel and money
+ * matters do not belong on a shared wall screen.
+ */
+export async function kioskCalendar(days: number, now = new Date()): Promise<KioskCalendar> {
+  const tz = householdTimeZone();
+  const today = zonedParts(now, tz).date;
+  const last = addDays(today, days);
+  const sources = calendarSources();
+  const [google, household, sync] = await Promise.all([
+    storedGoogleEvents(zonedMidnight(today, tz), zonedMidnight(last, tz), today, last),
+    db()
+      .select({
+        id: calendarEvents.id,
+        title: calendarEvents.title,
+        startDate: calendarEvents.startDate,
+        endDate: calendarEvents.endDate,
+        sourceModule: calendarEvents.sourceModule,
+      })
+      .from(calendarEvents)
+      .where(
+        and(
+          lte(calendarEvents.startDate, last),
+          or(gte(calendarEvents.endDate, today), and(isNull(calendarEvents.endDate), gte(calendarEvents.startDate, today))),
+        ),
+      ),
+    googleSyncState(),
+  ]);
+  const shown = household.filter((e) => e.sourceModule === null || KIOSK_SOURCES.includes(e.sourceModule));
+  return {
+    days: buildAgenda({ today, days, tz, google, household: shown, sources }),
+    legend: sources.map((s) => ({ label: s.label, color: s.color })),
+    configured: googleCalendarConfigured(),
+    sync,
+  };
+}
+
+/** Refreshes Google events if the copy is older than `maxAgeMs` (kiosk page loads, cron). */
+export async function syncGoogleCalendarsIfStale(maxAgeMs: number) {
+  return syncGoogleCalendars({ maxAgeMs });
 }

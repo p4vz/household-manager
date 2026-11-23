@@ -5,6 +5,8 @@ import { authedAction } from "@/core/actions/authed-action";
 import { AiSettingsSchema } from "@/core/ai/settings";
 import { saveAiSettings } from "@/core/ai/store";
 import { z } from "zod";
+import { createPairingCode, revokeKioskDevice } from "@/core/kiosk/devices";
+import { formatPairingCode } from "@/core/kiosk/pairing";
 import { revokeAllConnections, revokeConnection, setConnectionPermissions } from "@/core/oauth/server";
 
 const save = authedAction(AiSettingsSchema, async (settings) => {
@@ -49,5 +51,21 @@ const savePermissions = authedAction(
 
 export async function saveAssistantPermissionsAction(form: FormData) {
   await savePermissions({ id: form.get("id"), perm: form.getAll("perm").filter((v) => typeof v === "string") });
+  revalidatePath("/settings");
+}
+
+// ---- Kitchen kiosk ----
+
+export const makeKioskPairingCodeAction = authedAction(z.object({}), async (_input, user) => {
+  const { code, expiresAt } = await createPairingCode(user.owner);
+  return { code: formatPairingCode(code), expiresAt: expiresAt.toISOString() };
+});
+
+const unpair = authedAction(z.object({ id: z.uuid() }), async ({ id }) => {
+  await revokeKioskDevice(id);
+});
+
+export async function unpairKioskAction(form: FormData) {
+  await unpair({ id: form.get("id") });
   revalidatePath("/settings");
 }

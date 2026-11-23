@@ -5,10 +5,14 @@ import { oauthConfig } from "@/core/oauth/policy";
 import { listConnections } from "@/core/oauth/server";
 import { memberDisplayName } from "@/core/auth/display-name";
 import { AssistantRule, PermissionCheckboxes } from "@/components/assistant-permissions";
+import { KioskPairingCode } from "@/components/kiosk-pairing";
+import { listKioskDevices } from "@/core/kiosk/devices";
 import {
   disconnectAllAssistantsAction,
   disconnectAssistantAction,
+  makeKioskPairingCodeAction,
   saveAiSettingsAction,
+  unpairKioskAction,
   saveAssistantPermissionsAction,
 } from "./actions";
 
@@ -19,6 +23,7 @@ export default async function SettingsPage() {
   const settings = await getAiSettings();
   const mcp = oauthConfig();
   const connections = mcp ? await listConnections() : [];
+  const kiosks = await listKioskDevices();
   const configured: Record<AiProvider, boolean> = {
     gemini: Boolean(process.env.GEMINI_API_KEY),
     anthropic: Boolean(process.env.ANTHROPIC_API_KEY),
@@ -56,6 +61,36 @@ export default async function SettingsPage() {
         ))}
         <button type="submit" className="rounded-lg bg-foreground px-4 py-2 text-background">Save</button>
       </form>
+
+      <div className="space-y-3 rounded-xl border p-6">
+        <h2 className="font-medium">Kitchen kiosk</h2>
+        <p className="text-sm opacity-80">
+          To pair the wall screen, open <code>/kiosk/pair</code> on it and type a code made here. A paired screen can show
+          and use the kiosk (calendar, chores, shopping, returns, upkeep) and nothing else: no finance, trips or settings.
+        </p>
+        <KioskPairingCode make={makeKioskPairingCodeAction.bind(null, {})} />
+        {kiosks.length === 0 ? (
+          <p className="text-sm opacity-60">No screens paired.</p>
+        ) : (
+          <ul className="space-y-2 text-sm">
+            {kiosks.map((k) => (
+              <li key={k.id} className="flex items-center gap-3 rounded-lg border p-3">
+                <div className="flex-1">
+                  <div className="font-medium">{k.name}</div>
+                  <div className="opacity-60">
+                    Paired by {memberDisplayName(k.createdBy)} on {k.createdAt.toISOString().slice(0, 10)}
+                    {k.lastSeenAt ? `, last seen ${k.lastSeenAt.toISOString().slice(0, 16).replace("T", " ")} UTC` : ""}
+                  </div>
+                </div>
+                <form action={unpairKioskAction}>
+                  <input type="hidden" name="id" value={k.id} />
+                  <button type="submit" className="underline">Unpair</button>
+                </form>
+              </li>
+            ))}
+          </ul>
+        )}
+      </div>
 
       <div className="space-y-3 rounded-xl border p-6">
         <h2 className="font-medium">AI assistants (MCP)</h2>

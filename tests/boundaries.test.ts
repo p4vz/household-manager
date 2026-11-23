@@ -7,7 +7,7 @@ import { describe, expect, it } from "vitest";
  * docs/SECURITY.md for the rules these encode.
  */
 const SRC = resolve(__dirname, "../src");
-const MODULES = ["finance", "maintenance", "calendar", "trips"];
+const MODULES = ["finance", "maintenance", "calendar", "trips", "family"];
 
 function walk(dir: string): string[] {
   return readdirSync(dir).flatMap((name) => {
@@ -127,13 +127,35 @@ describe("external surface", () => {
     }
   });
 
-  it("every server action file guards with authedAction or requireUser", () => {
+  // The kiosk pairing action is the one action without a session: it trades
+  // a one-time code for a device cookie and is rate limited.
+  const PUBLIC_ACTION_FILES = ["app/kiosk/pair/actions.ts"];
+
+  it("every server action file guards with authedAction, kioskAction or requireUser", () => {
     for (const file of files) {
       const src = readFileSync(file, "utf8");
       // Files whose first statement is "use server" export public actions.
       if (!/^\s*["']use server["'];/.test(src)) continue;
-      expect(src, rel(file)).toMatch(/authedAction\(|requireUser\(/);
+      if (PUBLIC_ACTION_FILES.includes(rel(file))) {
+        expect(src, rel(file)).toMatch(/rateLimit\(/);
+        expect(src, rel(file)).toMatch(/redeemPairingCode\(/);
+        continue;
+      }
+      expect(src, rel(file)).toMatch(/authedAction\(|kioskAction\(|requireUser\(/);
     }
+  });
+
+  it("kiosk actions never wrap anything that deletes data or reads money", () => {
+    const src = readFileSync(join(SRC, "app/kiosk/actions.ts"), "utf8");
+    expect(src).not.toMatch(/authedAction\(/);
+    expect(src).not.toMatch(/delete|remove|archive|finance|trips/i);
+  });
+
+  it("the kiosk device cookie is honoured only on /kiosk", () => {
+    const proxy = readFileSync(join(SRC, "proxy.ts"), "utf8");
+    expect(proxy).toMatch(/if \(isKioskPath\(pathname\)\)/);
+    const users = files.filter((f) => /KIOSK_COOKIE/.test(readFileSync(f, "utf8"))).map(rel).sort();
+    expect(users).toEqual(["app/kiosk/pair/actions.ts", "core/kiosk/devices.ts", "core/kiosk/pairing.ts", "proxy.ts"]);
   });
 
   it("only core/net/outbound.ts calls fetch", () => {

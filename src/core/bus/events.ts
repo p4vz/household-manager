@@ -31,6 +31,7 @@ export const EventSchemas = {
     dueDate: isoDate,
     estimatedCost: money.nullable(),
   }),
+  "maintenance.taskCancelled": z.object({ taskId: z.string() }),
   "maintenance.costRecorded": z.object({
     taskId: z.string(),
     title: z.string(),
@@ -60,5 +61,5 @@ export const EventSchemas = {
 
 export type EventName = keyof typeof EventSchemas;
 export type EventPayload<N extends EventName> = z.infer<(typeof EventSchemas)[N]>;
-export const MODULES = ["finance", "maintenance", "calendar", "trips"] as const;
+export const MODULES = ["finance", "maintenance", "calendar", "trips", "family"] as const;
 export type ModuleName = (typeof MODULES)[number];

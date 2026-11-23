@@ -57,6 +57,13 @@
       "when": 1795279631457,
       "tag": "0007_trip_booking_code_sharing",
       "breakpoints": true
+    },
+    {
+      "idx": 8,
+      "version": "7",
+      "when": 1795459500719,
+      "tag": "0008_kitchen_kiosk",
+      "breakpoints": true
     }
   ]
 }

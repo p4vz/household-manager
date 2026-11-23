@@ -3,8 +3,21 @@
  * is refused by the proxy (src/proxy.ts) and re-checked by the page, action
  * or route handler itself.
  */
-export const PUBLIC_PATHS = ["/signin"] as const;
+export const PUBLIC_PATHS = ["/signin", "/kiosk/pair"] as const;
 export const PUBLIC_PATH_PREFIXES = ["/api/auth/"] as const;
+
+/**
+ * Kitchen kiosk. `/kiosk/pair` is public: it only takes a one-time code made
+ * by a signed-in member (rate limited in its action). `/kiosk` itself passes
+ * the proxy with a member session or a kiosk device cookie; the page and its
+ * actions verify the device token against the database.
+ */
+export const KIOSK_PATH = "/kiosk";
+export const KIOSK_PAIR_PATH = "/kiosk/pair"; // listed in PUBLIC_PATHS
+
+export function isKioskPath(pathname: string): boolean {
+  return pathname === KIOSK_PATH;
+}
 
 /** Paths protected by CRON_SECRET instead of a session (checked in the handler). */
 export const CRON_PATH_PREFIX = "/api/cron/";

@@ -1,0 +1,115 @@
+import { redirect } from "next/navigation";
+import { after } from "next/server";
+import { requireKioskOrMember } from "@/core/actions/kiosk-action";
+import { syncGoogleCalendarsIfStale } from "@/modules/calendar/api";
+import { CHORE_ICONS } from "@/modules/family/api";
+import { CalendarPanel } from "@/modules/family/ui/calendar-panel";
+import { ChoreBoard } from "@/modules/family/ui/chore-board";
+import { HubTabs } from "@/modules/family/ui/hub-tabs";
+import { KioskShell } from "@/modules/family/ui/kiosk-shell";
+import { PrintTodayButtons } from "@/modules/family/ui/print-today";
+import { ReturnsPanel } from "@/modules/family/ui/returns-panel";
+import { ShoppingPanel } from "@/modules/family/ui/shopping-panel";
+import { UpkeepPanel } from "@/modules/family/ui/upkeep-panel";
+import {
+  addOneTimeChoreAction,
+  addReturnAction,
+  addShoppingItemAction,
+  completeUpkeepAction,
+  restockStaplesAction,
+  setChoreDoneAction,
+  setReturnStatusAction,
+  setShoppingCheckedAction,
+  syncCalendarAction,
+} from "./actions";
+import { loadHub } from "./load";
+
+export const metadata = { title: "Kitchen" };
+
+/**
+ * The kitchen wall screen (1920x1080 landscape, touch). Open to a paired
+ * kiosk device or a signed-in member; see docs/SECURITY.md ("Kitchen kiosk").
+ * Left ~55%: calendar. Right: chore board on top, shopping / returns /
+ * upkeep below.
+ */
+export default async function KioskPage() {
+  try {
+    await requireKioskOrMember();
+  } catch {
+    redirect("/kiosk/pair");
+  }
+  const hub = await loadHub();
+  // Keep the Google copy fresh while the screen is on (the page refreshes every 30 s).
+  after(() => syncGoogleCalendarsIfStale(15 * 60_000).then(() => undefined, () => undefined));
+
+  const urgentReturns = hub.returns.filter((r) => r.urgency === "overdue" || r.urgency === "urgent").length;
+  const overdueUpkeep = hub.upkeep.filter((t) => t.overdue).length;
+  const printBtn = "min-h-12 rounded-xl border px-4 text-lg font-medium";
+
+  return (
+    <KioskShell
+      tz={hub.tz}
+      header={
+        <PrintTodayButtons
+          className={printBtn}
+          dateLabel={hub.todayLabel}
+          kids={hub.kids}
+          today={hub.calendar.days[0]}
+          returns={hub.returns}
+          upkeep={hub.upkeep}
+        />
+      }
+    >
+      <div className="grid h-full min-h-0 grid-cols-[55fr_45fr] gap-4">
+        <section className="min-h-0 rounded-2xl bg-white/70 p-4 dark:bg-slate-900/70">
+          <CalendarPanel
+            days={hub.calendar.days}
+            legend={hub.calendar.legend}
+            configured={hub.calendar.configured}
+            syncedLabel={hub.calendar.syncedLabel}
+            syncError={hub.calendar.syncError}
+            sync={syncCalendarAction.bind(null, {})}
+          />
+        </section>
+        <div className="grid min-h-0 grid-rows-[56fr_44fr] gap-4">
+          <section className="min-h-0 rounded-2xl bg-white/70 p-3 dark:bg-slate-900/70">
+            <ChoreBoard kids={hub.kids} icons={CHORE_ICONS} actions={{ setDone: setChoreDoneAction, addOneTime: addOneTimeChoreAction }} />
+          </section>
+          <section className="min-h-0 rounded-2xl bg-white/70 p-3 dark:bg-slate-900/70">
+            <HubTabs
+              tabs={[
+                {
+                  key: "shopping",
+                  label: "🛒 Shopping",
+                  badge: hub.shopping.filter((i) => !i.checked).length,
+                  content: (
+                    <ShoppingPanel
+                      items={hub.shopping}
+                      stores={hub.stores}
+                      dateLabel={hub.todayLabel}
+                      actions={{ setChecked: setShoppingCheckedAction, add: addShoppingItemAction, restock: restockStaplesAction }}
+                    />
+                  ),
+                },
+                {
+                  key: "returns",
+                  label: "📦 Returns",
+                  badge: hub.returns.length,
+                  alert: urgentReturns > 0,
+                  content: <ReturnsPanel returns={hub.returns} stores={hub.stores} actions={{ setStatus: setReturnStatusAction, add: addReturnAction }} />,
+                },
+                {
+                  key: "upkeep",
+                  label: "🔧 Upkeep",
+                  badge: hub.upkeep.length,
+                  alert: overdueUpkeep > 0,
+                  content: <UpkeepPanel tasks={hub.upkeep} complete={completeUpkeepAction} />,
+                },
+              ]}
+            />
+          </section>
+        </div>
+      </div>
+    </KioskShell>
+  );
+}
