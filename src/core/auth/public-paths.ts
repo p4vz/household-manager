@@ -3,7 +3,8 @@
  * is refused by the proxy (src/proxy.ts) and re-checked by the page, action
  * or route handler itself.
  */
-export const PUBLIC_PATH_PREFIXES = ["/signin", "/api/auth/"] as const;
+export const PUBLIC_PATHS = ["/signin"] as const;
+export const PUBLIC_PATH_PREFIXES = ["/api/auth/"] as const;
 
 /** Paths protected by CRON_SECRET instead of a session (checked in the handler). */
 export const CRON_PATH_PREFIX = "/api/cron/";
@@ -31,8 +32,9 @@ export function isAssistantPath(pathname: string): boolean {
 /** Consent screen: needs a session, and sign-in must return here. */
 export const CONSENT_PATH = "/oauth/authorize";
 
+/** "/signin" matches exactly, so a future "/signin-*" route is not public by accident. */
 export function isPublicPath(pathname: string): boolean {
-  return PUBLIC_PATH_PREFIXES.some((p) => pathname === p || pathname.startsWith(p));
+  return (PUBLIC_PATHS as readonly string[]).includes(pathname) || PUBLIC_PATH_PREFIXES.some((p) => pathname.startsWith(p));
 }
 
 export function isCronPath(pathname: string): boolean {
