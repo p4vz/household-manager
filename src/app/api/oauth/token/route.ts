@@ -24,8 +24,9 @@ export async function POST(req: Request) {
     }
     if (grant === "refresh_token") {
       const refreshToken = form.get("refresh_token");
-      if (!refreshToken) throw new OauthError("invalid_request", "refresh_token is required");
-      return json(await refreshAccess({ refreshToken, clientId: form.get("client_id") }));
+      const clientId = form.get("client_id");
+      if (!refreshToken || !clientId) throw new OauthError("invalid_request", "refresh_token and client_id are required");
+      return json(await refreshAccess({ refreshToken, clientId }));
     }
     throw new OauthError("unsupported_grant_type", "Only authorization_code and refresh_token are supported");
   } catch (err) {

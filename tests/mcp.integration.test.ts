@@ -133,8 +133,20 @@ describe("assistant access", () => {
       { clientId, redirectUri: REDIRECT, codeChallenge: CHALLENGE, scope: "household:read", resource: `${ORIGIN}/api/mcp` },
       "one@example.com",
     );
-    const badPkce = new URLSearchParams({ grant_type: "authorization_code", code: code2, code_verifier: "w".repeat(50), client_id: clientId });
+    const badPkce = new URLSearchParams({ grant_type: "authorization_code", code: code2, code_verifier: "w".repeat(50), client_id: clientId, redirect_uri: REDIRECT });
     expect((await token.POST(post("/api/oauth/token", badPkce.toString()))).status).toBe(400);
+  });
+
+  it("requires the redirect_uri on code exchange", async () => {
+    const { clientId } = await connect();
+    const code = await oauth.createAuthorizationCode(
+      { clientId, redirectUri: REDIRECT, codeChallenge: CHALLENGE, scope: "household:read", resource: `${ORIGIN}/api/mcp` },
+      "one@example.com",
+    );
+    const noRedirect = new URLSearchParams({ grant_type: "authorization_code", code, code_verifier: VERIFIER, client_id: clientId, resource: `${ORIGIN}/api/mcp` });
+    const res = await token.POST(post("/api/oauth/token", noRedirect.toString()));
+    expect(res.status).toBe(400);
+    expect((await res.json()).error).toBe("invalid_grant");
   });
 
   it("refreshes, keeps the refresh token, and revokes", async () => {
@@ -150,6 +162,22 @@ describe("assistant access", () => {
     await revoke.POST(post("/api/oauth/revoke", new URLSearchParams({ token: tokens.refresh_token }).toString()));
     expect((await rpc(next.access_token, "tools/list")).status).toBe(401);
     expect((await token.POST(post("/api/oauth/token", form.toString()))).status).toBe(400);
+  });
+
+  it("requires the right client_id on refresh and ends a grant 90 days after approval", async () => {
+    const { clientId, tokens } = await connect();
+    const noClient = new URLSearchParams({ grant_type: "refresh_token", refresh_token: tokens.refresh_token });
+    expect((await token.POST(post("/api/oauth/token", noClient.toString()))).status).toBe(400);
+    await expect(oauth.refreshAccess({ refreshToken: tokens.refresh_token, clientId: "someone-else" })).rejects.toThrow(/another client/);
+
+    const day = 24 * 60 * 60 * 1000;
+    let now = Date.now();
+    // Refreshing every 20 days would slide the 30-day expiry forever; the grant still ends at 90 days.
+    for (let i = 0; i < 4; i++) {
+      now += 20 * day;
+      await oauth.refreshAccess({ refreshToken: tokens.refresh_token, clientId }, new Date(now));
+    }
+    await expect(oauth.refreshAccess({ refreshToken: tokens.refresh_token, clientId }, new Date(Date.now() + 91 * day))).rejects.toThrow(/not valid/);
   });
 
   it("cuts off a member removed from the allowlist", async () => {

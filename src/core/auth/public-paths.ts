@@ -3,7 +3,8 @@
  * is refused by the proxy (src/proxy.ts) and re-checked by the page, action
  * or route handler itself.
  */
-export const PUBLIC_PATH_PREFIXES = ["/signin", "/api/auth/"] as const;
+export const PUBLIC_PATHS = ["/signin", "/kiosk/pair"] as const;
+export const PUBLIC_PATH_PREFIXES = ["/api/auth/"] as const;
 
 /**
  * Kitchen kiosk. `/kiosk/pair` is public: it only takes a one-time code made
@@ -12,7 +13,7 @@ export const PUBLIC_PATH_PREFIXES = ["/signin", "/api/auth/"] as const;
  * actions verify the device token against the database.
  */
 export const KIOSK_PATH = "/kiosk";
-export const KIOSK_PAIR_PATH = "/kiosk/pair";
+export const KIOSK_PAIR_PATH = "/kiosk/pair"; // listed in PUBLIC_PATHS
 
 export function isKioskPath(pathname: string): boolean {
   return pathname === KIOSK_PATH;
@@ -44,9 +45,9 @@ export function isAssistantPath(pathname: string): boolean {
 /** Consent screen: needs a session, and sign-in must return here. */
 export const CONSENT_PATH = "/oauth/authorize";
 
+/** "/signin" matches exactly, so a future "/signin-*" route is not public by accident. */
 export function isPublicPath(pathname: string): boolean {
-  if (pathname === KIOSK_PAIR_PATH) return true;
-  return PUBLIC_PATH_PREFIXES.some((p) => pathname === p || pathname.startsWith(p));
+  return (PUBLIC_PATHS as readonly string[]).includes(pathname) || PUBLIC_PATH_PREFIXES.some((p) => pathname.startsWith(p));
 }
 
 export function isCronPath(pathname: string): boolean {
