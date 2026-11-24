@@ -1,0 +1,84 @@
+{
+  "id": "rmwpuxyf70ec7a8",
+  "teamSlug": "household-manager/19ff681e",
+  "teamName": "Security audit",
+  "lead": "household-security-lead",
+  "workers": [
+    "security-prober",
+    "household-reviewer",
+    "builder",
+    "challenger"
+  ],
+  "projectSlug": "household-manager",
+  "projectName": "Household Manager",
+  "members": {
+    "lead": {
+      "agent": "household-security-lead"
+    },
+    "workers": [
+      {
+        "agent": "security-prober",
+        "notes": "Live target: https://household-manager-production.up.railway.app only. Non-destructive."
+      },
+      {
+        "agent": "household-reviewer"
+      },
+      {
+        "agent": "builder",
+        "notes": "Implements security fixes the lead approves. Follow AGENTS.md project rules. Run npm run lint && npm run typecheck && npm test before pushing. One branch and PR per task against main."
+      },
+      {
+        "agent": "challenger",
+        "notes": "Try to break each security fix and each finding's claimed severity."
+      }
+    ]
+  },
+  "landOnBase": false,
+  "coordinator": false,
+  "browser": true,
+  "maxDispatches": 12,
+  "task": "Run the full security audit from your instructions against the live deployment https://household-manager-production.up.railway.app and this repository (main). Cover all 11 checklist items. Non-destructive only. Deliver a findings report ranked Critical/High/Medium/Low/Info with evidence and fixes, then open one PR per code fix against main (not stacked), each reviewed by household-reviewer and challenged by challenger before you open it.",
+  "status": "idle",
+  "repoUrl": "https://github.com/p4vz/household-manager",
+  "baseBranch": "main",
+  "costUsd": 14.829258399999993,
+  "turns": 33,
+  "createdAt": "2026-11-21T03:37:52.003Z",
+  "updatedAt": "2026-11-21T13:53:00.527Z",
+  "requestedBy": "token:f1abb8882a42",
+  "branch": "agents/rmwpuxyf70ec7a8",
+  "cwd": "/data/workspaces/runs/rmwpuxyf70ec7a8",
+  "statusText": "Lead finished its turn. Reply to continue, or push the branch.",
+  "lastProvider": "claude",
+  "sessionId": "c93b41c8-5482-4fd6-b4e7-c0b50da0a542",
+  "contextTokens": 99204,
+  "rateLimit": {
+    "status": "allowed",
+    "type": "five_hour",
+    "resetsAt": 1795284000,
+    "at": "2026-11-21T13:51:50.470Z"
+  },
+  "usage": {
+    "claude-haiku-5-5": {
+      "inputTokens": 9107,
+      "outputTokens": 1841,
+      "cacheReadTokens": 0,
+      "cacheWriteTokens": 0,
+      "costUsd": 0.0018312000000000003
+    },
+    "claude-opus-5-5": {
+      "inputTokens": 446,
+      "outputTokens": 133893,
+      "cacheReadTokens": 10266288,
+      "cacheWriteTokens": 778295,
+      "costUsd": 10.498989600000002
+    },
+    "claude-sonnet-5-5": {
+      "inputTokens": 414,
+      "outputTokens": 128023,
+      "cacheReadTokens": 7492121,
+      "cacheWriteTokens": 919267,
+      "costUsd": 4.328437599999999
+    }
+  }
+}
