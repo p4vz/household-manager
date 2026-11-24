@@ -1,0 +1,56 @@
+{
+  "id": "rmwpuxyltbe22ac",
+  "teamSlug": "household-manager/fd78efb9",
+  "teamName": "Connection check",
+  "lead": "connection-checker",
+  "workers": [],
+  "projectSlug": "household-manager",
+  "projectName": "Household Manager",
+  "members": {
+    "lead": {
+      "agent": "connection-checker"
+    },
+    "workers": []
+  },
+  "landOnBase": false,
+  "coordinator": false,
+  "browser": true,
+  "maxDispatches": 12,
+  "task": "Run your full connection check against https://household-manager-production.up.railway.app and report the status table. Read-only.",
+  "status": "idle",
+  "repoUrl": "https://github.com/p4vz/household-manager",
+  "baseBranch": "main",
+  "costUsd": 0.2727704,
+  "turns": 5,
+  "createdAt": "2026-11-21T03:37:52.241Z",
+  "updatedAt": "2026-11-21T03:39:12.580Z",
+  "requestedBy": "token:f1abb8882a42",
+  "branch": "agents/rmwpuxyltbe22ac",
+  "cwd": "/data/workspaces/runs/rmwpuxyltbe22ac",
+  "statusText": "Lead finished its turn. Reply to continue, or push the branch.",
+  "lastProvider": "claude",
+  "sessionId": "ea4f4d05-20e1-412a-bebf-a1e9bd6f6565",
+  "contextTokens": 57057,
+  "rateLimit": {
+    "status": "allowed",
+    "type": "five_hour",
+    "resetsAt": 1795246200,
+    "at": "2026-11-21T03:38:47.965Z"
+  },
+  "usage": {
+    "claude-haiku-5-5": {
+      "inputTokens": 1198,
+      "outputTokens": 19,
+      "cacheReadTokens": 0,
+      "cacheWriteTokens": 0,
+      "costUsd": 0.0001293
+    },
+    "claude-sonnet-5-5": {
+      "inputTokens": 8,
+      "outputTokens": 2791,
+      "cacheReadTokens": 164951,
+      "cacheWriteTokens": 57055,
+      "costUsd": 0.2726411
+    }
+  }
+}

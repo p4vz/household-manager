@@ -1,0 +1,25 @@
+{
+  "ratings": [],
+  "scorecard": {
+    "computedAt": "2026-11-21T03:58:06.649Z",
+    "forUpdatedAt": "2026-11-21T03:39:12.580Z",
+    "status": "idle",
+    "tokensK": 226,
+    "costUsd": 0.27,
+    "cacheHitPct": 74,
+    "sdkSteps": 5,
+    "turns": 1,
+    "wallMin": 1,
+    "toolCalls": 4,
+    "toolErrors": 0,
+    "delegations": 0,
+    "escalated": 0,
+    "stepCapHits": 0,
+    "usagePauses": 0,
+    "conflicts": 0,
+    "outOfScopeFiles": 0,
+    "linesAdded": 0,
+    "linesDeleted": 0,
+    "commits": 0
+  }
+}
