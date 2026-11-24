@@ -1,0 +1,84 @@
+{
+  "id": "rmwqgwchc88f8c8",
+  "teamSlug": "household-manager/19ff681e",
+  "teamName": "Security audit",
+  "lead": "household-security-lead",
+  "workers": [
+    "security-prober",
+    "household-reviewer",
+    "builder",
+    "challenger"
+  ],
+  "projectSlug": "household-manager",
+  "projectName": "Household Manager",
+  "members": {
+    "lead": {
+      "agent": "household-security-lead"
+    },
+    "workers": [
+      {
+        "agent": "security-prober",
+        "notes": "Live target: https://household-manager-production.up.railway.app only. Non-destructive."
+      },
+      {
+        "agent": "household-reviewer"
+      },
+      {
+        "agent": "builder",
+        "notes": "Implements security fixes the lead approves. Follow AGENTS.md project rules. Run npm run lint && npm run typecheck && npm test before pushing. One branch and PR per task against main."
+      },
+      {
+        "agent": "challenger",
+        "notes": "Try to break each security fix and each finding's claimed severity."
+      }
+    ]
+  },
+  "landOnBase": false,
+  "coordinator": false,
+  "browser": true,
+  "maxDispatches": 12,
+  "task": "Follow-up audit, scoped to PR #8 (commit 3f81b93, merged to main 2026-11-21): the Assistant MCP endpoint at /api/mcp and its OAuth 2.1 server (/.well-known/*, /api/oauth/register, /api/oauth/token, /api/oauth/revoke, /oauth/authorize, src/core/auth/public-paths.ts). It is LIVE on https://household-manager-production.up.railway.app with MCP_ENABLED=true, and it is the first public API, so it changes the no-public-API rule in docs/SECURITY.md. Check: dynamic client registration abuse (unbounded registrations, redirect_uri validation incl. custom schemes and localhost), PKCE S256 enforced and plain rejected, auth code single-use and short-lived and bound to client+redirect_uri, consent only by an allowlisted signed-in member and CSRF-protected, consent screen shows the real client and redirect host, refresh token rotation and revocation, token storage hashed, token scope enforced per tool, tool outputs limited to whitelisted fields and scrubbed (no account numbers, SimpleFIN URL, vault documents), audience/resource checks, CORS, rate limiting, error leakage, and that the new public paths do not open anything else. Probe only that host, non-destructively: you may register at most one test client and must not complete consent or obtain tokens. Report by severity with evidence and fixes. Commit each fix separately; you cannot push, so finish by printing each fix as git format-patch output in its own fenced block with a drafted PR description.",
+  "status": "idle",
+  "repoUrl": "https://github.com/p4vz/household-manager",
+  "baseBranch": "main",
+  "costUsd": 2.965728900000001,
+  "turns": 33,
+  "createdAt": "2026-11-21T13:52:28.464Z",
+  "updatedAt": "2026-11-21T14:04:27.090Z",
+  "requestedBy": "token:f1abb8882a42",
+  "branch": "agents/rmwqgwchc88f8c8",
+  "cwd": "/data/workspaces/runs/rmwqgwchc88f8c8",
+  "statusText": "Lead finished its turn. Reply to continue, or push the branch.",
+  "lastProvider": "claude",
+  "sessionId": "a2150e1e-5e6d-4dd8-bffa-b742559633a0",
+  "contextTokens": 109972,
+  "rateLimit": {
+    "status": "allowed",
+    "type": "five_hour",
+    "resetsAt": 1795284000,
+    "at": "2026-11-21T13:59:13.156Z"
+  },
+  "usage": {
+    "claude-haiku-5-5": {
+      "inputTokens": 17532,
+      "outputTokens": 829,
+      "cacheReadTokens": 0,
+      "cacheWriteTokens": 0,
+      "costUsd": 0.0121677
+    },
+    "claude-opus-5-5": {
+      "inputTokens": 120,
+      "outputTokens": 43727,
+      "cacheReadTokens": 3573566,
+      "cacheWriteTokens": 162028,
+      "costUsd": 2.7297832000000004
+    },
+    "claude-sonnet-5-5": {
+      "inputTokens": 20,
+      "outputTokens": 6154,
+      "cacheReadTokens": 346655,
+      "cacheWriteTokens": 51013,
+      "costUsd": 0.223778
+    }
+  }
+}
