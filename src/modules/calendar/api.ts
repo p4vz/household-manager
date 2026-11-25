@@ -18,11 +18,14 @@ import {
   type GoogleSyncState,
 } from "./google";
 import { calendarEvents } from "./schema";
+import { FAMILY_KEY } from "./google-config";
+import { photoCounts, photoKey } from "./photos";
 
 export type { AgendaDay, AgendaItem, EditableEvent } from "./agenda";
 export type { GoogleSyncState } from "./google";
 export type { EventInput } from "./google-config";
 export { KIOSK_DAYS_AHEAD, monthGridStart } from "./google-config";
+export { addEventPhoto, eventPhotos, eventPhotosConfigured, removeEventPhoto, MAX_EVENT_PHOTO_BYTES, MAX_PHOTOS_PER_EVENT, type EventPhoto } from "./photos";
 /**
  * Two-way family calendar: add, change or delete an event on the shared
  * Google calendar ("Pavel + Raisa"). Each call goes to Google first and then
@@ -145,10 +148,15 @@ export async function kioskCalendar(days: number, now = new Date(), opts: { from
       ),
     googleSyncState(),
   ]);
+  const counts = await photoCounts(
+    FAMILY_KEY,
+    google.filter((g) => g.calendarKey === FAMILY_KEY).map((g) => g.googleEventId),
+  );
+  const googleRows = google.map((g) => ({ ...g, photoCount: counts.get(photoKey(g.calendarKey, g.googleEventId)) ?? 0 }));
   const shown = household.filter((e) => e.sourceModule === null || KIOSK_SOURCES.includes(e.sourceModule));
   return {
-    days: buildAgenda({ today, days, tz, google, household: shown, sources }),
-    earlier: earlierCount > 0 ? buildAgenda({ today, start: first, days: earlierCount, tz, google, household: shown, sources }) : [],
+    days: buildAgenda({ today, days, tz, google: googleRows, household: shown, sources }),
+    earlier: earlierCount > 0 ? buildAgenda({ today, start: first, days: earlierCount, tz, google: googleRows, household: shown, sources }) : [],
     legend: sources.map((s) => ({ label: s.label, color: s.color })),
     configured: googleCalendarConfigured(),
     writableLabel: googleCalendarConfigured() ? (sources.find((s) => s.writable)?.label ?? null) : null,

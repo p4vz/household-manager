@@ -1,4 +1,6 @@
-import { boolean, date, index, pgTable, text, timestamp, uniqueIndex, uuid } from "drizzle-orm/pg-core";
+import { boolean, customType, date, index, integer, pgTable, text, timestamp, uniqueIndex, uuid } from "drizzle-orm/pg-core";
+
+const bytea = customType<{ data: Buffer; driverData: Buffer }>({ dataType: () => "bytea" });
 
 export const calendarEvents = pgTable(
   "calendar_events",
@@ -41,6 +43,8 @@ export const calendarGoogleEvents = pgTable(
     recurring: boolean("recurring").notNull().default(false),
     title: text("title").notNull(),
     location: text("location"),
+    /** Google's description as plain text (the event's notes). */
+    notes: text("notes"),
     allDay: boolean("all_day").notNull().default(false),
     /** Timed events. */
     startsAt: timestamp("starts_at", { withTimezone: true }),
@@ -54,4 +58,27 @@ export const calendarGoogleEvents = pgTable(
     uniqueIndex("calendar_google_events_uq").on(t.calendarKey, t.googleEventId),
     index("calendar_google_events_start_idx").on(t.startsAt),
   ],
+);
+
+/**
+ * Pictures added to a family calendar event in the app. Google events can't
+ * hold them, so they stay here, encrypted with DOC_VAULT_KEY, keyed by the
+ * Google event id (which survives the mirror being rebuilt).
+ */
+export const calendarEventPhotos = pgTable(
+  "calendar_event_photos",
+  {
+    id: uuid("id").primaryKey().defaultRandom(),
+    calendarKey: text("calendar_key").notNull(),
+    googleEventId: text("google_event_id").notNull(),
+    mimeType: text("mime_type").notNull(),
+    cipherText: bytea("cipher_text").notNull(),
+    iv: bytea("iv").notNull(),
+    authTag: bytea("auth_tag").notNull(),
+    bytes: integer("bytes").notNull(),
+    /** "User 1", "User 2" or "Kiosk". */
+    addedBy: text("added_by").notNull(),
+    createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+  },
+  (t) => [index("calendar_event_photos_event_idx").on(t.calendarKey, t.googleEventId)],
 );

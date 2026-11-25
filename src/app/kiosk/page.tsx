@@ -17,7 +17,7 @@ import { ReturnsPanel } from "@/modules/family/ui/returns-panel";
 import { ShoppingPanel } from "@/modules/family/ui/shopping-panel";
 import { UpkeepPanel } from "@/modules/family/ui/upkeep-panel";
 import { addOneTimeChoreAction, addReturnAction, completeUpkeepAction, setChoreDoneAction, setReturnStatusAction, syncCalendarAction } from "./actions";
-import { createEventAction, updateEventAction } from "./calendar-actions";
+import { addEventPhotoAction, createEventAction, eventPhotosAction, updateEventAction } from "./calendar-actions";
 import { loadHub } from "./load";
 import { shoppingActions } from "./shopping-actions-map";
 
@@ -94,6 +94,7 @@ export default async function KioskPage() {
               eventActions={{
                 create: createEventAction,
                 update: updateEventAction,
+                photos: { list: eventPhotosAction, add: addEventPhotoAction },
               }}
             />
           </section>
