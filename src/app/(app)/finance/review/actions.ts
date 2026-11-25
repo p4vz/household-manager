@@ -106,7 +106,11 @@ export async function applyCategoriesAction(form: FormData) {
 
 const categorize = authedAction(z.object({}), async () => {
   const r = await categorizeUncategorized();
-  return r.categorized ? `Categorized ${r.categorized} merchants. Their transactions now show in the list above.` : "Nothing left to categorize.";
+  if (!r.categorized && !r.corrected) return "Nothing left to categorize.";
+  const parts = [`Categorized ${r.categorized} transactions (${r.fromHistory} from your history, ${r.byAi} by Claude)`];
+  if (r.corrected) parts.push(`corrected ${r.corrected} earlier guesses`);
+  if (r.undecided) parts.push(`${r.undecided} left for you`);
+  return `${parts.join(", ")}.`;
 });
 export async function categorizeUncategorizedAction() {
   return done("categories", () => categorize({}));

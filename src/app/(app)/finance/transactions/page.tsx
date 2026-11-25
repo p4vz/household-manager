@@ -5,6 +5,9 @@ import { OWNER_LABELS, listRecentTransactions, viewerFromLabel, visibleAccountIm
 import { CardThumb, CardThumbsProvider } from "@/modules/finance/ui/card-thumbs";
 import { categorizeWithAiAction, setMerchantCategoryAction } from "../actions";
 
+/** Shown next to automatic categories; hover for why. */
+const SOURCE_LABEL: Partial<Record<string, string>> = { history: "from history", ai: "Claude" };
+
 export default async function TransactionsPage() {
   const viewer = viewerFromLabel((await requireUserOrRedirect()).owner);
   const [rows, images, last4] = await Promise.all([
@@ -20,7 +23,7 @@ export default async function TransactionsPage() {
         <h1 className="text-2xl font-semibold">Recent transactions</h1>
         {uncategorized ? (
           <form action={categorizeWithAiAction} className="ml-auto">
-            <Button size="sm" variant="outline">Categorize {uncategorized}+ with AI</Button>
+            <Button size="sm" variant="outline">Categorize {uncategorized}+ (history, then Claude)</Button>
           </form>
         ) : null}
       </div>
@@ -45,6 +48,11 @@ export default async function TransactionsPage() {
                   <input name="subcategory" defaultValue={t.subcategory ?? ""} placeholder="Subcategory"
                     className="h-7 w-32 rounded border bg-transparent px-1" />
                   <button className="text-xs underline">Save</button>
+                  {t.category && t.categorySource && SOURCE_LABEL[t.categorySource] ? (
+                    <span className="self-center text-xs text-muted-foreground" title={t.categoryReason ?? undefined}>
+                      {SOURCE_LABEL[t.categorySource]}
+                    </span>
+                  ) : null}
                 </form>
               </td>
               <td className="whitespace-nowrap">

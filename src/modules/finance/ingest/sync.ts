@@ -4,7 +4,7 @@ import { bus } from "@/core/bus";
 import { db } from "@/core/db/client";
 import { householdTimeZone as tz, zonedParts } from "@/core/time/zoned";
 import { financeAccounts, financeBalanceSnapshots, financeSyncRuns, financeTransactions } from "../schema";
-import { loadRules } from "./categorize";
+import { categorizeTransactions } from "../categorize/run";
 import type { Viewer } from "../access";
 import { getAccessUrl, newAccountOwner } from "./credentials";
 import { guessAccountKind, looksLikeTransfer, normalizeMerchant } from "./merchant";
@@ -78,6 +78,11 @@ export async function syncSimplefin(opts: {
   try {
     const data = await (opts.fetcher ?? fetchAccounts)(accessUrl, start, now);
     const inserted = await applyAccountSet(data, await newAccountOwner());
+    // From history only (no AI here): amount, account, memo, recurrence and
+    // past categories. The scheduled run asks Claude about what is left.
+    await categorizeTransactions({ ai: false, now }).catch((err) =>
+      console.error(`[finance] history categorization failed: ${err instanceof Error ? err.message : err}`),
+    );
     await db()
       .update(financeSyncRuns)
       .set({ status: "ok", finishedAt: new Date(), inserted, messages: data.errors })
@@ -165,11 +170,11 @@ export async function applyAccountSet(data: SimplefinAccountSet, owner: Viewer |
         amount: t.amount,
         description: t.description || description,
         merchant: normalizeMerchant(description),
+        memo: t.memo?.trim() ? stripAccountNumbers(t.memo.trim(), "") || null : null,
         pending: Boolean(t.pending),
         isTransfer: looksLikeTransfer(`${t.description} ${t.payee ?? ""}`),
       };
     });
-    const rules = await loadRules(rows.map((r) => r.merchant));
 
     const earliest = rows.reduce((min, r) => (r.postedDate < min ? r.postedDate : min), rows[0].postedDate);
     if (!account.simplefinStartDate || earliest < account.simplefinStartDate) {
@@ -189,10 +194,8 @@ export async function applyAccountSet(data: SimplefinAccountSet, owner: Viewer |
       );
 
     for (let i = 0; i < rows.length; i += 500) {
-      const chunk = rows.slice(i, i + 500).map((r) => {
-        const rule = rules.get(r.merchant.toLowerCase());
-        return { ...r, category: rule?.category ?? null, subcategory: rule?.subcategory ?? null };
-      });
+      // Categories are worked out after the whole set is in (categorizeTransactions).
+      const chunk = rows.slice(i, i + 500);
       const result = await db()
         .insert(financeTransactions)
         .values(chunk)
@@ -203,6 +206,7 @@ export async function applyAccountSet(data: SimplefinAccountSet, owner: Viewer |
             postedDate: sql`excluded.posted_date`,
             amount: sql`excluded.amount`,
             pending: sql`excluded.pending`,
+            memo: sql`excluded.memo`,
           },
         })
         .returning({ inserted: sql<boolean>`(xmax = 0)` });

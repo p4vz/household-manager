@@ -85,27 +85,38 @@ describe("budget", () => {
 });
 
 describe("AI categorization", () => {
-  it("sends only sanitized merchant data and applies results by id", async () => {
+  it("settles what history can, sends Claude only the rest with sanitized evidence, and applies results by id", async () => {
+    await db.insert(financeTransactions).values({
+      accountId: me, source: "simplefin", externalId: "new-safeway", postedDate: "2026-11-15", amount: -290,
+      description: "SAFEWAY #1234 MEMO", merchant: "Safeway", memo: "Acct ending in 9876",
+    });
     runStructured.mockImplementation(async ({ payload }) => {
-      const merchants = (payload as { merchants: { id: number; merchant: string }[] }).merchants;
+      const items = (payload as { transactions: { id: number; merchant: string }[] }).transactions;
       return {
-        assignments: merchants
+        assignments: items
           .map((m) => ({ id: m.id, category: m.merchant.startsWith("Blue") ? "Food & Dining" : "Shopping", subcategory: null }))
-          .concat([{ id: 99, category: "Shopping", subcategory: null }]),
+          .concat([{ id: 99, category: "Shopping", subcategory: null }, { id: 0, category: "Made Up", subcategory: null }]),
       };
     });
-    const res = await categorizeUncategorized();
-    expect(res.categorized).toBe(2);
+    const res = await categorizeUncategorized({ now: today });
+    expect(res).toMatchObject({ fromHistory: 1, byAi: 2, categorized: 3 });
 
     const call = runStructured.mock.calls[0][0];
     expect(call.tier).toBe("fast");
     const sent = JSON.stringify(call.payload);
-    expect(sent).not.toMatch(/1234/); // store number scrubbed
-    expect(sent).not.toMatch(/Sapphire|Joint Checking|user1|2026-/); // no accounts, owners or dates
-    expect(Object.keys(call.payload.merchants[0]).sort()).toEqual(["count", "id", "merchant", "typicalAmount"]);
+    expect(sent).not.toMatch(/1234|9876/); // store and account numbers scrubbed
+    expect(sent).not.toMatch(/Sapphire|Joint Checking|user1|2026-|Safeway/); // no accounts, owners, dates; history-settled rows stay home
+    expect(Object.keys(call.payload.transactions[0]).sort()).toEqual(["accountType", "amount", "id", "merchant", "pending", "repeats", "similarPast"]);
 
     const rows = await db.select().from(financeTransactions);
-    expect(rows.find((r) => r.merchant === "Blue Bottle 1234")?.category).toBe("Food & Dining");
+    expect(rows.find((r) => r.externalId === "new-safeway")).toMatchObject({ category: "Groceries", categorySource: "history" });
+    expect(rows.find((r) => r.merchant === "Blue Bottle 1234")).toMatchObject({ category: "Food & Dining", categorySource: "ai" });
     expect(rows.find((r) => r.merchant === "Card payment")?.category).toBeNull(); // transfers untouched
+  });
+
+  it("does not call Claude when it is off", async () => {
+    const res = await categorizeUncategorized({ ai: false, now: today });
+    expect(runStructured).not.toHaveBeenCalled();
+    expect(res).toMatchObject({ byAi: 0, undecided: 2 });
   });
 });

@@ -282,6 +282,8 @@ export async function listRecentTransactions(viewer: Viewer, limit = 100) {
       merchant: financeTransactions.merchant,
       category: financeTransactions.category,
       subcategory: financeTransactions.subcategory,
+      categorySource: financeTransactions.categorySource,
+      categoryReason: financeTransactions.categoryReason,
       amount: financeTransactions.amount,
       pending: financeTransactions.pending,
       isTransfer: financeTransactions.isTransfer,
