@@ -1,5 +1,5 @@
 import "server-only";
-import { and, asc, count, desc, eq, gte, inArray, isNull, lt, max, min, sql, type SQL } from "drizzle-orm";
+import { and, asc, count, desc, eq, gte, inArray, isNotNull, isNull, lt, max, min, sql, type SQL } from "drizzle-orm";
 import type { ModuleName } from "@/core/bus/events";
 import { aiConfigured } from "@/core/ai/keys";
 import { db } from "@/core/db/client";
@@ -13,7 +13,7 @@ import {
   saveBudgetOptions,
   setBudget,
 } from "./budget/store";
-import { connectionInfo, storeAccessUrl } from "./ingest/credentials";
+import { clearAccessUrl, connectionInfo, storeAccessUrl } from "./ingest/credentials";
 import { householdTimeZone, localHour } from "./ingest/schedule";
 import { hasReportForMonth, latestAdvisorReport, runAdvisor } from "./rewards/advisor";
 import {
@@ -62,12 +62,26 @@ import {
 // ---------- ingestion ----------
 
 export { previewCsvImport, commitCsvImport, type AccountMapping };
-export { isSyncSlot } from "./ingest/schedule";
+export { isSyncSlot, householdTimeZone } from "./ingest/schedule";
 
 export async function connectSimplefin(setupToken: string) {
   const accessUrl = await claimAccessUrl(setupToken);
   await storeAccessUrl(accessUrl);
   return syncSimplefin({ trigger: "setup" });
+}
+
+/** "Sync now" in Settings. Rate-limited in syncSimplefin. */
+export function syncSimplefinNow() {
+  return syncSimplefin({ trigger: "manual" });
+}
+
+/**
+ * Forget the stored SimpleFIN key. Accounts and transactions already synced
+ * stay. An access URL set in the environment cannot be removed from here.
+ */
+export async function disconnectSimplefin() {
+  await clearAccessUrl();
+  return connectionInfo();
 }
 
 export async function runScheduledSync(now = new Date()) {
@@ -98,10 +112,17 @@ export async function syncStatus() {
     .from(financeSyncRuns)
     .orderBy(desc(financeSyncRuns.startedAt))
     .limit(5);
+  const [lastOk] = await db()
+    .select({ startedAt: financeSyncRuns.startedAt, inserted: financeSyncRuns.inserted })
+    .from(financeSyncRuns)
+    .where(eq(financeSyncRuns.status, "ok"))
+    .orderBy(desc(financeSyncRuns.startedAt))
+    .limit(1);
   const [totals] = await db()
     .select({ n: count(), first: min(financeTransactions.postedDate), last: max(financeTransactions.postedDate) })
     .from(financeTransactions);
-  return { connection, runs, totals };
+  const [accounts] = await db().select({ n: count() }).from(financeAccounts).where(isNotNull(financeAccounts.simplefinId));
+  return { connection, runs, lastOk: lastOk ?? null, totals, simplefinAccounts: accounts?.n ?? 0 };
 }
 
 // ---------- accounts ----------

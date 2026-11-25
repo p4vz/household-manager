@@ -3,12 +3,14 @@
 import { revalidatePath } from "next/cache";
 import { authedAction } from "@/core/actions/authed-action";
 import { checkApiKeyShape, getApiKey, removeApiKey, saveApiKey, testApiKey, type KeyTestResult } from "@/core/ai/keys";
+import { requireUser } from "@/core/auth/guard";
 import { AI_PROVIDERS, AiSettingsSchema } from "@/core/ai/settings";
 import { getAiSettings, saveAiSettings } from "@/core/ai/store";
 import { z } from "zod";
 import { createPairingCode, revokeKioskDevice } from "@/core/kiosk/devices";
 import { formatPairingCode } from "@/core/kiosk/pairing";
 import { revokeAllConnections, revokeConnection, setConnectionPermissions } from "@/core/oauth/server";
+import { connectSimplefin, disconnectSimplefin, syncSimplefinNow } from "@/modules/finance/api";
 
 const save = authedAction(AiSettingsSchema, async (settings) => {
   await saveAiSettings(settings);
@@ -113,4 +115,49 @@ const unpair = authedAction(z.object({ id: z.uuid() }), async ({ id }) => {
 export async function unpairKioskAction(form: FormData) {
   await unpair({ id: form.get("id") });
   revalidatePath("/settings");
+}
+
+// ---- Bank sync (SimpleFIN) ----
+// The setup token and the access URL it is swapped for never come back to
+// the browser and are never logged. Only status and plain errors do.
+
+type BankState = null | { ok: true; message: string } | { ok: false; error: string };
+
+const connectBank = authedAction(z.object({ token: z.string().trim().min(20).max(2000) }), ({ token }) =>
+  connectSimplefin(token),
+);
+
+export async function connectBankAction(_prev: BankState, form: FormData): Promise<BankState> {
+  // Check the session outside the try so a refusal is not turned into a message.
+  await requireUser();
+  try {
+    const r = await connectBank({ token: form.get("token") });
+    revalidatePath("/settings");
+    revalidatePath("/finance", "layout");
+    if (r.status === "ok") return { ok: true, message: `Connected. Pulled ${r.accounts} accounts and ${r.inserted} new transactions.` };
+    if (r.status === "error") return { ok: true, message: `Connected, but the first sync failed: ${r.error}` };
+    return { ok: true, message: `Connected. ${r.reason}` };
+  } catch (err) {
+    if (err instanceof z.ZodError) return { ok: false, error: "That does not look like a SimpleFIN setup token." };
+    return { ok: false, error: err instanceof Error ? err.message : "Could not connect" };
+  }
+}
+
+const syncNow = authedAction(z.object({}), () => syncSimplefinNow());
+
+export async function syncBankNowAction(): Promise<BankState> {
+  const r = await syncNow({});
+  revalidatePath("/settings");
+  revalidatePath("/finance", "layout");
+  if (r.status === "ok") return { ok: true, message: `Synced ${r.accounts} accounts, ${r.inserted} new transactions.` };
+  if (r.status === "skipped") return { ok: true, message: r.reason };
+  return { ok: false, error: r.error };
+}
+
+const disconnectBank = authedAction(z.object({}), () => disconnectSimplefin());
+
+export async function disconnectBankAction() {
+  await disconnectBank({});
+  revalidatePath("/settings");
+  revalidatePath("/finance", "layout");
 }
