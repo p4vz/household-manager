@@ -111,9 +111,10 @@ account. Pavel chose a paired device token (2026-11-23):
   chore; on shopping lists add, tick and drag items, add lists (blank or
   from a template) and stores, reorder, rename, put a list off until a
   date and save a list as a template; add a return or move
-  its status, mark an upkeep task done, refresh the calendar, and add,
-  edit or delete events on the family Google calendar (the spec asks for
-  this on the wall screen; Google keeps deleted events for 30 days).
+  its status, mark an upkeep task done, refresh the calendar, and add or
+  edit events on the family Google calendar. Kids use the screen, so
+  deleting a calendar event is member-only (the phone app; Google keeps
+  deleted events for 30 days), and the kiosk has no way back into the app.
   Deleting anything else (including shopping items, stores, lists and
   templates), adding kids or recurring chores, and every finance, trips and
   settings page stay member-only. `tests/boundaries.test.ts` checks this.

@@ -19,7 +19,8 @@ type Result = { error: string | null };
 export type EventActions = {
   create: (input: EventFormValue) => Promise<Result>;
   update: (input: EventFormValue & { id: string }) => Promise<Result>;
-  remove: (input: { id: string }) => Promise<Result>;
+  /** Left out on the kitchen screen: kids use it, so only the signed-in app can delete events. */
+  remove?: (input: { id: string }) => Promise<Result>;
 };
 
 const START_PRESETS = ["08:00", "09:00", "12:00", "15:00", "17:00", "18:00", "19:00"];
@@ -62,24 +63,27 @@ function endFrom(startDate: string, startTime: string, minutes: number) {
 /**
  * Add or edit an event on the family Google calendar. Built for a finger on
  * the kitchen screen: day chips for the next week, start-time and length
- * presets, and native pickers for anything else. Deleting asks for a second
- * tap instead of a browser dialog (which would freeze a kiosk browser).
+ * presets, and native pickers for anything else. Deleting (phone app only)
+ * asks for a second tap instead of a browser dialog.
  */
 export function EventModal({
   today,
   initial,
+  day,
   calendarLabel,
   actions,
   onClose,
 }: {
   today: string;
   initial?: EditableEventView;
+  /** Day a new event starts on (from a tapped day); defaults to today. */
+  day?: string;
   calendarLabel: string;
   actions: EventActions;
   onClose: () => void;
 }) {
   const [v, setV] = useState<EventFormValue>(
-    initial ?? { title: "", location: "", allDay: false, startDate: today, endDate: today, startTime: "09:00", endTime: "10:00" },
+    initial ?? { title: "", location: "", allDay: false, startDate: day ?? today, endDate: day ?? today, startTime: "09:00", endTime: "10:00" },
   );
   const [error, setError] = useState<string | null>(null);
   const [confirmDelete, setConfirmDelete] = useState(false);
@@ -118,6 +122,7 @@ export function EventModal({
   };
 
   const days = Array.from({ length: 7 }, (_, i) => addDaysIso(today, i));
+  const remove = actions.remove;
   const chip = (on: boolean) => `${tap} border ${on ? "border-sky-600 bg-sky-600 text-white" : "border-slate-300 dark:border-slate-600"}`;
 
   return (
@@ -230,9 +235,9 @@ export function EventModal({
         <ErrorNote error={error} />
 
         <div className="flex gap-2">
-          {initial ? (
+          {initial && remove ? (
             confirmDelete ? (
-              <button type="button" disabled={pending} className={`${tap} bg-red-600 text-white`} onClick={() => run(() => actions.remove({ id: initial.id }))}>
+              <button type="button" disabled={pending} className={`${tap} bg-red-600 text-white`} onClick={() => run(() => remove({ id: initial.id }))}>
                 Tap again to delete
               </button>
             ) : (

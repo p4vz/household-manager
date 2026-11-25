@@ -206,6 +206,7 @@ export function ShoppingPanel({
   dateLabel,
   today,
   expandable = false,
+  printing = false,
 }: {
   board: ShoppingBoard;
   actions: ShoppingActions;
@@ -216,6 +217,8 @@ export function ShoppingPanel({
   today: string;
   /** Kiosk: offer a full-screen view. */
   expandable?: boolean;
+  /** Per-store slip buttons (parked until there is a printer). */
+  printing?: boolean;
 }) {
   const { board, run, error, setLocal, hold } = useShoppingBoard(initial, actions.sync);
   const collapsed = useCollapsed();
@@ -411,6 +414,7 @@ export function ShoppingPanel({
                     onCheck={toggle}
                     onAdd={(name) => add({ name, store: s.store, listId: list.id })}
                     dateLabel={dateLabel}
+                    printing={printing}
                     editing={editing}
                     onDeleteItem={member ? (id) => void run((b) => removeLocal(b, { itemId: id }), () => member.deleteItem({ id })) : undefined}
                     onRemove={member ? () => void run((b) => removeLocal(b, { sectionId: s.id }), () => member.removeStore({ id: s.id })) : undefined}
@@ -611,6 +615,7 @@ function StoreSection({
   onCheck,
   onAdd,
   dateLabel,
+  printing,
   editing,
   onDeleteItem,
   onRemove,
@@ -625,6 +630,7 @@ function StoreSection({
   onCheck: (id: string, checked: boolean) => void;
   onAdd: (name: string) => void;
   dateLabel: string;
+  printing: boolean;
   editing: boolean;
   onDeleteItem?: (id: string) => void;
   onRemove?: () => void;
@@ -668,7 +674,7 @@ function StoreSection({
             <span className="text-sm opacity-60">{open.length}</span>
           </button>
           <Arrows onUp={onUp} onDown={onDown} label={section.store} />
-          <PrintSlipButton label="" className="flex h-12 w-10 items-center justify-center text-lg" lines={() => shoppingSlip(section.store, open, dateLabel)} />
+          {printing ? <PrintSlipButton label="" className="flex h-12 w-10 items-center justify-center text-lg" lines={() => shoppingSlip(section.store, open, dateLabel)} /> : null}
           {onRemove && editing ? (
             confirm ? (
               <button type="button" className={`${tap} bg-red-600 px-2 text-sm text-white`} onClick={onRemove}>

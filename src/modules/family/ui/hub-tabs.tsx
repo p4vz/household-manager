@@ -2,13 +2,14 @@
 
 import { useState, type ReactNode } from "react";
 
-/** Right side of the kiosk: Chores / Shopping / Returns / Upkeep as big tabs, each with a count of open items. */
+/** Right side of the kiosk: Chores / Shopping / Returns / Upkeep as big tabs, each with a count of open items.
+ * When the panel is too narrow for all four, the tab row scrolls sideways. */
 export function HubTabs({ tabs }: { tabs: { key: string; label: string; badge?: number; alert?: boolean; content: ReactNode }[] }) {
   const [active, setActive] = useState(tabs[0]?.key);
   const current = tabs.find((t) => t.key === active) ?? tabs[0];
   return (
     <div className="flex h-full min-h-0 flex-col">
-      <div className="mb-2 flex gap-2" role="tablist">
+      <div className="mb-2 flex gap-2 overflow-x-auto overscroll-x-contain [scrollbar-width:none]" role="tablist">
         {tabs.map((t) => (
           <button
             key={t.key}
@@ -16,7 +17,7 @@ export function HubTabs({ tabs }: { tabs: { key: string; label: string; badge?: 
             role="tab"
             aria-selected={t.key === current?.key}
             onClick={() => setActive(t.key)}
-            className={`min-h-12 min-w-0 flex-1 whitespace-nowrap rounded-xl px-1 text-base font-semibold xl:text-lg ${
+            className={`min-h-12 flex-[1_0_auto] whitespace-nowrap rounded-xl px-3 text-base font-semibold xl:text-lg ${
               t.key === current?.key ? "bg-slate-900 text-white dark:bg-white dark:text-slate-900" : "bg-white dark:bg-slate-800"
             }`}
           >

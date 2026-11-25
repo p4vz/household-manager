@@ -22,7 +22,18 @@ export type AgendaItem = {
 
 export type EditableEvent = EventInput & { id: string; recurring: boolean };
 
-export type AgendaDay = { date: string; label: string; isToday: boolean; items: AgendaItem[] };
+export type AgendaDay = {
+  date: string;
+  /** "Today", "Tomorrow" or "Friday, Nov 27" (one line, for slips and the assistant). */
+  label: string;
+  /** First line of a day header: "Today", "Tomorrow" or the weekday. */
+  heading: string;
+  /** Second line of a day header: "November 27". */
+  subheading: string;
+  isToday: boolean;
+  isPast: boolean;
+  items: AgendaItem[];
+};
 
 export type GoogleRow = {
   id: string;
@@ -72,8 +83,18 @@ export function dayLabel(date: string, today: string): string {
   );
 }
 
+/** Two-line day header: "Today" / "November 25", "Friday" / "November 27". */
+export function dayHeading(date: string, today: string): { heading: string; subheading: string } {
+  const d = new Date(`${date}T00:00:00Z`);
+  const heading =
+    date === today ? "Today" : date === addDays(today, 1) ? "Tomorrow" : new Intl.DateTimeFormat("en-US", { timeZone: "UTC", weekday: "long" }).format(d);
+  return { heading, subheading: new Intl.DateTimeFormat("en-US", { timeZone: "UTC", month: "long", day: "numeric" }).format(d) };
+}
+
 export function buildAgenda(input: {
   today: string;
+  /** First day to build; defaults to today (the month view also needs earlier days). */
+  start?: string;
   days: number;
   tz: string;
   google: GoogleRow[];
@@ -86,7 +107,7 @@ export function buildAgenda(input: {
   const f = timeFmt(tz);
 
   for (let i = 0; i < input.days; i++) {
-    const date = addDays(today, i);
+    const date = addDays(input.start ?? today, i);
     const dayStart = zonedMidnight(date, tz);
     const dayEnd = zonedMidnight(addDays(date, 1), tz);
     const items: AgendaItem[] = [];
@@ -142,7 +163,7 @@ export function buildAgenda(input: {
     }
 
     items.sort((a, b) => a.sortKey - b.sortKey || a.title.localeCompare(b.title));
-    out.push({ date, label: dayLabel(date, today), isToday: date === today, items });
+    out.push({ date, label: dayLabel(date, today), ...dayHeading(date, today), isToday: date === today, isPast: date < today, items });
   }
   return out;
 }

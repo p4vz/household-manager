@@ -51,6 +51,7 @@ export function FamilyPhone({
   todayIso,
   calendar,
   dateLabel,
+  printing = false,
   icons,
   actions,
 }: {
@@ -64,6 +65,8 @@ export function FamilyPhone({
   todayIso: string;
   calendar: PhoneCalendarView;
   dateLabel: string;
+  /** Slip printing is parked until there is a printer. */
+  printing?: boolean;
   icons: readonly string[];
   actions: FamilyPhoneActions;
 }) {
@@ -79,9 +82,11 @@ export function FamilyPhone({
 
   return (
     <div className="mx-auto flex w-full max-w-md flex-col gap-3 text-slate-900 dark:text-slate-100">
-      <div className="flex gap-2">
-        <PrintTodayButtons className={`${tap} flex-1 border`} dateLabel={dateLabel} kids={kids} today={today} returns={returns} upkeep={upkeep} />
-      </div>
+      {printing ? (
+        <div className="flex gap-2">
+          <PrintTodayButtons className={`${tap} flex-1 border`} dateLabel={dateLabel} kids={kids} today={today} returns={returns} upkeep={upkeep} />
+        </div>
+      ) : null}
       <nav className="sticky top-0 z-10 grid grid-cols-6 gap-1 rounded-xl bg-slate-100 p-1 dark:bg-slate-800">
         {tabs.map(([key, icon, label]) => (
           <button
@@ -99,7 +104,7 @@ export function FamilyPhone({
         {tab === "calendar" ? (
           <PhoneCalendar {...calendar} actions={actions.calendar} sync={actions.syncCalendar} />
         ) : tab === "shopping" ? (
-          <ShoppingPanel board={shopping} today={todayIso} dateLabel={dateLabel} actions={actions.shopping} member={actions.shoppingMember} />
+          <ShoppingPanel board={shopping} today={todayIso} dateLabel={dateLabel} actions={actions.shopping} member={actions.shoppingMember} printing={printing} />
         ) : tab === "chores" ? (
           <ChoreBoard kids={kids} icons={icons} layout="phone" actions={{ setDone: actions.setChoreDone, addOneTime: actions.addOneTimeChore }} />
         ) : tab === "returns" ? (

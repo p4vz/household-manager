@@ -13,13 +13,14 @@ import {
   setReturnStatusAction,
   syncCalendarAction,
 } from "../../kiosk/actions";
-import { createEventAction, deleteEventAction, updateEventAction } from "../../kiosk/calendar-actions";
+import { createEventAction, updateEventAction } from "../../kiosk/calendar-actions";
 import { loadHub } from "../../kiosk/load";
 import { shoppingActions } from "../../kiosk/shopping-actions-map";
 import {
   addChoreAction,
   addKidAction,
   archiveChoreAction,
+  deleteEventAction,
   deleteReturnAction,
   deleteShoppingItemAction,
   deleteShoppingListAction,
@@ -48,13 +49,14 @@ export default async function FamilyPage() {
         today={hub.calendar.days[0]}
         todayIso={hub.today}
         calendar={{
-          days: hub.calendar.days,
+          days: hub.calendar.days.slice(0, 7),
           today: hub.today,
           writableLabel: hub.calendar.writableLabel,
           configured: hub.calendar.configured,
           syncError: hub.calendar.syncError,
         }}
         dateLabel={hub.todayLabel}
+        printing={hub.printing}
         icons={CHORE_ICONS}
         actions={{
           setChoreDone: setChoreDoneAction,

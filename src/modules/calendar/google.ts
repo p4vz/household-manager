@@ -4,11 +4,12 @@ import { and, eq, gt, gte, lt, notInArray, or } from "drizzle-orm";
 import { db } from "@/core/db/client";
 import { outboundFetch } from "@/core/net/outbound";
 import { getSetting, setSetting } from "@/core/settings/store";
-import { addDays, householdTimeZone, zonedMidnight, zonedParts } from "@/core/time/zoned";
+import { householdTimeZone, zonedMidnight, zonedParts } from "@/core/time/zoned";
 import {
   allCalendarSources,
   EventInputError,
   findCalendarByName,
+  mirrorWindow,
   toGoogleBody,
   toStoredEvent,
   type CalendarListEntry,
@@ -33,8 +34,8 @@ import { calendarGoogleEvents } from "./schema";
  *   The family calendar is then found by its name.
  *
  * Only oauth2.googleapis.com and www.googleapis.com are called, both already
- * on the outbound allowlist. Events are mirrored for yesterday through the
- * next 9 days; only title, time, location and all-day are kept, plus the
+ * on the outbound allowlist. Events are mirrored from the start of this
+ * month's grid (or yesterday) to 10 weeks out (mirrorWindow); only title, time, location and all-day are kept, plus the
  * etag and update time so an edit never overwrites a newer change.
  */
 const SCOPES = [
@@ -208,8 +209,9 @@ export async function syncGoogleCalendars(opts: { now?: Date; maxAgeMs?: number;
 async function runSync(now: Date): Promise<GoogleSyncState> {
   const tz = householdTimeZone();
   const today = zonedParts(now, tz).date;
-  const windowStart = zonedMidnight(addDays(today, -1), tz);
-  const windowEnd = zonedMidnight(addDays(today, 10), tz);
+  const window = mirrorWindow(today);
+  const windowStart = zonedMidnight(window.from, tz);
+  const windowEnd = zonedMidnight(window.to, tz);
   const sources = calendarSources();
   const failures: string[] = [];
 

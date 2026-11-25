@@ -22,6 +22,7 @@ import { calendarEvents } from "./schema";
 export type { AgendaDay, AgendaItem, EditableEvent } from "./agenda";
 export type { GoogleSyncState } from "./google";
 export type { EventInput } from "./google-config";
+export { KIOSK_DAYS_AHEAD, monthGridStart } from "./google-config";
 /**
  * Two-way family calendar: add, change or delete an event on the shared
  * Google calendar ("Pavel + Raisa"). Each call goes to Google first and then
@@ -101,7 +102,10 @@ export async function listUpcoming(fromDate: string, limit = 20) {
 const KIOSK_SOURCES = ["trips"];
 
 export type KioskCalendar = {
+  /** Today onwards. */
   days: AgendaDay[];
+  /** Days from `opts.from` up to yesterday (for the month view); empty unless asked for. */
+  earlier: AgendaDay[];
   legend: { label: string; color: string }[];
   configured: boolean;
   /** Label of the calendar new events go to, e.g. "Pavel + Raisa". */
@@ -115,13 +119,15 @@ export type KioskCalendar = {
  * reminders are left out: the kiosk shows upkeep in its own panel and money
  * matters do not belong on a shared wall screen.
  */
-export async function kioskCalendar(days: number, now = new Date()): Promise<KioskCalendar> {
+export async function kioskCalendar(days: number, now = new Date(), opts: { from?: string } = {}): Promise<KioskCalendar> {
   const tz = householdTimeZone();
   const today = zonedParts(now, tz).date;
+  const first = opts.from && opts.from < today ? opts.from : today;
+  const earlierCount = Math.round((Date.parse(today) - Date.parse(first)) / 86_400_000);
   const last = addDays(today, days);
   const sources = calendarSources();
   const [google, household, sync] = await Promise.all([
-    storedGoogleEvents(zonedMidnight(today, tz), zonedMidnight(last, tz), today, last),
+    storedGoogleEvents(zonedMidnight(first, tz), zonedMidnight(last, tz), first, last),
     db()
       .select({
         id: calendarEvents.id,
@@ -134,7 +140,7 @@ export async function kioskCalendar(days: number, now = new Date()): Promise<Kio
       .where(
         and(
           lte(calendarEvents.startDate, last),
-          or(gte(calendarEvents.endDate, today), and(isNull(calendarEvents.endDate), gte(calendarEvents.startDate, today))),
+          or(gte(calendarEvents.endDate, first), and(isNull(calendarEvents.endDate), gte(calendarEvents.startDate, first))),
         ),
       ),
     googleSyncState(),
@@ -142,6 +148,7 @@ export async function kioskCalendar(days: number, now = new Date()): Promise<Kio
   const shown = household.filter((e) => e.sourceModule === null || KIOSK_SOURCES.includes(e.sourceModule));
   return {
     days: buildAgenda({ today, days, tz, google, household: shown, sources }),
+    earlier: earlierCount > 0 ? buildAgenda({ today, start: first, days: earlierCount, tz, google, household: shown, sources }) : [],
     legend: sources.map((s) => ({ label: s.label, color: s.color })),
     configured: googleCalendarConfigured(),
     writableLabel: googleCalendarConfigured() ? (sources.find((s) => s.writable)?.label ?? null) : null,

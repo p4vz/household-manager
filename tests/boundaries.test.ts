@@ -156,13 +156,17 @@ describe("external surface", () => {
     }
   });
 
-  it("kiosk calendar actions delete nothing but family calendar events", () => {
+  it("kiosk calendar actions add and change events but never delete them (kids use the kiosk)", () => {
     const src = readFileSync(join(SRC, "app/kiosk/calendar-actions.ts"), "utf8");
     expect(src).not.toMatch(/authedAction\(|finance|trips/i);
     const imports = [...src.matchAll(/from "([^"]+)"/g)].map((m) => m[1]);
     expect(imports).toEqual(["next/cache", "zod", "@/core/actions/kiosk-action", "@/modules/calendar/api"]);
-    const deletes = [...src.matchAll(/\b(delete\w*|remove\w*)\(/gi)].map((m) => m[1]);
-    expect(new Set(deletes)).toEqual(new Set(["deleteGoogleEvent"]));
+    expect(src).not.toMatch(/\b(delete\w*|remove\w*)\(/i);
+    expect(src).not.toMatch(/deleteGoogleEvent/);
+    // The one place an event is deleted is the member-only family actions file.
+    const users = files.filter((f) => /deleteGoogleEvent\b/.test(readFileSync(f, "utf8"))).map(rel).sort();
+    expect(users).toEqual(["app/(app)/family/actions.ts", "modules/calendar/api.ts", "modules/calendar/google.ts"]);
+    expect(readFileSync(join(SRC, "app/(app)/family/actions.ts"), "utf8")).toMatch(/export const deleteEventAction = authedAction\(/);
   });
 
   it("the kiosk device cookie is honoured only on /kiosk", () => {
