@@ -18,6 +18,7 @@ import {
   type EventInput,
   type GoogleEvent,
 } from "./google-config";
+import { parseIcs, schoolEvents, townshipFeeds, trashEvents } from "./layers";
 import { calendarEventPhotos, calendarGoogleEvents } from "./schema";
 
 /**
@@ -34,8 +35,10 @@ import { calendarEventPhotos, calendarGoogleEvents } from "./schema";
  *   with the calendar.events and calendar.calendarlist.readonly scopes.
  *   The family calendar is then found by its name.
  *
- * Only oauth2.googleapis.com and www.googleapis.com are called, both already
- * on the outbound allowlist. Events are mirrored from the start of this
+ * Only oauth2.googleapis.com and www.googleapis.com are called for Google,
+ * both already on the outbound allowlist, plus www.abingtonpa.gov and the
+ * school district's calendar host for the township layer's public feeds (no
+ * credentials or household data sent). Events are mirrored from the start of this
  * month's grid (or yesterday) to 10 weeks out (mirrorWindow); only title, time, location and all-day are kept, plus the
  * etag and update time so an edit never overwrites a newer change.
  */
@@ -182,6 +185,48 @@ async function fetchEvents(calendarId: string, label: string, timeMin: Date, tim
   return items;
 }
 
+/**
+ * The township feed is fetched at most every 6 hours (it changes rarely and
+ * is a small town's website). Between fetches its stored rows are kept.
+ */
+const TOWNSHIP_INTERVAL_MS = 6 * 60 * 60_000;
+let townshipFetchedAt = 0;
+
+async function fetchTownshipEvents(tz: string, window: { from: string; to: string }): Promise<GoogleEvent[]> {
+  const events: GoogleEvent[] = trashEvents(process.env, window.from, window.to);
+  for (const feed of townshipFeeds(process.env)) {
+    const res = await outboundFetch(feed.url, { headers: { accept: "text/calendar" } });
+    if (!res.ok) throw new Error(`Abington Township: ${feed.label} feed answered HTTP ${res.status}`);
+    const text = await res.text();
+    if (!text.includes("BEGIN:VCALENDAR")) throw new Error(`Abington Township: ${feed.label} feed was not a calendar`);
+    const prefix = feed.label.replace(/\W+/g, "-") + "-";
+    events.push(...parseIcs(text.slice(0, 2_000_000), tz, prefix).filter((e) => feed.keep(e.summary ?? "", e.location ?? "")));
+  }
+  return events;
+}
+
+/** Events in [from, to) by the same rules storedGoogleEvents reads them with. */
+function inWindow(e: GoogleEvent, fromDate: string, toDate: string, from: Date, to: Date): boolean {
+  if (e.start?.date) return e.start.date < toDate && (e.end?.date ?? e.start.date) > fromDate;
+  if (!e.start?.dateTime) return false;
+  const s = new Date(e.start.dateTime);
+  const end = new Date(e.end?.dateTime ?? e.start.dateTime);
+  return s < to && end >= from;
+}
+
+/** Events for one source, or null to keep what is stored (township feed not due yet). */
+async function sourceEvents(source: CalendarSource, tz: string, window: { from: string; to: string }, start: Date, end: Date, now: Date): Promise<GoogleEvent[] | null> {
+  if (source.kind === "static") return schoolEvents().filter((e) => inWindow(e, window.from, window.to, start, end));
+  if (source.kind === "ics") {
+    if (now.getTime() - townshipFetchedAt < TOWNSHIP_INTERVAL_MS) return null;
+    const events = (await fetchTownshipEvents(tz, window)).filter((e) => inWindow(e, window.from, window.to, start, end));
+    townshipFetchedAt = now.getTime();
+    return events;
+  }
+  const cal = await resolveCalendar(source);
+  return fetchEvents(cal.id, source.label, start, end);
+}
+
 let running: Promise<GoogleSyncState> | null = null;
 
 export async function googleSyncState(): Promise<GoogleSyncState> {
@@ -218,8 +263,9 @@ async function runSync(now: Date): Promise<GoogleSyncState> {
 
   for (const source of sources) {
     try {
-      const cal = await resolveCalendar(source);
-      const events = (await fetchEvents(cal.id, source.label, windowStart, windowEnd))
+      const fetched = await sourceEvents(source, tz, window, windowStart, windowEnd, now);
+      if (!fetched) continue;
+      const events = fetched
         .map(toStoredEvent)
         .filter((e): e is NonNullable<typeof e> => e !== null)
         .map((e) => (source.hideNotes ? { ...e, notes: null } : e));

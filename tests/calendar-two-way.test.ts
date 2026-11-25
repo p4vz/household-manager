@@ -31,15 +31,18 @@ describe("family calendar config", () => {
       ["family", true],
       ["kids", false],
       ["us-holidays", false],
+      ["school-rhes", false],
+      ["abington-township", false],
     ]);
   });
 
   it("adds US holidays read-only, without notes, unless turned off", () => {
-    const h = allCalendarSources({ GOOGLE_CALENDAR_ID: "fam@x" }).at(-1)!;
+    const h = allCalendarSources({ GOOGLE_CALENDAR_ID: "fam@x" }).find((x) => x.key === "us-holidays")!;
     expect(h).toMatchObject({ key: "us-holidays", label: "US holidays", writable: false, hideNotes: true, calendarId: "en.usa#holiday@group.v.calendar.google.com" });
-    expect(allCalendarSources({ GOOGLE_CALENDAR_ID: "fam@x", US_HOLIDAYS: "off" }).map((x) => x.key)).toEqual(["family"]);
+    const off = { RHES_CALENDAR: "off", ABINGTON_TOWNSHIP: "off" };
+    expect(allCalendarSources({ GOOGLE_CALENDAR_ID: "fam@x", US_HOLIDAYS: "off", ...off }).map((x) => x.key)).toEqual(["family"]);
     // A hand-made "US holidays" extra doesn't clash with the built-in one.
-    const dup = allCalendarSources({ GOOGLE_CALENDAR_ID: "fam@x", GOOGLE_CALENDARS: "Holidays|en.usa#holiday@group.v.calendar.google.com" });
+    const dup = allCalendarSources({ GOOGLE_CALENDAR_ID: "fam@x", GOOGLE_CALENDARS: "Holidays|en.usa#holiday@group.v.calendar.google.com", ...off });
     expect(dup.map((x) => x.key)).toEqual(["family", "us-holidays"]);
   });
 
