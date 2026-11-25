@@ -17,6 +17,7 @@ const id = z.uuid();
 function refresh() {
   revalidatePath("/kiosk");
   revalidatePath("/family");
+  revalidatePath("/calendar");
 }
 
 const hhmm = z.string().regex(/^([01]\d|2[0-3]):[0-5]\d$/);

@@ -29,6 +29,7 @@ const store = z.string().trim().min(1).max(40);
 function refresh() {
   revalidatePath("/kiosk");
   revalidatePath("/family");
+  revalidatePath("/calendar");
 }
 
 export const setChoreDoneAction = kioskAction(z.object({ choreId: id, done: z.boolean() }), async ({ choreId, done }) => {

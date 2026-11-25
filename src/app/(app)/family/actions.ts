@@ -35,6 +35,7 @@ const id = z.uuid();
 function refresh() {
   revalidatePath("/family");
   revalidatePath("/kiosk");
+  revalidatePath("/calendar");
 }
 
 export const addKidAction = authedAction(
