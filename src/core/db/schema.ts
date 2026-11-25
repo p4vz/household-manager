@@ -10,3 +10,4 @@ export * from "@/modules/maintenance/schema";
 export * from "@/modules/calendar/schema";
 export * from "@/modules/trips/schema";
 export * from "@/modules/family/schema";
+export * from "@/assistant/schema";

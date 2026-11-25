@@ -432,3 +432,24 @@ export async function listExpectedExpenses(fromDate: string) {
 
 export const OWNER_LABELS: Record<Owner, string> = { user1: "Me", user2: "Wife", joint: "Joint" };
 export { OWNERS, ACCOUNT_KINDS, type Owner, type AccountKind } from "./schema";
+
+// ---------- in-app assistant (src/assistant) ----------
+
+export {
+  viewerFromLabel,
+  visibleAccountIds,
+  assistantAccounts,
+  searchTransactions,
+  categoryCounts,
+  monthlySpendByCategory,
+  transactionsForEdit,
+  updateTransactionFields,
+  getMerchantRule,
+  setMerchantRule,
+  deleteMerchantRule,
+  MAX_SEARCH_ROWS,
+  type Viewer,
+  type TransactionSearch,
+  type TransactionEditable,
+  type MerchantRule,
+} from "./assistant";

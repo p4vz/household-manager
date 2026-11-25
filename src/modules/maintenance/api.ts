@@ -1,5 +1,5 @@
 import "server-only";
-import { and, asc, eq, isNull, lte } from "drizzle-orm";
+import { and, asc, eq, gte, isNull, lte, or } from "drizzle-orm";
 import { bus } from "@/core/bus";
 import { db } from "@/core/db/client";
 import { maintenanceTasks } from "./schema";
@@ -137,4 +137,24 @@ export async function deleteTask(taskId: string) {
     .where(and(eq(maintenanceTasks.id, taskId), isNull(maintenanceTasks.completedOn)))
     .returning({ id: maintenanceTasks.id });
   if (deleted.length) await bus.publish("maintenance", "maintenance.taskCancelled", { taskId });
+}
+
+/** One task by id, or null. */
+export async function getTask(taskId: string) {
+  const [task] = await db().select().from(maintenanceTasks).where(eq(maintenanceTasks.id, taskId));
+  return task ?? null;
+}
+
+/** Open tasks plus tasks completed on or after `completedSince`, soonest due first. */
+export async function listTasks(opts: { completedSince?: string | null; limit?: number } = {}) {
+  return db()
+    .select()
+    .from(maintenanceTasks)
+    .where(
+      opts.completedSince
+        ? or(isNull(maintenanceTasks.completedOn), gte(maintenanceTasks.completedOn, opts.completedSince))
+        : isNull(maintenanceTasks.completedOn),
+    )
+    .orderBy(asc(maintenanceTasks.dueDate))
+    .limit(Math.min(opts.limit ?? 200, 500));
 }

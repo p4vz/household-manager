@@ -250,6 +250,34 @@ app/oauth/authorize   consent screen
 category a charge would land in. Tables: `core_oauth_clients`,
 `core_oauth_codes`, `core_oauth_grants`.
 
+## Ask Claude (in-app assistant)
+
+`src/assistant/` lets the built-in Claude (subscription first, API key as
+backup; Gemini works too) answer questions across every module and clean up
+data. Page: `/assistant`, history at `/assistant/history`.
+
+- **Tools run in-process.** On the subscription they are an Agent SDK
+  in-process MCP server (`createSdkMcpServer`), allowed by exact name with
+  Claude Code's own tools off; on an API key they are AI SDK tools. Nothing
+  is exposed over HTTP. Tools call module `api.ts` only.
+- **Reads** act as the signed-in member: finance shows joint accounts and
+  that member's own (`viewerFromLabel`, `visibleAccountIds`). Rows carry
+  short refs ("t12") that map to ids on the server, per conversation.
+- **Edits are changesets.** Edit tools only draft; at the end of the turn
+  `changesets.ts` records each change with the editable fields before and
+  after. Up to 10 changes without deletes apply at once (Pavel's choice,
+  `policy.ts`); bigger batches and any delete wait for Apply. Applying
+  re-reads each row and skips it as a conflict if it changed meanwhile.
+  Undo works per change or per batch and leaves rows that changed again.
+  Batches are capped at 200 changes.
+- **What can change** (`entities.ts`): transaction category, subcategory,
+  notes and transfer flag; merchant category rules; upkeep tasks; shopping
+  items; store returns; ticking or archiving chores. Deletes are soft where
+  the module has it (chores archive) and otherwise restorable from the
+  snapshot. Nothing moves money, edits amounts, accounts, bank connections,
+  keys, settings or assistant permissions. Calendar and trips are read-only.
+- Conversations and changesets belong to the member who had them.
+
 ## Kitchen kiosk and family hub
 
 `/kiosk` is a single 1920x1080 touch screen (no page scroll): calendar on

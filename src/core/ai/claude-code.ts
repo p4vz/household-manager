@@ -2,7 +2,7 @@ import "server-only";
 import { mkdirSync, writeFileSync, existsSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { query } from "@anthropic-ai/claude-agent-sdk";
+import { query, type McpSdkServerConfigWithInstance } from "@anthropic-ai/claude-agent-sdk";
 import { z } from "zod";
 import type { KeyTestResult } from "./keys";
 
@@ -13,8 +13,11 @@ import type { KeyTestResult } from "./keys";
  * limits instead of being billed per token.
  *
  * Locked down for this app:
- * - No tools (except WebSearch for the card-catalog research step), no
- *   settings files, no saved sessions, an empty working directory.
+ * - None of Claude Code's own tools (files, shell, web), except WebSearch
+ *   for the card-catalog research step. The in-app assistant adds its
+ *   household tools as an in-process SDK MCP server (never HTTP), allowed
+ *   by exact name. No settings files, no saved sessions, an empty working
+ *   directory.
  * - The child gets a minimal environment: the token and what it needs to
  *   run. DATABASE_URL, AUTH_SECRET and every other secret stay out.
  * - Non-essential traffic (telemetry, update checks) is off, so the child
@@ -66,6 +69,12 @@ type RunOpts = {
   /** JSON Schema for structured output; the parsed object comes back as `output`. */
   jsonSchema?: Record<string, unknown>;
   webSearch?: boolean;
+  /**
+   * In-process tools (the in-app assistant): an SDK MCP server that runs
+   * inside this Node process, never over HTTP. Only the listed tool names
+   * are allowed; Claude Code's own tools (files, shell, web) stay off.
+   */
+  inProcessTools?: { server: McpSdkServerConfigWithInstance; name: string; allow: string[] };
   maxTurns?: number;
   timeoutMs?: number;
 };
@@ -86,7 +95,11 @@ export async function runClaudeCode(opts: RunOpts): Promise<{ text: string; outp
         cwd: join(home, "work"),
         env: childEnv(opts.token, home),
         tools: opts.webSearch ? ["WebSearch"] : [],
-        allowedTools: opts.webSearch ? ["WebSearch"] : [],
+        allowedTools: [
+          ...(opts.webSearch ? ["WebSearch"] : []),
+          ...(opts.inProcessTools?.allow.map((t) => `mcp__${opts.inProcessTools!.name}__${t}`) ?? []),
+        ],
+        ...(opts.inProcessTools ? { mcpServers: { [opts.inProcessTools.name]: opts.inProcessTools.server }, strictMcpConfig: true } : {}),
         settingSources: [],
         persistSession: false,
         permissionMode: "dontAsk",

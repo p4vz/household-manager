@@ -71,6 +71,13 @@
       "when": 1795617547527,
       "tag": "0009_kiosk_two_way_calendar",
       "breakpoints": true
+    },
+    {
+      "idx": 10,
+      "version": "7",
+      "when": 1795622645224,
+      "tag": "0010_assistant_changesets",
+      "breakpoints": true
     }
   ]
 }
