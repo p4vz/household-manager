@@ -20,7 +20,7 @@ export async function runStructured<S extends z.ZodType, P>(opts: {
 }): Promise<z.infer<S>> {
   const settings = await getAiSettings();
   const result = await generateText({
-    model: languageModel(settings, opts.tier),
+    model: await languageModel(settings, opts.tier),
     system: opts.system,
     prompt: `${opts.task}\n\nDATA (JSON):\n${JSON.stringify(opts.payload)}`,
     output: Output.object({ schema: opts.schema }),
@@ -55,10 +55,10 @@ export async function runWebResearch<S extends z.ZodType, P>(opts: {
 }): Promise<{ output: z.infer<S>; notes: string; sources: WebSource[] }> {
   const settings = await getAiSettings();
   const research = await generateText({
-    model: languageModel(settings, opts.tier),
+    model: await languageModel(settings, opts.tier),
     system: opts.system,
     prompt: `${opts.task}\n\nDATA (JSON):\n${JSON.stringify(opts.payload)}\n\nSearch the web, then write factual notes. Cite the page each fact came from.`,
-    tools: webSearchTools(settings, { allowedDomains: opts.allowedDomains, maxUses: opts.maxSearches }),
+    tools: await webSearchTools(settings, { allowedDomains: opts.allowedDomains, maxUses: opts.maxSearches }),
     stopWhen: isStepCount(4),
     maxRetries: 2,
   });
@@ -67,7 +67,7 @@ export async function runWebResearch<S extends z.ZodType, P>(opts: {
     .map((s) => ({ url: s.url, title: s.title ?? null }));
 
   const extract = await generateText({
-    model: languageModel(settings, "fast"),
+    model: await languageModel(settings, "fast"),
     system: "You convert research notes into JSON. Use only facts stated in the notes. Do not add anything the notes do not say.",
     prompt: `${opts.task}\n\nNOTES:\n${research.text}\n\nSOURCES:\n${sources.map((s) => `- ${s.title ?? ""} ${s.url}`).join("\n")}`,
     output: Output.object({ schema: opts.schema }),

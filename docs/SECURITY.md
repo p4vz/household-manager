@@ -267,6 +267,20 @@ the setup screen is stored in `core_settings` encrypted with AES-256-GCM
 under a key derived from `AUTH_SECRET` (HKDF). It is never sent to the
 browser. Rotating `AUTH_SECRET` means reconnecting SimpleFIN.
 
+AI provider API keys can also be pasted in Settings > AI configuration (any
+allowlisted user). They are stored the same way (`core_settings` keys
+`ai.key.anthropic` / `ai.key.gemini`, AES-256-GCM under the `AUTH_SECRET`
+derived key) and a saved key wins over `ANTHROPIC_API_KEY` /
+`GEMINI_API_KEY`, which stay as the fallback. The browser only ever gets a
+masked hint (`sk-ant-…abcd`, prefix plus last four characters) computed at
+save time; the key is never returned by a Server Action, never logged, and
+error messages are fixed strings. "Test" lists the provider's models
+(`api.anthropic.com/v1/models`, `generativelanguage.googleapis.com/v1beta/models`)
+with the key in a header, spends no tokens, sends no household data and
+reports only the HTTP status. A key the provider rejects is not saved.
+Removing a key deletes the row. Rotating `AUTH_SECRET` makes saved keys
+unreadable; calls then fall back to the environment until they are re-entered.
+
 ## Google Calendar sync
 
 Two-way with the shared family calendar ("Pavel + Raisa"); read-only for

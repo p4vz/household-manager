@@ -13,7 +13,7 @@ export default async function TriviaPage({ params, searchParams }: PageProps<"/t
   if (!trip) notFound();
   const back = `/trips/${slug}/trivia`;
   const facts = await triviaForTrip(trip.id);
-  const ai = aiConfigured();
+  const ai = await aiConfigured();
 
   return (
     <div className="space-y-6">

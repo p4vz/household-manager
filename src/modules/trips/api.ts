@@ -539,7 +539,7 @@ export async function saveListAsTemplate(listId: string, name: string) {
 
 /** Ask the AI what is missing, grounded in the forecast and who is going; suggestions are appended as normal items. */
 export async function suggestForList(listId: string) {
-  if (!aiConfigured()) throw new Error("Add a Gemini or Claude API key to use suggestions");
+  if (!(await aiConfigured())) throw new Error("Add a Gemini or Claude API key to use suggestions");
   const list = await one(db().select().from(tripsPackingLists).where(eq(tripsPackingLists.id, listId)), "Packing list");
   const trip = await one(db().select().from(tripsTrips).where(eq(tripsTrips.id, list.tripId)), "Trip");
   const [dests, items, travelers] = await Promise.all([
@@ -687,7 +687,7 @@ export async function allergyCardsForTrip(tripId: string) {
  * because the wording changed.
  */
 export async function generateCardsForDestination(destinationId: string) {
-  if (!aiConfigured()) throw new Error("Add a Gemini or Claude API key to write allergy cards");
+  if (!(await aiConfigured())) throw new Error("Add a Gemini or Claude API key to write allergy cards");
   const d = await destination(destinationId);
   if (d.languages.length === 0) throw new Error("Add at least one language for this destination");
   const people = (await listTravelers()).filter((t) => t.celiac || t.glutenFree);
@@ -730,7 +730,7 @@ export async function triviaForTrip(tripId: string) {
 
 /** Trivia grounded in the place's Wikipedia summary, with the source kept beside each fact. */
 export async function generateTriviaFor(destinationId: string) {
-  if (!aiConfigured()) throw new Error("Add a Gemini or Claude API key to generate trivia");
+  if (!(await aiConfigured())) throw new Error("Add a Gemini or Claude API key to generate trivia");
   const d = await destination(destinationId);
   const wiki = await fetchWikiSummary(d.name);
   const result = await generateTrivia({ place: d.name, country: d.country, reference: wiki?.extract ?? null, count: 12 });
@@ -785,7 +785,7 @@ export async function kidsForTrip(tripId: string) {
 
 /** A kids' quiz built from the trivia already gathered for the place. */
 export async function generateQuizFor(destinationId: string, minAge: number) {
-  if (!aiConfigured()) throw new Error("Add a Gemini or Claude API key to generate quizzes");
+  if (!(await aiConfigured())) throw new Error("Add a Gemini or Claude API key to generate quizzes");
   const d = await destination(destinationId);
   const facts = await db().select({ text: tripsTriviaFacts.text }).from(tripsTriviaFacts).where(eq(tripsTriviaFacts.destinationId, d.id)).limit(20);
   if (facts.length === 0) throw new Error("Generate trivia for this place first. The quiz is built from it.");
@@ -819,7 +819,7 @@ export async function recordQuizAttempt(quizId: string, travelerId: string, answ
 }
 
 export async function generateHuntFor(destinationId: string, minAge: number) {
-  if (!aiConfigured()) throw new Error("Add a Gemini or Claude API key to generate hunts");
+  if (!(await aiConfigured())) throw new Error("Add a Gemini or Claude API key to generate hunts");
   const d = await destination(destinationId);
   const h = await generateHunt({ place: d.name, minAge });
   const [hunt] = await db().insert(tripsHunts).values({ tripId: d.tripId, destinationId: d.id, title: h.title }).returning();

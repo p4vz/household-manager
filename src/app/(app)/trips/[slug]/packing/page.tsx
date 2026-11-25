@@ -23,7 +23,7 @@ export default async function TripPackingPage({ params, searchParams }: PageProp
   const back = `/trips/${slug}/packing`;
   const [lists, templates, travelers] = await Promise.all([tripPacking(trip.id), listTemplates(), listTravelers()]);
   const who = new Map(travelers.map((t) => [t.id, t.name]));
-  const ai = aiConfigured();
+  const ai = await aiConfigured();
 
   return (
     <div className="space-y-6">

@@ -24,7 +24,7 @@ export default async function DiningPage({ params, searchParams }: PageProps<"/t
   const back = `/trips/${slug}/dining`;
   const [places, cards, travelers] = await Promise.all([diningForTrip(trip.id), allergyCardsForTrip(trip.id), listTravelers()]);
   const needsGf = travelers.some((t) => t.celiac || t.glutenFree);
-  const ai = aiConfigured();
+  const ai = await aiConfigured();
 
   return (
     <div className="space-y-6">
