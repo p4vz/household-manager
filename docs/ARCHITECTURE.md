@@ -274,6 +274,17 @@ app/oauth/authorize   consent screen
 category a charge would land in. Tables: `core_oauth_clients`,
 `core_oauth_codes`, `core_oauth_grants`.
 
+## Backups and phone notifications
+
+- `core/backup/`: nightly encrypted dump to Google Drive (`drive.file`),
+  30-day retention; restore with `scripts/restore-backup.mjs`. See
+  docs/BACKUP.md.
+- `core/push/`: Web Push (VAPID + RFC 8291 encryption by hand, sent through
+  `outboundFetch`), devices and per-member choices. `notify/` is wiring like
+  `mcp/`: it asks maintenance, family and finance (`api.ts` only) what is
+  due or new, and sends each reminder once per stage. Cron:
+  `/api/cron/notifications`, hourly, 8 AM to 9 PM.
+
 ## Ask Claude (in-app assistant)
 
 `src/assistant/` lets the built-in Claude (subscription first, API key as

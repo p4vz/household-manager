@@ -33,7 +33,7 @@ update here and in the tests that enforce it.
 | `/kiosk` | allowlisted users or a paired kiosk device | session, or a device token checked against the database by the page and every kiosk action |
 | `/api/auth/*` | anyone | Auth.js OAuth flow; allowlist enforced in callbacks |
 | `/manifest.webmanifest`, `/kiosk.webmanifest`, `/sw.js`, `/offline.html`, `/kiosk-offline.html`, `/icons/*` | anyone | static PWA files with no household data; the service worker caches only these and Next.js build files, never pages or data |
-| `/api/cron/simplefin-sync`, `/api/cron/monthly-advisor`, `/api/cron/card-catalog`, `/api/cron/family-hub` | Railway cron only | `Authorization: Bearer $CRON_SECRET`, constant-time compare, fails closed if the secret is missing or short |
+| `/api/cron/simplefin-sync`, `/api/cron/monthly-advisor`, `/api/cron/card-catalog`, `/api/cron/family-hub`, `/api/cron/backup`, `/api/cron/notifications` | Railway cron only | `Authorization: Bearer $CRON_SECRET`, constant-time compare, fails closed if the secret is missing or short |
 | `/api/mcp` | assistants a member approved | OAuth bearer token (see "Assistant access"); 404 unless `MCP_ENABLED=true` |
 | `/api/oauth/register`, `/api/oauth/token`, `/api/oauth/revoke` | assistant apps | registration grants nothing; token needs a PKCE proof or refresh token; rate limited; 404 unless enabled |
 | `/.well-known/oauth-authorization-server`, `/.well-known/oauth-protected-resource`, `/.well-known/openid-configuration` | anyone | public discovery metadata only; 404 unless enabled |
@@ -295,6 +295,7 @@ fails if `fetch(` is used anywhere else.
 | `en.wikipedia.org` | trips: article summary that grounds generated trivia (keyless) |
 | `overpass-api.de` | trips: gluten-free venues tagged in OpenStreetMap (keyless) |
 | `www.saferproducts.gov` | house upkeep: U.S. CPSC product-recall search for listed home equipment (keyless; only a product phrase such as "GE refrigerator" is sent, digit runs of 5+ removed) |
+| `fcm.googleapis.com`, `web.push.apple.com`, `updates.push.services.mozilla.com` | phone notifications (Web Push to Chrome/Android, Safari/iPhone, Firefox); payloads are end-to-end encrypted for the device, see "Phone notifications" |
 | `api.nhtsa.gov` | car upkeep: NHTSA vehicle safety-recall search (keyless; only make, model and model year are sent, never a VIN or plate, which the app doesn't store) |
 
 The trips hosts receive only a place name or coordinates. No household
@@ -331,7 +332,7 @@ needs a review here.
 
 `DATABASE_URL`, `AUTH_SECRET`, `AUTH_GOOGLE_SECRET`, `CRON_SECRET`,
 `SIMPLEFIN_ACCESS_URL`, `GEMINI_API_KEY`, `ANTHROPIC_API_KEY`, `CLAUDE_CODE_OAUTH_TOKEN`, `DOC_VAULT_KEY`,
-`GOOGLE_CALENDAR_SERVICE_ACCOUNT`, `GOOGLE_REFRESH_TOKEN` (or `GOOGLE_CALENDAR_REFRESH_TOKEN`),
+`BACKUP_KEY`, `VAPID_PRIVATE_KEY`, `GOOGLE_CALENDAR_SERVICE_ACCOUNT`, `GOOGLE_REFRESH_TOKEN` (or `GOOGLE_CALENDAR_REFRESH_TOKEN`),
 `GOOGLE_CLIENT_SECRET`, `GOOGLE_CALENDAR_ID` and `GOOGLE_CALENDARS` are read
 only by server code. Files that read them import `server-only`, so a Client
 Component importing them breaks the build. No variable uses the
@@ -443,6 +444,52 @@ two-person household app.
   through the same scrub and AI call; the member confirms the fields before
   anything is saved. `/ocr/*` gets its own CSP (`ocrAssetPolicy()`) so the
   OCR worker may run WebAssembly; nothing else gets `'wasm-unsafe-eval'`.
+
+## Backups (Google Drive)
+
+Railway's own volume backups are the first line (see docs/BACKUP.md). The
+app adds an off-site copy:
+
+- **What.** Nightly (3 AM household time, `/api/cron/backup`) or on "Back up
+  now": every table in one read-only, repeatable-read transaction, gzipped
+  and encrypted with AES-256-GCM under `BACKUP_KEY` (32 random bytes,
+  base64; separate from `AUTH_SECRET` and `DOC_VAULT_KEY`). Without the key
+  no backup is made. Nothing is written to local disk.
+- **Where.** A "Household manager backups" folder in the Drive of the member
+  who connected it (Settings → Backups), with a separate Google sign-in that
+  asks only for `drive.file`: the app sees and changes only files it
+  created, never anything else in that Drive. The refresh token is sealed
+  like the Gmail ones; connect uses a one-time state and PKCE; disconnect
+  revokes the grant. Google stores only ciphertext.
+- **Retention.** Copies older than 30 days are deleted, but the newest 7 always stay.
+- **Never GitHub.** Household data is never written to a repository.
+- **Restore.** `scripts/restore-backup.mjs` (docs/BACKUP.md) decrypts on the
+  member's own computer and loads into a new, empty database. Values sealed
+  with `AUTH_SECRET` / `DOC_VAULT_KEY` inside the backup need those keys too.
+
+## Phone notifications (Web Push)
+
+- Each member turns notifications on per device in Settings → Phone
+  notifications and picks the types: house and car upkeep, registrations and
+  inspections, return deadlines, new things to review. Never bills.
+- The browser's push address must be on Google's, Apple's or Mozilla's push
+  service (`PUSH_HOSTS`); at most 8 devices per member. Messages are signed
+  with VAPID (RFC 8292) and encrypted for the device (RFC 8291, implemented
+  in `core/push/crypto.ts` and sent through `outboundFetch`), so the push
+  service carries only ciphertext. VAPID keys come from `VAPID_PUBLIC_KEY` /
+  `VAPID_PRIVATE_KEY` or are made once and stored sealed under `AUTH_SECRET`.
+- **Privacy.** Shared items (upkeep, registrations, the shared returns list)
+  go to both members. Transactions to review follow the finance viewer rule:
+  joint and the member's own accounts, never the other member's private
+  ones. Returns found in email go only to that mailbox's member. Each member's
+  devices and choices are visible only to them.
+- **Text.** Notifications show on lock screens, so they hold only an item's
+  title and when it is due; finance items say only "A large purchase to
+  review" (no merchant, amount or account). Every string is scrubbed
+  (`scrubText`: digit runs, emails, codes, legal names) and the click target
+  is an in-app path only.
+- Sent between 8 AM and 9 PM household time, once per item and stage
+  (`core_push_sent`), grouped into one message per type.
 
 ## Bank sync limits
 

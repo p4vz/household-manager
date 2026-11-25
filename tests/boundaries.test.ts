@@ -104,9 +104,9 @@ describe("external surface", () => {
     expect(readFileSync(join(SRC, "app/api/mcp/route.ts"), "utf8")).toMatch(/verifyAccessToken\(/);
   });
 
-  it("the assistant layer reaches modules only through api.ts", () => {
+  it("the assistant and notification layers reach modules only through api.ts", () => {
     const violations = files
-      .filter((f) => rel(f).startsWith("mcp/") || rel(f).startsWith("assistant/"))
+      .filter((f) => rel(f).startsWith("mcp/") || rel(f).startsWith("assistant/") || rel(f).startsWith("notify/"))
       .flatMap((f) => imports(f).map((s) => [rel(f), resolveImport(f, s)?.replace(/\.(ts|tsx)$/, "")] as const))
       .filter(([, t]) => t?.startsWith("modules/") && !/^modules\/[^/]+\/api$/.test(t));
     expect(violations).toEqual([]);

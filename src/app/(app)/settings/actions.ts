@@ -11,6 +11,9 @@ import { createPairingCode, revokeKioskDevice } from "@/core/kiosk/devices";
 import { formatPairingCode } from "@/core/kiosk/pairing";
 import { revokeAllConnections, revokeConnection, setConnectionPermissions } from "@/core/oauth/server";
 import { appOrigin } from "@/core/auth/origin";
+import { DriveError, disconnectDrive, startDriveConnect } from "@/core/backup/drive";
+import { runBackup } from "@/core/backup/run";
+import { DEFAULT_PREFS, NOTIFICATION_TYPES, PushError, removeDevice, saveSubscription, sendToMember, setPrefs } from "@/core/push/push";
 import { rateLimit } from "@/core/net/rate-limit";
 import {
   MailConnectError,
@@ -207,4 +210,62 @@ export const disconnectMailboxAction = authedAction(z.object({ id: z.uuid() }), 
   await disconnectMailbox(memberFromLabel(user.owner), input.id);
   revalidatePath("/settings");
   revalidatePath("/family");
+});
+
+// ---- Backups (Google Drive, drive.file) ----
+
+export const connectDriveAction = authedAction(z.object({}), async (_input, user): Promise<{ url: string | null; error: string | null }> => {
+  try {
+    return { url: await startDriveConnect(user.owner, await appOrigin()), error: null };
+  } catch (err) {
+    return { url: null, error: err instanceof DriveError ? err.message : "Could not start the Google sign-in" };
+  }
+});
+
+export const backupNowAction = authedAction(z.object({}), async (): Promise<{ ok: boolean; message: string }> => {
+  if (!rateLimit("backup-now", 1, 5 * 60_000)) return { ok: false, message: "A backup ran a moment ago. Try again in five minutes." };
+  const r = await runBackup();
+  revalidatePath("/settings");
+  return r;
+});
+
+export const disconnectDriveAction = authedAction(z.object({}), async () => {
+  await disconnectDrive();
+  revalidatePath("/settings");
+});
+
+// ---- Phone notifications (Web Push) ----
+// Each member manages only their own devices and choices.
+
+const memberOf = (owner: "User 1" | "User 2") => (owner === "User 1" ? "user1" : "user2") as "user1" | "user2";
+
+export const subscribePushAction = authedAction(
+  z.object({ endpoint: z.url().max(1000), p256dh: z.string().regex(/^[A-Za-z0-9_-]{80,100}$/), auth: z.string().regex(/^[A-Za-z0-9_-]{16,32}$/), label: z.string().trim().min(1).max(40) }),
+  async (input, user): Promise<{ ok: boolean; message: string }> => {
+    try {
+      await saveSubscription(memberOf(user.owner), input);
+    } catch (err) {
+      return { ok: false, message: err instanceof PushError ? err.message : "Could not save this device" };
+    }
+    revalidatePath("/settings");
+    return { ok: true, message: "Notifications are on for this device. Tap Send a test to check." };
+  },
+);
+
+export const unsubscribePushAction = authedAction(z.object({ endpoint: z.url().max(1000).optional(), id: z.uuid().optional() }), async (input, user) => {
+  await removeDevice(memberOf(user.owner), input);
+  revalidatePath("/settings");
+});
+
+export const savePushPrefsAction = authedAction(z.record(z.enum(NOTIFICATION_TYPES), z.boolean()), async (prefs, user) => {
+  await setPrefs(memberOf(user.owner), { ...DEFAULT_PREFS, ...prefs });
+  revalidatePath("/settings");
+});
+
+export const testPushAction = authedAction(z.object({}), async (_input, user): Promise<{ ok: boolean; message: string }> => {
+  if (!rateLimit(`push-test:${user.owner}`, 3, 10 * 60_000)) return { ok: false, message: "Sent a few already. Try again in a few minutes." };
+  const r = await sendToMember(memberOf(user.owner), { title: "Test from the household app", body: "Notifications work on this device.", url: "/settings#notifications", tag: "test" });
+  return r.sent > 0
+    ? { ok: true, message: `Sent to ${r.sent} device${r.sent === 1 ? "" : "s"}.${r.failed ? ` ${r.failed} failed and may have been removed.` : ""}` }
+    : { ok: false, message: r.failed ? "The push service refused it. Turn notifications off and on here." : "No devices are turned on." };
 });

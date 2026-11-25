@@ -1,4 +1,4 @@
-import { index, jsonb, pgTable, text, timestamp, uniqueIndex, uuid } from "drizzle-orm/pg-core";
+import { index, integer, jsonb, pgTable, primaryKey, text, timestamp, uniqueIndex, uuid } from "drizzle-orm/pg-core";
 
 /** App-wide settings (AI provider choice, etc.), one row per key. */
 export const coreSettings = pgTable("core_settings", {
@@ -103,4 +103,40 @@ export const coreKioskDevices = pgTable(
     revokedAt: timestamp("revoked_at", { withTimezone: true }),
   },
   (t) => [uniqueIndex("core_kiosk_devices_token_uq").on(t.tokenHash)],
+);
+
+// ---------------------------------------------------------------------------
+// Phone notifications (Web Push). See src/core/push and docs/SECURITY.md
+// ("Phone notifications"). A subscription belongs to one member; what each
+// member wants to hear about is in core_settings ("push.prefs.<member>").
+// ---------------------------------------------------------------------------
+
+/** One installed phone app (or browser) that agreed to receive notifications. */
+export const corePushSubscriptions = pgTable(
+  "core_push_subscriptions",
+  {
+    id: uuid("id").primaryKey().defaultRandom(),
+    member: text("member", { enum: ["user1", "user2"] }).notNull(),
+    /** The push service URL (Google, Apple or Mozilla), checked against the host allowlist. */
+    endpoint: text("endpoint").notNull(),
+    p256dh: text("p256dh").notNull(),
+    auth: text("auth").notNull(),
+    /** "Android phone", "iPhone"... from the browser, for the Settings list. */
+    label: text("label").notNull(),
+    createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+    lastOkAt: timestamp("last_ok_at", { withTimezone: true }),
+    failures: integer("failures").notNull().default(0),
+  },
+  (t) => [uniqueIndex("core_push_subscriptions_endpoint_uq").on(t.endpoint)],
+);
+
+/** What was already sent to whom, so each reminder goes out once per stage. */
+export const corePushSent = pgTable(
+  "core_push_sent",
+  {
+    member: text("member", { enum: ["user1", "user2"] }).notNull(),
+    key: text("key").notNull(),
+    sentAt: timestamp("sent_at", { withTimezone: true }).notNull().defaultNow(),
+  },
+  (t) => [primaryKey({ columns: [t.member, t.key] }), index("core_push_sent_at_idx").on(t.sentAt)],
 );

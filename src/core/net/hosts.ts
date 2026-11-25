@@ -26,6 +26,11 @@ export const STATIC_OUTBOUND_HOSTS = [
   "www.saferproducts.gov",
   // Car upkeep: NHTSA vehicle recalls (keyless; only make, model and year are sent)
   "api.nhtsa.gov",
+  // Phone notifications (Web Push): the push services of Chrome/Android, Safari/iPhone and Firefox.
+  // Only end-to-end encrypted payloads are sent (RFC 8291); see core/push.
+  "fcm.googleapis.com",
+  "web.push.apple.com",
+  "updates.push.services.mozilla.com",
 ] as const;
 
 export const OUTBOUND_HOSTS: ReadonlySet<string> = new Set<string>(STATIC_OUTBOUND_HOSTS);
