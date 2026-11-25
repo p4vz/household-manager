@@ -10,7 +10,8 @@ export const PWA_FILES = ["/manifest.webmanifest", "/kiosk.webmanifest", "/sw.js
  * is refused by the proxy (src/proxy.ts) and re-checked by the page, action
  * or route handler itself.
  */
-export const PUBLIC_PATHS = ["/signin", "/kiosk/pair", ...PWA_FILES] as const;
+/** `/privacy` is static text that Google requires for the OAuth app to be in production. */
+export const PUBLIC_PATHS = ["/signin", "/privacy", "/kiosk/pair", ...PWA_FILES] as const;
 export const PUBLIC_PATH_PREFIXES = ["/api/auth/", "/icons/"] as const;
 
 /**

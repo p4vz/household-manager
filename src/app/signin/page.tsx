@@ -26,6 +26,11 @@ export default async function SignInPage({ searchParams }: PageProps<"/signin">)
         <button type="submit" className="w-full rounded-lg bg-foreground px-4 py-2 text-background">
           Sign in with Google
         </button>
+        <p className="text-center text-xs opacity-60">
+          <a className="underline" href="/privacy">
+            Privacy policy
+          </a>
+        </p>
       </form>
     </main>
   );
