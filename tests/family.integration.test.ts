@@ -18,6 +18,7 @@ import {
   listTemplates,
   moveShoppingItem,
   openItemCount,
+  openStoreCount,
   reorderLists,
   reorderStores,
   runHousekeeping,
@@ -197,11 +198,24 @@ describe("shopping", () => {
     await deleteList(copy);
   });
 
+  it("the shopping badge counts stores with something left, across lists", () => {
+    const item = (checked: boolean) => ({ id: "i", name: "x", quantity: null, checked, checkedAt: null, sortOrder: 0 });
+    const board = {
+      lists: [
+        { id: "a", name: "A", deferredUntil: null, sections: [{ id: "1", store: "Costco", items: [item(false), item(false)] }, { id: "2", store: "Target", items: [item(true)] }] },
+        { id: "b", name: "B", deferredUntil: null, sections: [{ id: "3", store: "costco ", items: [item(false)] }, { id: "4", store: "Aldi", items: [item(false)] }] },
+      ],
+    } as unknown as Parameters<typeof openStoreCount>[0];
+    expect(openStoreCount(board)).toBe(2);
+    expect(openItemCount(board)).toBe(4);
+  });
+
   it("a bare add goes to the first active list, creating one when there is none", async () => {
     const id = await addShoppingItem({ name: "Batteries", store: "Target" }, NOW);
     const board = await shoppingBoard(NOW);
     expect(board.lists.map((l) => [l.name, items(l)])).toEqual([["Shopping", ["Target:Batteries"]]]);
     expect(openItemCount(board)).toBe(1);
+    expect(openStoreCount(board)).toBe(1);
     expect(storeItemsToBuy(board, "Target")).toEqual([{ name: "Batteries", quantity: null }]);
     await setShoppingChecked(id, true, new Date("2026-11-20T10:00:00Z"));
   });

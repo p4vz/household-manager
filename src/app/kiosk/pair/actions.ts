@@ -3,7 +3,8 @@
 import { cookies, headers } from "next/headers";
 import { redirect } from "next/navigation";
 import { z } from "zod";
-import { redeemPairingCode } from "@/core/kiosk/devices";
+import { authedAction } from "@/core/actions/authed-action";
+import { pairDeviceForMember, redeemPairingCode } from "@/core/kiosk/devices";
 import { KIOSK_COOKIE, KIOSK_COOKIE_MAX_AGE } from "@/core/kiosk/pairing";
 import { rateLimit } from "@/core/net/rate-limit";
 
@@ -29,6 +30,11 @@ export async function pairKioskAction(_prev: PairState, form: FormData): Promise
   const token = await redeemPairingCode(parsed.data.code, parsed.data.name ?? "Kitchen screen");
   if (!token) return { error: "That code is wrong, used or expired. Make a new one in Settings." };
 
+  await setKioskCookie(token);
+  redirect("/kiosk");
+}
+
+async function setKioskCookie(token: string) {
   (await cookies()).set(KIOSK_COOKIE, token, {
     httpOnly: true,
     secure: process.env.NODE_ENV === "production",
@@ -36,5 +42,16 @@ export async function pairKioskAction(_prev: PairState, form: FormData): Promise
     path: "/kiosk",
     maxAge: KIOSK_COOKIE_MAX_AGE,
   });
-  redirect("/kiosk");
 }
+
+/**
+ * "Pair this screen": a signed-in member at the kitchen screen pairs it in
+ * one tap, no code needed. Member-only (authedAction): a kiosk cookie alone
+ * can never pair another device. The new cookie has the same limits as one
+ * from a code (path /kiosk, kiosk actions only), so the member can then sign
+ * out of Google on that device and the screen keeps working.
+ */
+export const pairThisScreenAction = authedAction(z.object({}), async (_input, user) => {
+  const token = await pairDeviceForMember(user.owner, "Kitchen screen");
+  await setKioskCookie(token);
+});

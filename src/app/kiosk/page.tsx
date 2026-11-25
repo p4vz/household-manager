@@ -1,8 +1,12 @@
 import { redirect } from "next/navigation";
 import { after } from "next/server";
 import { requireKioskOrMember } from "@/core/actions/kiosk-action";
+import { currentKioskDevice } from "@/core/kiosk/devices";
+import { WeatherWidget } from "@/components/weather-widget";
+import { KioskControls } from "@/modules/family/ui/kiosk-controls";
+import { pairThisScreenAction } from "./pair/actions";
 import { syncGoogleCalendarsIfStale } from "@/modules/calendar/api";
-import { CHORE_ICONS, openItemCount } from "@/modules/family/api";
+import { CHORE_ICONS, openStoreCount } from "@/modules/family/api";
 import { CalendarPanel } from "@/modules/family/ui/calendar-panel";
 import { ChoreBoard } from "@/modules/family/ui/chore-board";
 import { HubTabs } from "@/modules/family/ui/hub-tabs";
@@ -35,17 +39,21 @@ const CALENDAR_MAX_AGE_MS = 90_000;
  * upkeep below.
  */
 export default async function KioskPage() {
+  let actor: Awaited<ReturnType<typeof requireKioskOrMember>>;
   try {
-    await requireKioskOrMember();
+    actor = await requireKioskOrMember();
   } catch {
     redirect("/kiosk/pair");
   }
+  // A parent opened Kitchen mode: offer one-tap pairing until this device has its own kiosk cookie.
+  const paired = actor.kind === "kiosk" || (await currentKioskDevice()) !== null;
   const hub = await loadHub();
   // Keep the Google mirror fresh while the screen is on: the page refreshes
   // every 30 s, and pulls from Google when the copy is over 90 s old.
   after(() => syncGoogleCalendarsIfStale(CALENDAR_MAX_AGE_MS).then(() => undefined, () => undefined));
 
   const urgentReturns = hub.returns.filter((r) => r.urgency !== "ok" && r.status !== "returned").length;
+  const choresLeft = hub.kids.reduce((n, k) => n + Math.max(0, k.stats.todayTotal - k.stats.todayDone), 0);
   const overdueUpkeep = hub.upkeep.filter((t) => t.overdue).length;
   const printBtn = "min-h-12 rounded-xl border px-4 text-lg font-medium";
 
@@ -53,7 +61,10 @@ export default async function KioskPage() {
     <KioskShell
       tz={hub.tz}
       renderedAt={hub.renderedAt}
+      weather={<WeatherWidget weather={hub.weather} size="kiosk" />}
       header={
+        <>
+        <KioskControls member={actor.kind === "member"} paired={paired} pair={pairThisScreenAction} />
         <PrintTodayButtons
           className={printBtn}
           dateLabel={hub.todayLabel}
@@ -62,6 +73,7 @@ export default async function KioskPage() {
           returns={hub.returns}
           upkeep={hub.upkeep}
         />
+        </>
       }
     >
       <div className="grid h-full min-h-0 grid-cols-[55fr_45fr] gap-4">
@@ -78,39 +90,38 @@ export default async function KioskPage() {
             eventActions={{ create: createEventAction, update: updateEventAction, remove: deleteEventAction }}
           />
         </section>
-        <div className="grid min-h-0 grid-rows-[56fr_44fr] gap-4">
-          <section className="min-h-0 rounded-2xl bg-white/70 p-3 dark:bg-slate-900/70">
-            <ChoreBoard kids={hub.kids} icons={CHORE_ICONS} actions={{ setDone: setChoreDoneAction, addOneTime: addOneTimeChoreAction }} />
-          </section>
-          <section className="min-h-0 rounded-2xl bg-white/70 p-3 dark:bg-slate-900/70">
-            <HubTabs
-              tabs={[
-                {
-                  key: "shopping",
-                  label: "🛒 Shopping",
-                  badge: openItemCount(hub.shopping),
-                  content: (
-                    <ShoppingPanel board={hub.shopping} today={hub.today} dateLabel={hub.todayLabel} actions={shoppingActions} expandable />
-                  ),
-                },
-                {
-                  key: "returns",
-                  label: "📦 Returns",
-                  badge: hub.returns.length,
-                  alert: urgentReturns > 0,
-                  content: <ReturnsPanel returns={hub.returns} stores={hub.stores} actions={{ setStatus: setReturnStatusAction, add: addReturnAction }} />,
-                },
-                {
-                  key: "upkeep",
-                  label: "🔧 Upkeep",
-                  badge: hub.upkeep.length,
-                  alert: overdueUpkeep > 0,
-                  content: <UpkeepPanel tasks={hub.upkeep} complete={completeUpkeepAction} />,
-                },
-              ]}
-            />
-          </section>
-        </div>
+        <section className="min-h-0 rounded-2xl bg-white/70 p-3 dark:bg-slate-900/70">
+          <HubTabs
+            tabs={[
+              {
+                key: "chores",
+                label: "⭐ Chores",
+                badge: choresLeft,
+                content: <ChoreBoard kids={hub.kids} icons={CHORE_ICONS} actions={{ setDone: setChoreDoneAction, addOneTime: addOneTimeChoreAction }} />,
+              },
+              {
+                key: "shopping",
+                label: "🛒 Shopping",
+                badge: openStoreCount(hub.shopping),
+                content: <ShoppingPanel board={hub.shopping} today={hub.today} dateLabel={hub.todayLabel} actions={shoppingActions} expandable />,
+              },
+              {
+                key: "returns",
+                label: "📦 Returns",
+                badge: hub.returns.length,
+                alert: urgentReturns > 0,
+                content: <ReturnsPanel returns={hub.returns} stores={hub.stores} actions={{ setStatus: setReturnStatusAction, add: addReturnAction }} />,
+              },
+              {
+                key: "upkeep",
+                label: "🔧 Upkeep",
+                badge: hub.upkeep.length,
+                alert: overdueUpkeep > 0,
+                content: <UpkeepPanel tasks={hub.upkeep} complete={completeUpkeepAction} />,
+              },
+            ]}
+          />
+        </section>
       </div>
     </KioskShell>
   );

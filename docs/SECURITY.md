@@ -87,6 +87,12 @@ account. Pavel chose a paired device token (2026-11-23):
   (checked and consumed in one UPDATE), and at most 3 are open. Code entry
   is rate limited to 5 tries per 10 minutes per address and 30 per hour in
   total. Only SHA-256 hashes of codes are stored.
+- **One-tap pairing.** A signed-in member who opens the kiosk (the
+  "Kitchen mode" button) sees "Pair this screen". It makes the same device
+  token directly, with no code (`pairThisScreenAction`, an
+  `authedAction`, so a kiosk cookie alone can never pair another screen).
+  After that the member can sign out of Google on that device and the
+  screen keeps only kiosk access.
 - **Device token.** Pairing sets a 256-bit random token as the `hm_kiosk`
   cookie: httpOnly, `Secure` in production, `SameSite=Strict`, path
   `/kiosk`, one year. The database keeps only its SHA-256 hash
@@ -264,7 +270,7 @@ fails if `fetch(` is used anywhere else.
 | `bridge.simplefin.org`, `beta-bridge.simplefin.org` | bank sync |
 | `generativelanguage.googleapis.com` | Gemini |
 | `api.anthropic.com` | Claude |
-| `geocoding-api.open-meteo.com`, `api.open-meteo.com` | trips: place lookup and weather forecast (keyless) |
+| `geocoding-api.open-meteo.com`, `api.open-meteo.com` | trips: place lookup and weather forecast; home weather on the kiosk and home page (coordinates from `HOME_WEATHER` only; keyless) |
 | `en.wikipedia.org` | trips: article summary that grounds generated trivia (keyless) |
 | `overpass-api.de` | trips: gluten-free venues tagged in OpenStreetMap (keyless) |
 
