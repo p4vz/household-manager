@@ -35,7 +35,20 @@ export function isNight(now: Date, tz: string): boolean {
   return mins >= 21 * 60 || mins < 6 * 60 + 30;
 }
 
-export function KioskShell({ tz, renderedAt, children, header }: { tz: string; renderedAt: number; children: ReactNode; header: ReactNode }) {
+export function KioskShell({
+  tz,
+  renderedAt,
+  children,
+  header,
+  weather,
+}: {
+  tz: string;
+  renderedAt: number;
+  children: ReactNode;
+  header: ReactNode;
+  /** Shown next to the date. */
+  weather?: ReactNode;
+}) {
   const router = useRouter();
   const { offline } = useKioskWatchdog(renderedAt, tz);
   const [now, setNow] = useState(() => new Date());
@@ -90,6 +103,7 @@ export function KioskShell({ tz, renderedAt, children, header }: { tz: string; r
         <header className="flex h-20 shrink-0 items-center gap-6 px-6">
           <div className="text-5xl font-bold tabular-nums">{time}</div>
           <div className="text-2xl font-medium opacity-80">{date}</div>
+          {weather}
           <div className="ml-auto flex items-center gap-3">
             {offline ? (
               <span role="status" className="rounded-full bg-amber-500 px-4 py-2 text-lg font-semibold text-white">

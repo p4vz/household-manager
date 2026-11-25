@@ -68,6 +68,19 @@ export async function redeemPairingCode(raw: string, deviceName: string, now = n
   return token;
 }
 
+/**
+ * One-tap pairing: a signed-in member pairs the screen they are standing at,
+ * with no code to type. Same device token and limits as a redeemed code.
+ * Only called from a member-only action (pairThisScreenAction).
+ */
+export async function pairDeviceForMember(createdBy: string, deviceName: string): Promise<string> {
+  const token = newDeviceToken();
+  await db()
+    .insert(coreKioskDevices)
+    .values({ name: deviceName.trim().slice(0, 60) || "Kitchen screen", tokenHash: sha256(token), createdBy });
+  return token;
+}
+
 export async function verifyDeviceToken(token: string | undefined, now = new Date()): Promise<KioskDevice | null> {
   if (!isTokenShaped(token)) return null;
   const [device] = await db()

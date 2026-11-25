@@ -139,6 +139,9 @@ describe("external surface", () => {
       if (PUBLIC_ACTION_FILES.includes(rel(file))) {
         expect(src, rel(file)).toMatch(/rateLimit\(/);
         expect(src, rel(file)).toMatch(/redeemPairingCode\(/);
+        // One-tap pairing needs a member session; only the code exchange is public.
+        expect(src, rel(file)).toMatch(/export const pairThisScreenAction = authedAction\(/);
+        expect(src.match(/pairDeviceForMember\(/g)?.length, rel(file)).toBe(1);
         continue;
       }
       expect(src, rel(file)).toMatch(/authedAction\(|kioskAction\(|requireUser\(/);

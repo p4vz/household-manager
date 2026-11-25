@@ -1,6 +1,10 @@
 import { redirect } from "next/navigation";
 import { after } from "next/server";
 import { requireKioskOrMember } from "@/core/actions/kiosk-action";
+import { currentKioskDevice } from "@/core/kiosk/devices";
+import { WeatherWidget } from "@/components/weather-widget";
+import { KioskControls } from "@/modules/family/ui/kiosk-controls";
+import { pairThisScreenAction } from "./pair/actions";
 import { syncGoogleCalendarsIfStale } from "@/modules/calendar/api";
 import { CHORE_ICONS, openItemCount } from "@/modules/family/api";
 import { CalendarPanel } from "@/modules/family/ui/calendar-panel";
@@ -35,11 +39,14 @@ const CALENDAR_MAX_AGE_MS = 90_000;
  * upkeep below.
  */
 export default async function KioskPage() {
+  let actor: Awaited<ReturnType<typeof requireKioskOrMember>>;
   try {
-    await requireKioskOrMember();
+    actor = await requireKioskOrMember();
   } catch {
     redirect("/kiosk/pair");
   }
+  // A parent opened Kitchen mode: offer one-tap pairing until this device has its own kiosk cookie.
+  const paired = actor.kind === "kiosk" || (await currentKioskDevice()) !== null;
   const hub = await loadHub();
   // Keep the Google mirror fresh while the screen is on: the page refreshes
   // every 30 s, and pulls from Google when the copy is over 90 s old.
@@ -53,7 +60,10 @@ export default async function KioskPage() {
     <KioskShell
       tz={hub.tz}
       renderedAt={hub.renderedAt}
+      weather={<WeatherWidget weather={hub.weather} size="kiosk" />}
       header={
+        <>
+        <KioskControls member={actor.kind === "member"} paired={paired} pair={pairThisScreenAction} />
         <PrintTodayButtons
           className={printBtn}
           dateLabel={hub.todayLabel}
@@ -62,6 +72,7 @@ export default async function KioskPage() {
           returns={hub.returns}
           upkeep={hub.upkeep}
         />
+        </>
       }
     >
       <div className="grid h-full min-h-0 grid-cols-[55fr_45fr] gap-4">

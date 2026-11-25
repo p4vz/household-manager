@@ -1,4 +1,5 @@
 import "server-only";
+import { homeWeather } from "@/core/weather/home-weather";
 import { householdTimeZone } from "@/core/time/zoned";
 import { kioskCalendar } from "@/modules/calendar/api";
 import { choreBoard, deadlineUrgency, listReturns, shoppingBoard } from "@/modules/family/api";
@@ -14,12 +15,13 @@ export async function loadHub(now = new Date()) {
   const twoWeeks = new Date(`${today}T00:00:00Z`);
   twoWeeks.setUTCDate(twoWeeks.getUTCDate() + 14);
 
-  const [calendar, kids, shopping, returns, tasks] = await Promise.all([
+  const [calendar, kids, shopping, returns, tasks, weather] = await Promise.all([
     kioskCalendar(7, now),
     choreBoard(now),
     shoppingBoard(now),
     listReturns(),
     listDueTasks(twoWeeks.toISOString().slice(0, 10)),
+    homeWeather(),
   ]);
 
   const returnViews: ReturnView[] = returns.map((r) => ({
@@ -46,6 +48,7 @@ export async function loadHub(now = new Date()) {
     tz,
     /** Changes on every server render; the kiosk watchdog uses it as a heartbeat. */
     renderedAt: now.getTime(),
+    weather,
     today,
     todayLabel: longDate(today),
     calendar: { ...calendar, syncedLabel, syncError: calendar.sync.ok ? null : calendar.sync.message },
