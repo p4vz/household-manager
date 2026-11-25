@@ -24,6 +24,8 @@ export type FamilyPhoneActions = {
   completeUpkeep: Fn<{ taskId: string }>;
   addKid: Fn<{ name: string; color?: (typeof KID_COLOR_LIST)[number] }>;
   removeKid: Fn<{ id: string }>;
+  /** Make bed, brush teeth, read, tidy room; skips ones the kid already has. */
+  addStarterChores: Fn<{ kidId: string }>;
   addChore: Fn<{ kidId: string; title: string; icon: string; recurrence: "daily" | "weekly" | "once"; stars: number }>;
   archiveChore: Fn<{ id: string }>;
   deleteReturn: Fn<{ id: string }>;
@@ -92,6 +94,12 @@ export function FamilyPhone({
           <PrintTodayButtons className={`${tap} flex-1 border`} dateLabel={dateLabel} kids={kids} today={today} returns={returns} upkeep={upkeep} />
         </div>
       ) : null}
+      {kids.length === 0 && tab !== "setup" ? (
+        <button type="button" onClick={() => setTab("setup")} className="rounded-xl border-2 border-yellow-300 bg-yellow-50 p-3 text-left text-yellow-950">
+          <div className="font-semibold">👋 Add your kids for chores and stars</div>
+          <div className="text-sm">Tap here, type a first name, then Add kid. Do it once per kid.</div>
+        </button>
+      ) : null}
       <nav className="sticky top-0 z-10 grid grid-cols-6 gap-1 rounded-xl bg-slate-100 p-1 dark:bg-slate-800">
         {tabs.map(([key, icon, label]) => (
           <button
@@ -152,16 +160,23 @@ function Setup({ kids, icons, actions }: { kids: BoardKidView[]; icons: readonly
     <div className="h-full space-y-6 overflow-y-auto pb-8">
       <section className="space-y-2">
         <h3 className="text-lg font-semibold">Kids</h3>
-        <p className="text-sm opacity-70">First name or nickname only.</p>
+        <p className="text-sm opacity-70">First name or nickname only. Each kid gets a chore list, a star bank and goals; prizes are on 📈 Progress.</p>
         <ul className="space-y-1">
           {kids.map((k) => (
             <li key={k.id} className="flex items-center justify-between rounded-lg border p-2">
               <span className="font-semibold" style={{ color: k.color }}>
                 {k.emoji} {k.name}
               </span>
-              <button type="button" className={`${tap} text-sm opacity-70`} onClick={() => startTransition(() => actions.removeKid({ id: k.id }))}>
-                Remove
-              </button>
+              <span className="flex gap-1">
+                {k.chores.length === 0 ? (
+                  <button type="button" className={`${tap} bg-sky-600 text-sm text-white`} onClick={() => startTransition(() => actions.addStarterChores({ kidId: k.id }))}>
+                    ＋ Starter chores
+                  </button>
+                ) : null}
+                <button type="button" className={`${tap} text-sm opacity-70`} onClick={() => startTransition(() => actions.removeKid({ id: k.id }))}>
+                  Remove
+                </button>
+              </span>
             </li>
           ))}
         </ul>

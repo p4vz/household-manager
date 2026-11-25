@@ -34,19 +34,27 @@ export type ProgressKid = {
   goalsDone: ProgressGoal[];
   goals: ProgressGoal[];
   badges: { key: string; emoji: string; label: string }[];
+  stars: { saved: number; lifetime: number };
+  prizesGiven: { id: string; prizeName: string; emoji: string; stars: number; givenAt: string }[];
 };
+
+export type PrizeView = { id: string; name: string; emoji: string; stars: number };
 
 export type ProgressActions = {
   create: Fn<{ kidId: string; choreId: string; kind: "streak" | "count"; target: number; reward: string; rewardEmoji?: string }>;
   rewardGiven: Fn<{ id: string }>;
   repeat: Fn<{ id: string }>;
   archive: Fn<{ id: string }>;
+  givePrize: Fn<{ kidId: string; prizeId: string }>;
+  undoPrize: Fn<{ id: string }>;
+  savePrize: Fn<{ id?: string; name: string; emoji?: string; stars: number }>;
+  removePrize: Fn<{ id: string }>;
 };
 
 const REWARD_EMOJI = ["🎁", "🎮", "🍦", "🍕", "🎬", "📱", "🧸", "🏆", "💵", "🎨", "⚽", "📚"];
 
 /** Parents' view on the phone: each kid's chores over 12 weeks, goals with rewards, and rewards given. */
-export function ProgressView({ kids, days, actions }: { kids: ProgressKid[]; days: string[]; actions: ProgressActions }) {
+export function ProgressView({ kids, days, prizes, actions }: { kids: ProgressKid[]; days: string[]; prizes: PrizeView[]; actions: ProgressActions }) {
   const [kidId, setKidId] = useState(kids[0]?.kidId ?? "");
   const kid = kids.find((k) => k.kidId === kidId);
   if (!kid) return <p className="opacity-70">Add kids and chores on the Family hub first.</p>;
@@ -65,6 +73,8 @@ export function ProgressView({ kids, days, actions }: { kids: ProgressKid[]; day
           </button>
         ))}
       </div>
+
+      <StarBankSection kid={kid} prizes={prizes} actions={actions} />
 
       <section className="space-y-2 rounded-2xl border p-3">
         <h2 className="text-lg font-semibold">🎯 Goals</h2>
@@ -305,6 +315,134 @@ function StarsChart({ weeks, color }: { weeks: { weekStart: string; stars: numbe
         <span>⭐ per week</span>
         <span>this week</span>
       </div>
+    </div>
+  );
+}
+
+/**
+ * Piggy bank: chores add stars, giving a prize spends them, so a kid can
+ * cash in a small prize or keep saving for a big one.
+ */
+function StarBankSection({ kid, prizes, actions }: { kid: ProgressKid; prizes: PrizeView[]; actions: ProgressActions }) {
+  const [pending, start] = useTransition();
+  const [error, setError] = useState<string | null>(null);
+  const [editing, setEditing] = useState(false);
+  const run = (fn: () => Promise<Result>) =>
+    start(async () => {
+      const r = await fn();
+      setError(r.error);
+    });
+  const saved = kid.stars.saved;
+  return (
+    <section className="space-y-2 rounded-2xl border-2 border-yellow-300 bg-yellow-50 p-3 text-yellow-950">
+      <div className="flex items-baseline justify-between">
+        <h2 className="text-lg font-semibold">🐷 Star bank</h2>
+        <span className="text-sm">{kid.stars.lifetime} ⭐ earned in all</span>
+      </div>
+      <div className="text-3xl font-bold">{saved} ⭐ saved</div>
+      <ul className="space-y-1">
+        {prizes.map((p) => {
+          const ready = saved >= p.stars;
+          return (
+            <li key={p.id} className="flex items-center gap-2">
+              <span className="text-2xl">{p.emoji}</span>
+              <div className="min-w-0 flex-1">
+                <div className="text-sm font-medium">
+                  {p.name} · {p.stars} ⭐
+                </div>
+                <div className="h-2 w-full overflow-hidden rounded-full bg-yellow-200">
+                  <div className="h-full rounded-full" style={{ width: `${Math.min(100, Math.round((saved / p.stars) * 100))}%`, background: kid.color }} />
+                </div>
+              </div>
+              <button
+                type="button"
+                disabled={!ready || pending}
+                className={`${tap} shrink-0 text-sm ${ready ? "bg-emerald-600 text-white" : "border opacity-50"}`}
+                onClick={() => run(() => actions.givePrize({ kidId: kid.kidId, prizeId: p.id }))}
+              >
+                {ready ? `Give (−${p.stars})` : `${p.stars - saved} to go`}
+              </button>
+            </li>
+          );
+        })}
+      </ul>
+      <ErrorNote error={error} />
+      {kid.prizesGiven.length > 0 ? (
+        <details className="text-sm">
+          <summary className="font-medium">Prizes given ({kid.prizesGiven.length})</summary>
+          <ul className="mt-1 space-y-1">
+            {kid.prizesGiven.map((g) => (
+              <li key={g.id} className="flex items-center justify-between gap-2">
+                <span>
+                  {g.emoji} {g.prizeName} · −{g.stars} ⭐ · {g.givenAt.slice(0, 10)}
+                </span>
+                <button type="button" disabled={pending} className="underline opacity-70" onClick={() => run(() => actions.undoPrize({ id: g.id }))}>
+                  Undo
+                </button>
+              </li>
+            ))}
+          </ul>
+        </details>
+      ) : null}
+      <button type="button" className="text-sm underline" onClick={() => setEditing((e) => !e)}>
+        {editing ? "Done editing prizes" : "Edit prizes (for all kids)"}
+      </button>
+      {editing ? <PrizeEditor prizes={prizes} actions={actions} /> : null}
+    </section>
+  );
+}
+
+function PrizeEditor({ prizes, actions }: { prizes: PrizeView[]; actions: ProgressActions }) {
+  const [error, setError] = useState<string | null>(null);
+  const [pending, start] = useTransition();
+  const submit = (form: HTMLFormElement, id?: string) => {
+    const f = new FormData(form);
+    start(async () => {
+      const r = await actions.savePrize({ id, name: String(f.get("name") ?? ""), emoji: String(f.get("emoji") ?? "") || undefined, stars: Number(f.get("stars")) });
+      setError(r.error);
+      if (!r.error && !id) form.reset();
+    });
+  };
+  const row = "grid grid-cols-[3rem_1fr_5rem_auto] items-center gap-1";
+  return (
+    <div className="space-y-2 rounded-xl bg-white p-2 text-slate-900">
+      {prizes.map((p) => (
+        <form
+          key={`${p.id}-${p.name}-${p.stars}-${p.emoji}`}
+          className={row}
+          onSubmit={(e) => {
+            e.preventDefault();
+            submit(e.currentTarget, p.id);
+          }}
+        >
+          <input name="emoji" defaultValue={p.emoji} maxLength={8} className={`${field} px-1 text-center`} aria-label="Emoji" />
+          <input name="name" defaultValue={p.name} maxLength={40} required className={`${field} min-w-0`} aria-label="Prize" />
+          <input name="stars" type="number" min={1} max={10000} defaultValue={p.stars} required className={`${field} px-1`} aria-label="Stars" />
+          <div className="flex">
+            <button type="submit" disabled={pending} className={`${tap} px-2 text-sm`}>
+              Save
+            </button>
+            <button type="button" disabled={pending} className={`${tap} px-2 text-sm opacity-60`} aria-label="Remove prize" onClick={() => start(async () => setError((await actions.removePrize({ id: p.id })).error))}>
+              🗑
+            </button>
+          </div>
+        </form>
+      ))}
+      <form
+        className={row}
+        onSubmit={(e) => {
+          e.preventDefault();
+          submit(e.currentTarget);
+        }}
+      >
+        <input name="emoji" placeholder="🎁" maxLength={8} className={`${field} px-1 text-center`} aria-label="Emoji" />
+        <input name="name" placeholder="New prize" maxLength={40} required className={`${field} min-w-0`} aria-label="Prize" />
+        <input name="stars" type="number" min={1} max={10000} placeholder="⭐" required className={`${field} px-1`} aria-label="Stars" />
+        <button type="submit" disabled={pending} className={`${tap} px-2 text-sm`}>
+          Add
+        </button>
+      </form>
+      <ErrorNote error={error} />
     </div>
   );
 }

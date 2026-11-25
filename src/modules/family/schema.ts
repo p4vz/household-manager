@@ -96,6 +96,37 @@ export const familyChoreGoals = pgTable(
 );
 
 /**
+ * Star prizes (household-wide, parents edit them): "Small prize" at 25
+ * stars, "Medium" at 100, "Large" at 500 to start. Stars work like a piggy
+ * bank (stars.ts): every chore adds to a kid's saved stars, and a parent
+ * giving a prize spends that many. Lifetime stars never go down.
+ */
+export const familyStarPrizes = pgTable("family_star_prizes", {
+  id: uuid("id").primaryKey().defaultRandom(),
+  name: text("name").notNull(),
+  emoji: text("emoji").notNull().default("🎁"),
+  stars: integer("stars").notNull(),
+  createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+});
+
+/** A prize a parent handed over, and the stars it spent. Name and cost copied so history survives edits. */
+export const familyStarSpends = pgTable(
+  "family_star_spends",
+  {
+    id: uuid("id").primaryKey().defaultRandom(),
+    kidId: uuid("kid_id")
+      .notNull()
+      .references(() => familyKids.id, { onDelete: "cascade" }),
+    prizeName: text("prize_name").notNull(),
+    emoji: text("emoji").notNull().default("🎁"),
+    stars: integer("stars").notNull(),
+    givenBy: text("given_by").notNull(),
+    givenAt: timestamp("given_at", { withTimezone: true }).notNull().defaultNow(),
+  },
+  (t) => [index("family_star_spends_kid_idx").on(t.kidId)],
+);
+
+/**
  * Shopping: lists (shown one below the other) hold store sections, which hold
  * item tiles. A list can be deferred until a date (hidden until then) and
  * saved as a template; a template starts new lists.
