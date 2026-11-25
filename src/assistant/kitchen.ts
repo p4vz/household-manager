@@ -56,13 +56,14 @@ export async function kitchenSnapshot(now = new Date()) {
   const today = family.today(now);
   const twoWeeks = new Date(`${today}T00:00:00Z`);
   twoWeeks.setUTCDate(twoWeeks.getUTCDate() + 14);
-  const [cal, kids, progress, shopping, returns, upkeep] = await Promise.all([
+  const [cal, kids, progress, shopping, returns, upkeep, reading] = await Promise.all([
     calendar.kioskCalendar(14, now),
     family.choreBoard(now),
     family.kidProgress(now),
     family.shoppingBoard(now),
     family.listReturns(),
     maintenance.listDueTasks(twoWeeks.toISOString().slice(0, 10)),
+    family.readingSummaries(now),
   ]);
   return {
     today,
@@ -89,6 +90,15 @@ export async function kitchenSnapshot(now = new Date()) {
           reward: g.reward,
         })),
         badges: (p?.badges ?? []).map((b) => b.label),
+        reading: (() => {
+          const r = reading.get(k.id);
+          return {
+            todayCounted: (r?.stats.todayShare ?? 0) >= 1,
+            daysInARow: r?.stats.streak ?? 0,
+            readingDays: r?.stats.totalDays ?? 0,
+            today: (r?.today ?? []).map((e) => `${e.book}, ${e.minutes} min ${e.language === "ru" ? "Russian" : "English"}`),
+          };
+        })(),
       };
     }),
     shopping: shopping.lists.map((l) => ({

@@ -1,4 +1,5 @@
 import { cookies } from "next/headers";
+import { deleteReadingAction, logReadingAction } from "./reading-actions";
 import { redirect } from "next/navigation";
 import { after } from "next/server";
 import { currentUser } from "@/core/auth/guard";
@@ -127,6 +128,7 @@ export default async function KioskPage() {
                       actions={{
                         setDone: setChoreDoneAction,
                         addOneTime: addOneTimeChoreAction,
+                        reading: { log: logReadingAction, remove: deleteReadingAction },
                       }}
                     />
                   ),

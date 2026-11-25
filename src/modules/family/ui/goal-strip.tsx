@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useState, type ReactNode } from "react";
 import { Modal } from "./kit";
 
 export type GoalStripGoal = {
@@ -23,6 +23,7 @@ export type StarBankView = {
 };
 export type KidProgressView = {
   stars?: StarBankView;
+  reading?: import("./reading-log").ReadingView;
   goals: GoalStripGoal[];
   badges: { key: string; emoji: string; label: string }[];
   bestStreak: number;
@@ -38,12 +39,13 @@ export function goalLabel(g: Pick<GoalStripGoal, "choreTitle" | "kind" | "target
  * steps to the reward, plus badges earned. Shown on the kitchen screen and
  * the phone chore board. Read-only: parents manage goals on the phone.
  */
-export function GoalStrip({ progress, color }: { progress: KidProgressView; color: string }) {
+export function GoalStrip({ progress, color, belowStars }: { progress: KidProgressView; color: string; /** First thing under the prize bar (the reading log). */ belowStars?: ReactNode }) {
   const [showBadges, setShowBadges] = useState(false);
-  if (progress.goals.length === 0 && progress.badges.length === 0 && !progress.stars) return null;
+  if (progress.goals.length === 0 && progress.badges.length === 0 && !progress.stars && !belowStars) return null;
   return (
     <div className="space-y-1">
       {progress.stars ? <StarBankRow bank={progress.stars} color={color} /> : null}
+      {belowStars}
       {progress.goals.map((g) => (
         <div
           key={g.id}

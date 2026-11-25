@@ -127,6 +127,30 @@ export const familyStarSpends = pgTable(
 );
 
 /**
+ * Reading log (Pavel, 2026-11-25): one row per reading session. A day
+ * counts when the kid read at least 20 minutes in English or 15 in Russian
+ * (reading.ts); milestones on counted days add stars to the star bank.
+ */
+export const familyReadingLog = pgTable(
+  "family_reading_log",
+  {
+    id: uuid("id").primaryKey().defaultRandom(),
+    kidId: uuid("kid_id")
+      .notNull()
+      .references(() => familyKids.id, { onDelete: "cascade" }),
+    /** Household date the reading happened. */
+    day: date("day").notNull(),
+    book: text("book").notNull(),
+    /** "en" or "ru". */
+    language: text("language").notNull(),
+    minutes: integer("minutes").notNull(),
+    pages: integer("pages"),
+    createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+  },
+  (t) => [index("family_reading_log_kid_day_idx").on(t.kidId, t.day)],
+);
+
+/**
  * Shopping: lists (shown one below the other) hold store sections, which hold
  * item tiles. A list can be deferred until a date (hidden until then) and
  * saved as a template; a template starts new lists.

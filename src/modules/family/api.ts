@@ -27,6 +27,23 @@ export const KID_COLORS = ["#2563eb", "#db2777", "#16a34a", "#ea580c", "#7c3aed"
 
 export { deadlineUrgency, type Urgency } from "./time";
 export { SensitiveTextError } from "./guard";
+export {
+  addReading,
+  deleteReading,
+  getReading,
+  readingSummaries,
+  restoreReading,
+  updateReading,
+  ReadingError,
+  READING_RULE,
+  READING_BACKDATE_DAYS,
+  MAX_READING_MINUTES,
+  MAX_READING_PAGES,
+  type ReadingInput,
+  type ReadingRow,
+  type ReadingSummary,
+} from "./reading-api";
+export { LANGUAGE_LABEL, MINUTES_TO_COUNT, READING_LANGUAGES, STREAK_MILESTONE, TOTAL_MILESTONE, type ReadingLanguage } from "./reading";
 
 const tz = () => householdTimeZone();
 

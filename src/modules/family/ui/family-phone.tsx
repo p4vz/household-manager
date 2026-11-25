@@ -17,6 +17,7 @@ type Fn<I, O = void> = (input: I) => Promise<O>;
 export type FamilyPhoneActions = {
   setChoreDone: Fn<{ choreId: string; done: boolean }>;
   addOneTimeChore: Fn<{ kidId: string; title: string; icon?: string }>;
+  reading: import("./reading-log").ReadingActions;
   shopping: ShoppingActions;
   shoppingMember: ShoppingMemberActions;
   addReturn: Fn<{ itemName: string; store: string; returnDeadline?: string; notes?: string; orderRef?: string }, { error: string | null }>;
@@ -125,7 +126,7 @@ export function FamilyPhone({
               📈 Progress, goals and rewards
             </a>
             <div className="min-h-0 flex-1">
-              <ChoreBoard kids={kids} progress={progress} icons={icons} layout="phone" actions={{ setDone: actions.setChoreDone, addOneTime: actions.addOneTimeChore }} />
+              <ChoreBoard kids={kids} progress={progress} icons={icons} layout="phone" actions={{ setDone: actions.setChoreDone, addOneTime: actions.addOneTimeChore, reading: actions.reading }} />
             </div>
           </div>
         ) : tab === "returns" ? (

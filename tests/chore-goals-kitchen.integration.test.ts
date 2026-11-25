@@ -114,10 +114,12 @@ describe("Ask Claude on the kitchen screen", () => {
       [
         "calendar",
         "chore_goals",
+        "reading_log",
         "chores",
         "edit_calendar_event",
         "edit_chore",
         "edit_chore_goal",
+        "edit_reading_log",
         "edit_purchase_return",
         "edit_shopping_item",
         "edit_shopping_list",
@@ -131,6 +133,22 @@ describe("Ask Claude on the kitchen screen", () => {
     );
     expect(call.system).not.toMatch(/ORD-55821|balance/i);
     expect(() => call.ctx.viewer).toThrow(/not available on the kitchen screen/);
+  });
+
+  it("logs reading from Ask Claude on the screen, with undo", async () => {
+    type WithCall = Turn & { call: (name: string, args: unknown) => Promise<Record<string, unknown>> };
+    script = async (opts) => {
+      const { call } = opts as WithCall;
+      await call("edit_reading_log", { action: "create", kid: "Leo", book: "Matilda", language: "en", minutes: 25, pages: 12 });
+    };
+    const { changes } = await askKitchen([], "Leo read Matilda for 25 minutes", at("2026-11-14"));
+    expect(changes!.status).toBe("applied");
+    let r = (await family.readingSummaries(at("2026-11-14"))).values().next().value!;
+    expect(r.today.map((e) => [e.book, e.minutes, e.pages])).toEqual([["Matilda", 25, 12]]);
+    expect(r.stats.todayShare).toBe(1);
+    await kitchenChange("undo", changes!.id, changes!.id);
+    r = (await family.readingSummaries(at("2026-11-14"))).values().next().value!;
+    expect(r.today).toEqual([]);
   });
 
   it("adds a chore with a goal from the screen, with undo; deletes other than events are refused", async () => {

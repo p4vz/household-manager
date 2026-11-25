@@ -1,4 +1,5 @@
 import { KitchenModeButton } from "@/components/kitchen-mode-button";
+import { deleteReadingAction, logReadingAction } from "../../kiosk/reading-actions";
 import { enterKitchenModeAction } from "../../kiosk/pair/actions";
 import { after } from "next/server";
 import { syncGoogleCalendarsIfStale } from "@/modules/calendar/api";
@@ -77,6 +78,7 @@ export default async function FamilyPage() {
         actions={{
           setChoreDone: setChoreDoneAction,
           addOneTimeChore: addOneTimeChoreAction,
+          reading: { log: logReadingAction, remove: deleteReadingAction },
           shopping: shoppingActions,
           shoppingMember: {
             deleteItem: deleteShoppingItemAction,

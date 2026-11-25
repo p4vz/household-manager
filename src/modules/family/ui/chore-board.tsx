@@ -2,6 +2,7 @@
 
 import { startTransition, useOptimistic, useState } from "react";
 import { GoalStrip, type KidProgressView } from "./goal-strip";
+import { ReadingRow, type ReadingActions } from "./reading-log";
 import { Modal, field, tap } from "./kit";
 
 export type BoardChoreView = { id: string; title: string; icon: string; recurrence: "daily" | "weekly" | "once"; stars: number; done: boolean };
@@ -17,6 +18,8 @@ export type BoardKidView = {
 type Actions = {
   setDone: (input: { choreId: string; done: boolean }) => Promise<void>;
   addOneTime: (input: { kidId: string; title: string; icon?: string }) => Promise<void>;
+  /** Reading log (📖 Log under the prize bar). */
+  reading?: ReadingActions;
 };
 
 /**
@@ -95,7 +98,17 @@ export function ChoreBoard({
               <div className="text-sm font-medium opacity-80">
                 ⭐ {pointsOf(kid, progress, starDeltas)} points, {kid.stats.weekDone}/{kid.stats.weekTotal} this week
               </div>
-              {progress?.[kid.id] ? <GoalStrip progress={progress[kid.id]} color={kid.color} /> : null}
+              {progress?.[kid.id] ? (
+                <GoalStrip
+                  progress={progress[kid.id]}
+                  color={kid.color}
+                  belowStars={
+                    progress[kid.id].reading && actions.reading ? (
+                      <ReadingRow kidId={kid.id} kidName={kid.name} reading={progress[kid.id].reading!} actions={actions.reading} color={kid.color} />
+                    ) : null
+                  }
+                />
+              ) : null}
             </header>
             <ul className="min-h-0 flex-1 space-y-1.5 overflow-y-auto overscroll-contain">
               {kid.chores.map((c) => (
