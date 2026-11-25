@@ -6,14 +6,17 @@ import { useEffect, useRef, useState, type ReactNode } from "react";
 /**
  * Kiosk frame: exactly one 100vh screen (no page scroll), live clock,
  * background refresh every 30 s so changes from a phone show up, and night
- * mode. From 9:00 PM to 6:30 AM household time the screen turns dark, and
- * after 3 minutes without a touch it shows a dim drifting clock to avoid
+ * mode. From 9:00 PM to 6:30 AM household time the screen dims (same light
+ * theme, lower brightness, to cut glare in the kitchen; the app is light
+ * only), and after 3 minutes without a touch it shows a dim drifting clock to avoid
  * burn-in; a tap wakes it. The moon button forces night mode on or off
  * until the next change of period. During the day the layout also shifts by
  * a pixel or two every few minutes.
  */
 const REFRESH_MS = 30_000;
 const IDLE_MS = 3 * 60_000;
+/** Night mode dims the light theme rather than switching to a dark one. */
+const NIGHT_BRIGHTNESS = 0.5;
 
 function zoned(now: Date, tz: string) {
   const parts = new Intl.DateTimeFormat("en-US", { timeZone: tz, hour: "numeric", minute: "2-digit", hourCycle: "h23" }).formatToParts(now);
@@ -66,10 +69,10 @@ export function KioskShell({ tz, children, header }: { tz: string; children: Rea
   const shift = Math.floor(now.getTime() / 300_000) % 4;
 
   return (
-    <div className={`${night ? "dark" : ""} h-screen w-screen overflow-hidden`}>
+    <div className="h-screen w-screen overflow-hidden">
       <div
-        className="flex h-full w-full flex-col overflow-hidden bg-slate-100 text-slate-900 transition-colors dark:bg-slate-950 dark:text-slate-200"
-        style={{ transform: `translate(${shift % 2}px, ${shift >> 1}px)`, filter: night ? "brightness(0.7)" : undefined }}
+        className="flex h-full w-full flex-col overflow-hidden bg-slate-100 text-slate-900 transition-[filter] duration-700"
+        style={{ transform: `translate(${shift % 2}px, ${shift >> 1}px)`, filter: night ? `brightness(${NIGHT_BRIGHTNESS})` : undefined }}
       >
         <header className="flex h-20 shrink-0 items-center gap-6 px-6">
           <div className="text-5xl font-bold tabular-nums">{time}</div>
