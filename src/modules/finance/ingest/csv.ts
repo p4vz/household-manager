@@ -24,9 +24,28 @@ export type CsvRow = {
 export type SkippedLine = { line: number; reason: string; value?: string };
 
 /** Which CSV header each field was read from, so the importer can show it. */
-export type CsvColumns = Partial<Record<"account" | "date" | "payee" | "amount" | "debit" | "credit" | "category" | "notes" | "state", string>>;
+export type CsvColumns = Partial<
+  Record<
+    | "account"
+    | "date"
+    | "payee"
+    | "amount"
+    | "debit"
+    | "credit"
+    | "category"
+    | "notes"
+    | "state"
+    | "exclusion",
+    string
+  >
+>;
 
-export type ParsedCsv = { rows: CsvRow[]; skipped: SkippedLine[]; columns: CsvColumns; headerLine: number };
+export type ParsedCsv = {
+  rows: CsvRow[];
+  skipped: SkippedLine[];
+  columns: CsvColumns;
+  headerLine: number;
+};
 
 /**
  * Accepted header names, normalised to lowercase letters and digits only, in
@@ -36,14 +55,31 @@ export type ParsedCsv = { rows: CsvRow[]; skipped: SkippedLine[]; columns: CsvCo
  */
 const HEADERS = {
   account: ["account", "accountname", "accountnickname"],
-  date: ["postedon", "date", "transactiondate", "posteddate", "posted", "datepostedon"],
-  payee: ["payee", "merchant", "description", "payeename", "name", "originalpayee", "originaldescription"],
+  date: [
+    "postedon",
+    "date",
+    "transactiondate",
+    "posteddate",
+    "posted",
+    "datepostedon",
+  ],
+  payee: [
+    "payee",
+    "merchant",
+    "description",
+    "payeename",
+    "name",
+    "originalpayee",
+    "originaldescription",
+  ],
   amount: ["amount", "amountusd", "transactionamount"],
   debit: ["debit", "outflow", "withdrawal", "withdrawals", "spent", "expense"],
   credit: ["credit", "inflow", "deposit", "deposits", "received", "income"],
   category: ["category", "categoryname"],
   notes: ["notes", "memo", "note"],
   state: ["state", "status"],
+  // Simplifi's "Exclusion" column: yes means the row is left out of spending reports.
+  exclusion: ["exclusion", "excluded", "exclude", "hidefromreports"],
 } as const;
 
 const normHeader = (s: string) => s.toLowerCase().replace(/[^a-z0-9]/g, "");
@@ -57,7 +93,20 @@ function findColumn(fields: string[], names: readonly string[]): number {
   return -1;
 }
 
-const MONTHS = ["jan", "feb", "mar", "apr", "may", "jun", "jul", "aug", "sep", "oct", "nov", "dec"];
+const MONTHS = [
+  "jan",
+  "feb",
+  "mar",
+  "apr",
+  "may",
+  "jun",
+  "jul",
+  "aug",
+  "sep",
+  "oct",
+  "nov",
+  "dec",
+];
 
 export function parseAmount(raw: string): number | null {
   let s = raw
@@ -107,7 +156,10 @@ export function parseDate(raw: string): string | null {
   const s = raw
     .trim()
     .replace(/^"|"$/g, "")
-    .replace(/[T\s]+\d{1,2}:\d{2}(:\d{2}(\.\d+)?)?\s*([ap]\.?m\.?)?\s*(z|[+-]\d{2}:?\d{2}|utc|gmt)?$/i, "")
+    .replace(
+      /[T\s]+\d{1,2}:\d{2}(:\d{2}(\.\d+)?)?\s*([ap]\.?m\.?)?\s*(z|[+-]\d{2}:?\d{2}|utc|gmt)?$/i,
+      "",
+    )
     .trim();
   let m = /^(\d{4})[-/.](\d{1,2})[-/.](\d{1,2})$/.exec(s);
   if (m) return iso(+m[1], +m[2], +m[3]);
@@ -120,7 +172,10 @@ export function parseDate(raw: string): string | null {
     return iso(y, +m[1], +m[2]) ?? (+m[1] > 12 ? iso(y, +m[2], +m[1]) : null);
   }
   // "Mar 2, 2024", "March 2 2024", "2 Mar 2024", "02-Mar-2024"
-  m = /^([a-z]{3,})\.?[\s-]+(\d{1,2})(?:st|nd|rd|th)?,?[\s-]+(\d{4}|\d{2})$/i.exec(s);
+  m =
+    /^([a-z]{3,})\.?[\s-]+(\d{1,2})(?:st|nd|rd|th)?,?[\s-]+(\d{4}|\d{2})$/i.exec(
+      s,
+    );
   if (m) return monthName(m[1], +m[2], m[3]);
   m = /^(\d{1,2})[\s-]+([a-z]{3,})\.?,?[\s-]+(\d{4}|\d{2})$/i.exec(s);
   if (m) return monthName(m[2], +m[1], m[3]);
@@ -136,26 +191,53 @@ function monthName(name: string, day: number, year: string): string | null {
 function iso(y: number, mo: number, d: number): string | null {
   if (y < 1900 || y > 2100) return null;
   const dt = new Date(Date.UTC(y, mo - 1, d));
-  if (dt.getUTCFullYear() !== y || dt.getUTCMonth() !== mo - 1 || dt.getUTCDate() !== d) return null;
+  if (
+    dt.getUTCFullYear() !== y ||
+    dt.getUTCMonth() !== mo - 1 ||
+    dt.getUTCDate() !== d
+  )
+    return null;
   return dt.toISOString().slice(0, 10);
 }
 
-export function splitCategory(raw: string): { category: string | null; subcategory: string | null } {
-  const s = raw.trim();
-  if (!s || /^uncategori[sz]ed$/i.test(s)) return { category: null, subcategory: null };
+/** Simplifi marks accounts brought over from another app with a suffix, e.g. "Freedom Visa(Imported)". */
+export function cleanAccountName(raw: string): string {
+  return raw.replace(/\s*\((imported|closed|hidden)\)\s*$/i, "").trim();
+}
+
+export function splitCategory(raw: string): {
+  category: string | null;
+  subcategory: string | null;
+} {
+  // History migrated from Mint carries categories like "Mint Expense:Amusement";
+  // the "Mint Expense"/"Mint Income" parent says nothing, so drop it.
+  const s = raw
+    .trim()
+    .replace(/^mint\s+(expense|income|transfer)s?\s*:\s*/i, "");
+  if (!s || /^uncategori[sz]ed$/i.test(s))
+    return { category: null, subcategory: null };
   const [parent, ...rest] = s.split(":").map((p) => p.trim());
-  return { category: parent, subcategory: rest.length ? rest.join(": ") : null };
+  return {
+    category: parent,
+    subcategory: rest.length ? rest.join(": ") : null,
+  };
 }
 
 type ColumnIndex = Record<keyof typeof HEADERS, number>;
 
 function columnsFor(fields: string[]): ColumnIndex {
   return Object.fromEntries(
-    (Object.keys(HEADERS) as (keyof typeof HEADERS)[]).map((k) => [k, findColumn(fields, HEADERS[k])]),
+    (Object.keys(HEADERS) as (keyof typeof HEADERS)[]).map((k) => [
+      k,
+      findColumn(fields, HEADERS[k]),
+    ]),
   ) as ColumnIndex;
 }
 
-const usable = (c: ColumnIndex) => c.date >= 0 && c.payee >= 0 && (c.amount >= 0 || c.debit >= 0 || c.credit >= 0);
+const usable = (c: ColumnIndex) =>
+  c.date >= 0 &&
+  c.payee >= 0 &&
+  (c.amount >= 0 || c.debit >= 0 || c.credit >= 0);
 
 /** Keep skip examples short and never echo more than a field's worth of text. */
 const sample = (v: string | undefined) => {
@@ -164,7 +246,10 @@ const sample = (v: string | undefined) => {
 };
 
 export function parseSimplifiCsv(text: string): ParsedCsv {
-  const parsed = Papa.parse<string[]>(text.replace(/^\uFEFF/, ""), { header: false, skipEmptyLines: false });
+  const parsed = Papa.parse<string[]>(text.replace(/^\uFEFF/, ""), {
+    header: false,
+    skipEmptyLines: false,
+  });
   const data = parsed.data;
 
   // The header is usually line 1, but exports re-saved from a spreadsheet or
@@ -180,7 +265,9 @@ export function parseSimplifiCsv(text: string): ParsedCsv {
     }
   }
   if (!col) {
-    const first = (data.find((r) => r.some((f) => f.trim())) ?? []).map((f) => f.trim()).filter(Boolean);
+    const first = (data.find((r) => r.some((f) => f.trim())) ?? [])
+      .map((f) => f.trim())
+      .filter(Boolean);
     const c = columnsFor(first);
     const missing = [
       c.date < 0 && "date",
@@ -209,7 +296,8 @@ export function parseSimplifiCsv(text: string): ParsedCsv {
     const line = i + 1;
     if (!r || r.every((f) => !f.trim())) continue; // blank line
     // A repeated header (several exports pasted together) is not a transaction.
-    if (normHeader(cell(r, col.date)) === normHeader(header[col.date])) continue;
+    if (normHeader(cell(r, col.date)) === normHeader(header[col.date]))
+      continue;
 
     const rawDate = cell(r, col.date);
     const date = parseDate(rawDate);
@@ -226,7 +314,10 @@ export function parseSimplifiCsv(text: string): ParsedCsv {
       rawAmount = [d, c].filter(Boolean).join(" / ");
       const dv = d ? parseAmount(d) : 0;
       const cv = c ? parseAmount(c) : 0;
-      amount = dv === null || cv === null || (!d && !c) ? null : Math.round((Math.abs(cv) - Math.abs(dv)) * 100) / 100;
+      amount =
+        dv === null || cv === null || (!d && !c)
+          ? null
+          : Math.round((Math.abs(cv) - Math.abs(dv)) * 100) / 100;
     } else {
       rawAmount = "";
       amount = null;
@@ -234,7 +325,9 @@ export function parseSimplifiCsv(text: string): ParsedCsv {
 
     if (!date) {
       // Totals or footer lines: no date and nothing that looks like a payee.
-      const footer = !rawDate.trim() && /total|balance|summary|count|export/i.test(r.join(" "));
+      const footer =
+        !rawDate.trim() &&
+        /total|balance|summary|count|export/i.test(r.join(" "));
       skipped.push(
         footer
           ? { line, reason: "summary or total line" }
@@ -245,7 +338,11 @@ export function parseSimplifiCsv(text: string): ParsedCsv {
       continue;
     }
     if (amount === null) {
-      skipped.push(rawAmount.trim() ? { line, reason: "unreadable amount", value: sample(rawAmount) } : { line, reason: "no amount" });
+      skipped.push(
+        rawAmount.trim()
+          ? { line, reason: "unreadable amount", value: sample(rawAmount) }
+          : { line, reason: "no amount" },
+      );
       continue;
     }
     if (!description) {
@@ -255,7 +352,7 @@ export function parseSimplifiCsv(text: string): ParsedCsv {
     const { category, subcategory } = splitCategory(cell(r, col.category));
     const state = cell(r, col.state).trim().toLowerCase();
     rows.push({
-      account: cell(r, col.account).trim() || "Imported account",
+      account: cleanAccountName(cell(r, col.account)) || "Imported account",
       date,
       amount,
       description,
@@ -263,23 +360,36 @@ export function parseSimplifiCsv(text: string): ParsedCsv {
       category,
       subcategory,
       notes: cell(r, col.notes).trim() || null,
-      isTransfer: looksLikeTransfer(description, category),
+      isTransfer:
+        looksLikeTransfer(description, category) ||
+        /^(yes|y|true|1|excluded)$/i.test(cell(r, col.exclusion).trim()),
       pending: state === "pending",
     });
   }
   return { rows, skipped, columns, headerLine: headerIdx + 1 };
 }
 
-export type SkipSummary = { reason: string; count: number; lines: number[]; examples: string[] };
+export type SkipSummary = {
+  reason: string;
+  count: number;
+  lines: number[];
+  examples: string[];
+};
 
 /** Group skipped lines by reason, with a few line numbers and distinct example values. */
 export function summarizeSkipped(skipped: SkippedLine[]): SkipSummary[] {
   const map = new Map<string, SkipSummary>();
   for (const s of skipped) {
-    const g = map.get(s.reason) ?? { reason: s.reason, count: 0, lines: [], examples: [] };
+    const g = map.get(s.reason) ?? {
+      reason: s.reason,
+      count: 0,
+      lines: [],
+      examples: [],
+    };
     g.count++;
     if (g.lines.length < 5) g.lines.push(s.line);
-    if (s.value && g.examples.length < 3 && !g.examples.includes(s.value)) g.examples.push(s.value);
+    if (s.value && g.examples.length < 3 && !g.examples.includes(s.value))
+      g.examples.push(s.value);
     map.set(s.reason, g);
   }
   return [...map.values()].sort((a, b) => b.count - a.count);
@@ -290,24 +400,40 @@ export function summarizeSkipped(skipped: SkippedLine[]): SkipSummary[] {
  * twice produces the same ids, so re-imports never duplicate. Identical
  * rows on the same day are told apart by their occurrence number.
  */
-export function assignExternalIds<T extends Pick<CsvRow, "date" | "amount" | "description">>(
-  rows: T[],
-): (T & { externalId: string })[] {
+export function assignExternalIds<
+  T extends Pick<CsvRow, "date" | "amount" | "description">,
+>(rows: T[]): (T & { externalId: string })[] {
   const seen = new Map<string, number>();
   return rows.map((r) => {
     const base = `${r.date}|${r.amount.toFixed(2)}|${r.description.toLowerCase()}`;
     const n = (seen.get(base) ?? 0) + 1;
     seen.set(base, n);
-    return { ...r, externalId: createHash("sha256").update(`${base}|${n}`).digest("hex").slice(0, 32) };
+    return {
+      ...r,
+      externalId: createHash("sha256")
+        .update(`${base}|${n}`)
+        .digest("hex")
+        .slice(0, 32),
+    };
   });
 }
 
-export type CsvAccountSummary = { name: string; rows: number; firstDate: string; lastDate: string };
+export type CsvAccountSummary = {
+  name: string;
+  rows: number;
+  firstDate: string;
+  lastDate: string;
+};
 
 export function summarizeByAccount(rows: CsvRow[]): CsvAccountSummary[] {
   const map = new Map<string, CsvAccountSummary>();
   for (const r of rows) {
-    const s = map.get(r.account) ?? { name: r.account, rows: 0, firstDate: r.date, lastDate: r.date };
+    const s = map.get(r.account) ?? {
+      name: r.account,
+      rows: 0,
+      firstDate: r.date,
+      lastDate: r.date,
+    };
     s.rows++;
     if (r.date < s.firstDate) s.firstDate = r.date;
     if (r.date > s.lastDate) s.lastDate = r.date;

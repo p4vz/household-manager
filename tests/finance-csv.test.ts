@@ -81,6 +81,27 @@ describe("Simplifi CSV parsing", () => {
 });
 
 describe("Simplifi CSV export variants", () => {
+  it("reads Simplifi's export with history migrated from Mint", () => {
+    const csv = [
+      "Date\tAccount\tReviewed\tPayee\tCategory\tExclusion\tAmount",
+      "26-Oct-25\tCard B(Imported)\tno\tPlay Place\tMint Expense:Amusement\tno\t-20.12",
+      "27-Oct-25\tCard B(Imported)\tyes\tCard Payment\tMint Transfer:Credit Card Payment\tyes\t100.00",
+    ].join("\n");
+    const { rows, skipped } = parseSimplifiCsv(csv);
+    expect(skipped).toEqual([]);
+    expect(rows[0]).toMatchObject({
+      account: "Card B",
+      date: "2025-10-26",
+      amount: -20.12,
+      description: "Play Place",
+      category: "Amusement",
+      subcategory: null,
+      isTransfer: false,
+    });
+    expect(rows[1]).toMatchObject({ date: "2025-10-27", isTransfer: true });
+    // Same file saved with commas instead of tabs.
+    expect(parseSimplifiCsv(csv.replace(/\t/g, ",")).rows).toHaveLength(2);
+  });
   it("handles a BOM, title lines above the header, quoted commas and footer totals", () => {
     const csv = [
       "\uFEFFTransactions export",
