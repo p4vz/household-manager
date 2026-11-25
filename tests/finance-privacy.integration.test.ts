@@ -124,7 +124,7 @@ describe("private accounts in Finance", () => {
   });
 
   it("refuses changes to the other member's accounts", async () => {
-    const patch = { displayName: "x", officialName: null, owner: "joint" as const, kind: "credit" as const, active: true };
+    const patch = { displayName: "x", officialName: null, last4: null, owner: "joint" as const, kind: "credit" as const, active: true };
     await expect(api.updateAccount("user2", pavel, patch)).rejects.toThrow(/not available/);
     await expect(api.saveCardProfile("user2", pavel, { rewardType: "points", baseRate: 1, centsPerUnit: 1, annualFee: 0, annualFeeMonth: null })).rejects.toThrow();
     await expect(api.addCardRule("user2", pavel, { matchType: "category", match: "Shopping", rate: 5, capAmount: null, capPeriod: null, validFrom: null, validTo: null, label: null })).rejects.toThrow();
@@ -150,6 +150,7 @@ describe("account management page", () => {
     await api.updateAccount("user1", pavel, {
       displayName: "Travel card 4111 1111 1111 1111",
       officialName: "Chase Sapphire Preferred (...1234)",
+      last4: null,
       owner: "user1",
       kind: "business_credit",
       active: true,

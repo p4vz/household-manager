@@ -1,12 +1,17 @@
 import { Button } from "@/components/ui/button";
 import { formatMoney } from "@/lib/utils";
 import { requireUserOrRedirect } from "@/core/auth/guard";
-import { OWNER_LABELS, listRecentTransactions, viewerFromLabel } from "@/modules/finance/api";
+import { OWNER_LABELS, listRecentTransactions, viewerFromLabel, visibleAccountImages, visibleAccountLast4 } from "@/modules/finance/api";
+import { CardThumb, CardThumbsProvider } from "@/modules/finance/ui/card-thumbs";
 import { categorizeWithAiAction, setMerchantCategoryAction } from "../actions";
 
 export default async function TransactionsPage() {
   const viewer = viewerFromLabel((await requireUserOrRedirect()).owner);
-  const rows = await listRecentTransactions(viewer, 300);
+  const [rows, images, last4] = await Promise.all([
+    listRecentTransactions(viewer, 300),
+    visibleAccountImages(viewer),
+    visibleAccountLast4(viewer),
+  ]);
   const uncategorized = rows.filter((r) => !r.category && !r.isTransfer).length;
   const categories = [...new Set(rows.map((r) => r.category).filter(Boolean))].sort() as string[];
   return (
@@ -22,6 +27,7 @@ export default async function TransactionsPage() {
       <datalist id="categories">
         {categories.map((c) => <option key={c} value={c} />)}
       </datalist>
+      <CardThumbsProvider images={images}>
       <table className="w-full text-sm">
         <thead className="text-left text-muted-foreground">
           <tr><th className="py-1">Date</th><th>Merchant</th><th>Category (applies to all from this merchant)</th><th>Account</th><th>Owner</th><th className="text-right">Amount</th></tr>
@@ -41,13 +47,17 @@ export default async function TransactionsPage() {
                   <button className="text-xs underline">Save</button>
                 </form>
               </td>
-              <td>{t.account ?? t.bankName}</td>
+              <td className="whitespace-nowrap">
+                <CardThumb accountId={t.accountId} /> {t.account ?? t.bankName}
+                {last4[t.accountId] ? <span className="ml-1 font-mono text-xs text-muted-foreground">··{last4[t.accountId]}</span> : null}
+              </td>
               <td>{OWNER_LABELS[t.owner]}</td>
               <td className={`text-right tabular-nums ${t.amount < 0 ? "" : "text-success"}`}>{formatMoney(t.amount, { cents: true })}</td>
             </tr>
           ))}
         </tbody>
       </table>
+      </CardThumbsProvider>
     </section>
   );
 }

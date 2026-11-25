@@ -6,20 +6,25 @@ import {
   ACCOUNT_KIND_LABELS,
   OWNERS,
   OWNER_LABELS,
+  CARD_KINDS,
+  cardCatalog,
   cardImagesConfigured,
   listAccounts,
   viewerFromLabel,
   type Owner,
 } from "@/modules/finance/api";
 import { CardPictureUpload } from "@/modules/finance/ui/card-picture";
-import { removeCardPictureAction, updateAccountAction, uploadCardPictureAction } from "../actions";
+import { multipliersText, offerText } from "@/modules/finance/ui/catalog-format";
+import { NewCardFromPhoto } from "@/modules/finance/ui/new-card-from-photo";
+import { addCardFromPhotoAction, removeCardPictureAction, updateAccountAction, uploadCardPictureAction } from "../actions";
 
 const input = "w-full rounded border bg-transparent px-2 py-1";
 
 export default async function AccountsPage() {
   const user = await requireUserOrRedirect();
   const viewer = viewerFromLabel(user.owner);
-  const accounts = await listAccounts(viewer);
+  const [accounts, catalog] = await Promise.all([listAccounts(viewer), cardCatalog()]);
+  const catalogById = new Map(catalog.map((p) => [p.id, p]));
   const pictures = cardImagesConfigured();
   const other: Owner = viewer === "user1" ? "user2" : "user1";
   const groups: { owner: Owner; title: string; note: string }[] = [
@@ -53,6 +58,13 @@ export default async function AccountsPage() {
         {!pictures ? " Set DOC_VAULT_KEY on the server to turn pictures on." : ""}
       </p>
 
+      <NewCardFromPhoto
+        action={addCardFromPhotoAction}
+        owners={[viewer, "joint" as Owner].map((o) => ({ value: o, label: OWNER_LABELS[o] }))}
+        defaultOwner={viewer}
+        disabled={!pictures}
+      />
+
       {accounts.length === 0 ? <p className="text-muted-foreground">No accounts yet. Connect SimpleFIN or import a CSV.</p> : null}
 
       {groups.map((g) => {
@@ -66,12 +78,12 @@ export default async function AccountsPage() {
             </div>
             {rows.map((a) => (
               <div key={a.id} className={`flex flex-wrap gap-4 rounded-xl border p-4 text-sm ${a.active ? "" : "opacity-60"}`}>
-                <div className="w-40 shrink-0 space-y-2">
+                <div className="w-56 shrink-0 space-y-2">
                   {a.image ? (
                     // eslint-disable-next-line @next/next/no-img-element
-                    <img src={a.image} alt={`${a.displayName ?? a.officialNameShown} card`} className="aspect-[1.586] w-40 rounded-lg border object-cover" />
+                    <img src={a.image} alt={`${a.displayName ?? a.officialNameShown} card`} className="aspect-[1.586] w-56 rounded-lg border object-cover shadow-sm" />
                   ) : (
-                    <div className="flex aspect-[1.586] w-40 items-center justify-center rounded-lg border border-dashed text-xs text-muted-foreground">
+                    <div className="flex aspect-[1.586] w-56 items-center justify-center rounded-lg border border-dashed text-xs text-muted-foreground">
                       No picture
                     </div>
                   )}
@@ -89,6 +101,10 @@ export default async function AccountsPage() {
                 </div>
 
                 <div className="min-w-64 flex-1 space-y-2">
+                  <div className="text-base font-medium">
+                    {a.displayName ?? a.officialNameShown}
+                    {a.last4 ? <span className="ml-2 font-mono text-sm text-muted-foreground">•••• {a.last4}</span> : null}
+                  </div>
                   <div className="flex flex-wrap items-center gap-2 text-xs text-muted-foreground">
                     <span>From the bank: {a.institution ? `${a.institution} · ` : ""}{a.bankName}</span>
                     {a.linked ? (
@@ -111,6 +127,10 @@ export default async function AccountsPage() {
                       <label className="space-y-1">
                         <span className="text-xs text-muted-foreground">Our nickname</span>
                         <input name="displayName" defaultValue={a.displayName ?? ""} placeholder="e.g. Grocery card" className={input} />
+                      </label>
+                      <label className="space-y-1">
+                        <span className="text-xs text-muted-foreground">Last 4 digits</span>
+                        <input name="last4" defaultValue={a.last4 ?? ""} inputMode="numeric" pattern="\d{4}" maxLength={4} placeholder="1234" className={input} />
                       </label>
                       <label className="space-y-1">
                         <span className="text-xs text-muted-foreground">Owner</span>
@@ -146,6 +166,7 @@ export default async function AccountsPage() {
                       <dd>{ACCOUNT_KIND_LABELS[a.kind]}</dd>
                     </dl>
                   )}
+                  <CardBenefits product={a.visible && CARD_KINDS.includes(a.kind) && a.catalogProductId ? catalogById.get(a.catalogProductId) : undefined} open={!a.linked} />
                 </div>
               </div>
             ))}
@@ -153,5 +174,31 @@ export default async function AccountsPage() {
         );
       })}
     </section>
+  );
+}
+
+type CatalogEntry = Awaited<ReturnType<typeof cardCatalog>>[number];
+
+/** The card's current benefits, from the stored catalog. */
+function CardBenefits({ product: p, open }: { product: CatalogEntry | undefined; open: boolean }) {
+  if (!p) return null;
+  if (!p.terms) return <p className="text-xs text-muted-foreground">Benefits for {p.issuer} {p.name} are being looked up.</p>;
+  const t = p.terms;
+  const base = t.rewardType === "cashback" ? `${t.baseRate}%` : `${t.baseRate}x`;
+  return (
+    <details className="rounded-md bg-muted/40 p-2 text-xs" open={open}>
+      <summary className="cursor-pointer font-medium">Current benefits ({p.issuer} {p.name})</summary>
+      <ul className="mt-1 space-y-0.5">
+        <li>Annual fee: ${t.annualFee}{t.foreignTransactionFee ? "" : " · no foreign transaction fee"}</li>
+        <li>Earns: {t.multipliers.length ? `${multipliersText(t)}, ` : ""}{base} on everything else</li>
+        {t.signupOffer ? <li>Sign-up offer: {offerText(t)}</li> : null}
+        {t.credits.length ? <li>Credits: {t.credits.map((c) => `${c.label} $${c.amount}/${c.period}`).join(", ")}</li> : null}
+        {t.perks.length ? <li>Perks: {t.perks.slice(0, 5).join("; ")}</li> : null}
+        <li className="text-muted-foreground">
+          {p.verifiedAt ? `Checked with the issuer ${p.verifiedAt.toISOString().slice(0, 10)}` : "Not yet checked with the issuer"} ·{" "}
+          <Link href="/finance/rewards" className="underline">Rewards</Link>
+        </li>
+      </ul>
+    </details>
   );
 }

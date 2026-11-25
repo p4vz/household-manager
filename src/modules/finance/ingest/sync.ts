@@ -1,5 +1,5 @@
 import "server-only";
-import { and, desc, eq, gte, inArray, notInArray, sql } from "drizzle-orm";
+import { and, desc, eq, gte, inArray, isNull, notInArray, sql } from "drizzle-orm";
 import { bus } from "@/core/bus";
 import { db } from "@/core/db/client";
 import { financeAccounts, financeSyncRuns, financeTransactions } from "../schema";
@@ -7,7 +7,7 @@ import { loadRules } from "./categorize";
 import type { Viewer } from "../access";
 import { getAccessUrl, newAccountOwner } from "./credentials";
 import { guessAccountKind, looksLikeTransfer, normalizeMerchant } from "./merchant";
-import { stripAccountNumbers } from "./redact";
+import { extractLast4, stripAccountNumbers } from "./redact";
 import { MIN_MANUAL_SYNC_INTERVAL_MS, MIN_SYNC_INTERVAL_MS, STALE_RUN_MS } from "./schedule";
 import { fetchAccounts, type SimplefinAccountSet } from "./simplefin";
 
@@ -97,14 +97,33 @@ function isoDay(unixSeconds: number): string {
   return new Date(unixSeconds * 1000).toISOString().slice(0, 10);
 }
 
+/**
+ * A card added by hand (from a photo, before the bank sync knew it) becomes
+ * the synced account when exactly one unsynced account has the same last
+ * four digits, so it keeps its picture, owner and rewards setup.
+ */
+async function adoptManualAccount(simplefinId: string, last4: string) {
+  const [known] = await db().select({ id: financeAccounts.id }).from(financeAccounts).where(eq(financeAccounts.simplefinId, simplefinId));
+  if (known) return;
+  const matches = await db()
+    .select({ id: financeAccounts.id })
+    .from(financeAccounts)
+    .where(and(isNull(financeAccounts.simplefinId), eq(financeAccounts.last4, last4)));
+  if (matches.length !== 1) return;
+  await db().update(financeAccounts).set({ simplefinId }).where(eq(financeAccounts.id, matches[0].id));
+}
+
 export async function applyAccountSet(data: SimplefinAccountSet, owner: Viewer | "joint" = "joint"): Promise<number> {
   let inserted = 0;
   for (const acct of data.accounts) {
+    const last4 = extractLast4(acct.name);
+    if (last4) await adoptManualAccount(acct.id, last4);
     const [account] = await db()
       .insert(financeAccounts)
       .values({
         simplefinId: acct.id,
         bankName: stripAccountNumbers(acct.name),
+        last4,
         owner,
         institution: acct.org.name ?? acct.org.domain ?? null,
         kind: guessAccountKind(acct.name),
@@ -117,6 +136,7 @@ export async function applyAccountSet(data: SimplefinAccountSet, owner: Viewer |
         // User-owned fields (display name, owner, kind, active) are left alone.
         set: {
           bankName: stripAccountNumbers(acct.name),
+          ...(last4 ? { last4 } : {}),
           institution: acct.org.name ?? acct.org.domain ?? null,
           currency: acct.currency,
           balance: acct.balance,

@@ -75,7 +75,7 @@ export function FinanceDashboard(props: {
   today: string;
   categoryFacts: CategoryFact[];
   merchantFacts: MerchantFact[];
-  accounts: { id: string; name: string; owner: string }[];
+  accounts: { id: string; name: string; owner: string; last4: string | null }[];
   viewer: "user1" | "user2";
   drillDown: (q: DrillQuery) => Promise<Txn[]>;
 }) {
@@ -133,7 +133,7 @@ export function FinanceDashboard(props: {
         >
           <option value="">All cards and accounts</option>
           {visibleAccounts.map((a) => (
-            <option key={a.id} value={a.id}>{a.name}</option>
+            <option key={a.id} value={a.id}>{a.name}{a.last4 ? ` ··${a.last4}` : ""}</option>
           ))}
         </select>
       </div>

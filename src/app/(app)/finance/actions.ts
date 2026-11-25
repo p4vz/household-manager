@@ -35,6 +35,8 @@ import {
   setAccountImage,
   deleteAccountImage,
   MAX_CARD_IMAGE_BYTES,
+  addCardFromPhoto,
+  CardPhotoError,
 } from "@/modules/finance/api";
 
 /** Finance data is read and changed as the signed-in member (private accounts). */
@@ -46,6 +48,7 @@ const AccountInput = z.object({
   id: z.uuid(),
   displayName: z.string().max(80).nullable(),
   officialName: z.string().max(120).nullable(),
+  last4: z.string().regex(/^\d{4}$/, "Last 4 must be four digits").nullable(),
   owner: z.enum(OWNERS),
   kind: z.enum(ACCOUNT_KINDS),
   active: z.boolean(),
@@ -58,6 +61,7 @@ export async function updateAccountAction(form: FormData) {
     id: form.get("id"),
     displayName: (form.get("displayName") as string | null) || null,
     officialName: (form.get("officialName") as string | null) || null,
+    last4: String(form.get("last4") ?? "").trim() || null,
     owner: form.get("owner"),
     kind: form.get("kind"),
     active: form.get("active") === "on",
@@ -86,6 +90,40 @@ export async function uploadCardPictureAction(_prev: PictureState, form: FormDat
   } catch (err) {
     const msg = err instanceof z.ZodError ? err.issues[0]?.message : err instanceof Error ? err.message : null;
     return { ok: false, error: msg ?? "Could not save the picture" };
+  }
+}
+
+export type NewCardState =
+  | null
+  | { ok: true; product: string; confidence: "high" | "medium" | "low"; hasTerms: boolean }
+  | { ok: false; error: string };
+
+const newCard = authedAction(
+  z.object({
+    owner: z.enum(OWNERS),
+    nickname: z.string().max(80).nullable(),
+    last4: z.string().regex(/^\d{4}$/, "Last 4 must be four digits").nullable(),
+    file: z.instanceof(File).refine((f) => f.size > 0 && f.size <= MAX_CARD_IMAGE_BYTES, "The picture is too large (600 KB at most)"),
+  }),
+  async ({ file, ...rest }, user) => addCardFromPhoto(as(user), { ...rest, image: Buffer.from(await file.arrayBuffer()) }),
+);
+export async function addCardFromPhotoAction(_prev: NewCardState, form: FormData): Promise<NewCardState> {
+  // Check the session outside the try so a refusal is not turned into a message.
+  await requireUser();
+  try {
+    const r = await newCard({
+      owner: form.get("owner"),
+      nickname: (form.get("nickname") as string | null)?.trim() || null,
+      last4: String(form.get("last4") ?? "").trim() || null,
+      file: form.get("file"),
+    });
+    revalidatePath("/finance/accounts");
+    revalidatePath("/finance/rewards");
+    return { ok: true, product: r.product, confidence: r.confidence, hasTerms: r.hasTerms };
+  } catch (err) {
+    if (err instanceof z.ZodError) return { ok: false, error: err.issues[0]?.message ?? "Check the form" };
+    if (err instanceof CardPhotoError) return { ok: false, error: err.message };
+    return { ok: false, error: "Couldn't read the card from this photo. Try again, or add it by name in the card catalog." };
   }
 }
 
