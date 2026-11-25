@@ -266,7 +266,9 @@ describe("kiosk pairing", () => {
 
     const device = await verifyDeviceToken(token!);
     expect(device).toMatchObject({ name: "Kitchen" });
-    expect(await verifyDeviceToken(`${token!.slice(0, -1)}A`)).toBeNull();
+    // Change the last character (to something it isn't: "A" alone failed 1 run in 64).
+    const tampered = `${token!.slice(0, -1)}${token!.endsWith("A") ? "B" : "A"}`;
+    expect(await verifyDeviceToken(tampered)).toBeNull();
 
     const [listed] = await listKioskDevices();
     await revokeKioskDevice(listed.id);
