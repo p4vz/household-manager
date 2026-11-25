@@ -80,6 +80,22 @@ export function allCalendarSources(env: Env): CalendarSource[] {
   return [family, ...extras];
 }
 
+/** How far ahead the kiosk's week view can scroll (and the sync mirrors). */
+export const KIOSK_DAYS_AHEAD = 70;
+
+/** Sunday on or before the 1st of the month `date` is in: where the month grid starts. */
+export function monthGridStart(date: string): string {
+  const first = `${date.slice(0, 8)}01`;
+  return addDays(first, -new Date(`${first}T00:00:00Z`).getUTCDay());
+}
+
+/** The days mirrored from Google: this month's grid (at least from yesterday) to KIOSK_DAYS_AHEAD days out. */
+export function mirrorWindow(today: string): { from: string; to: string } {
+  const gridStart = monthGridStart(today);
+  const yesterday = addDays(today, -1);
+  return { from: gridStart < yesterday ? gridStart : yesterday, to: addDays(today, KIOSK_DAYS_AHEAD) };
+}
+
 /** An entry of calendarList.list. */
 export type CalendarListEntry = { id?: string; summary?: string; summaryOverride?: string; accessRole?: string };
 

@@ -3,6 +3,7 @@
 import { revalidatePath } from "next/cache";
 import { z } from "zod";
 import { authedAction } from "@/core/actions/authed-action";
+import { CalendarWriteError, deleteGoogleEvent } from "@/modules/calendar/api";
 import {
   CHORE_ICONS,
   KID_COLORS,
@@ -95,6 +96,22 @@ export const deleteReturnAction = authedAction(z.object({ id }), async (input) =
   refresh();
 });
 
+/**
+ * Takes an event off the family Google calendar. Members only: the kitchen
+ * screen can add and change events but never delete them (kids use it).
+ * Google keeps deleted events in its bin for 30 days.
+ */
+export const deleteEventAction = authedAction(z.object({ id }), async ({ id: eventId }): Promise<{ error: string | null }> => {
+  try {
+    await deleteGoogleEvent(eventId);
+  } catch (err) {
+    if (!(err instanceof CalendarWriteError)) throw err;
+    refresh();
+    return { error: err.message };
+  }
+  refresh();
+  return { error: null };
+});
 // ---- Returns found in email, and filling a return from a screenshot or text ----
 // Members only. A member can act only on suggestions from their own mailboxes.
 

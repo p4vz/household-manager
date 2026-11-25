@@ -18,9 +18,9 @@ const btn = "min-h-12 min-w-12 rounded-xl border px-3 text-lg font-medium";
  * - Full screen on/off. Browsers drop full screen on every reload (the
  *   watchdog's, or the nightly one) and only allow it again after a tap, so
  *   once it was switched on, the next tap anywhere turns it back on.
- * - For a signed-in parent: "Exit" back to the app, and "Pair this screen"
- *   until the device has its own kiosk pairing, so the kitchen screen keeps
- *   working after signing out of Google there.
+ * - For a signed-in parent: "Pair this screen" until the device has its own
+ *   kiosk pairing, so the kitchen screen keeps working after signing out of
+ *   Google there. There is no "Exit" to the app: kids use this screen.
  */
 export function KioskControls({ member, paired, pair }: { member: boolean; paired: boolean; pair: (input: Record<string, never>) => Promise<void> }) {
   const router = useRouter();
@@ -87,19 +87,6 @@ export function KioskControls({ member, paired, pair }: { member: boolean; paire
           }}
         >
           {full ? "🗗" : "⛶"}
-        </button>
-      ) : null}
-      {member ? (
-        <button
-          type="button"
-          className={btn}
-          onClick={async () => {
-            rememberKitchenFullscreen(false);
-            await exitFullscreen();
-            router.push("/family");
-          }}
-        >
-          ✕ Exit
         </button>
       ) : null}
     </>
