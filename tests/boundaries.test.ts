@@ -167,12 +167,20 @@ describe("external surface", () => {
     expect(users).toEqual(["app/kiosk/pair/actions.ts", "core/kiosk/devices.ts", "core/kiosk/pairing.ts", "proxy.ts"]);
   });
 
-  it("only core/net/outbound.ts calls fetch", () => {
+  it("only core/net/outbound.ts calls fetch (plus the kiosk watchdog's same-origin ping)", () => {
+    // The watchdog is a client hook that pings a static file on this app's own
+    // origin to tell "offline" from "stuck"; it carries no credentials.
+    const CLIENT_PING = "modules/family/ui/use-kiosk-watchdog.ts";
     const offenders = files
-      .filter((f) => rel(f) !== "core/net/outbound.ts")
+      .filter((f) => rel(f) !== "core/net/outbound.ts" && rel(f) !== CLIENT_PING)
       .filter((f) => /(^|[^\w.])fetch\(/.test(readFileSync(f, "utf8")))
       .map(rel);
     expect(offenders).toEqual([]);
+    const ping = readFileSync(join(SRC, CLIENT_PING), "utf8");
+    expect(ping.startsWith('"use client";')).toBe(true);
+    expect([...ping.matchAll(/fetch\(([^,]+),/g)].map((m) => m[1].trim())).toEqual(["`${PING_URL}?ping=${Date.now()}`"]);
+    expect(ping).toMatch(/const PING_URL = "\/kiosk\.webmanifest";/);
+    expect(ping).toMatch(/credentials: "omit"/);
   });
 
   it("no secret is exposed through NEXT_PUBLIC_", () => {

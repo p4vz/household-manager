@@ -7,8 +7,8 @@
  * no household data) are stored on the device. Everything else always goes
  * to the network, exactly as without a service worker.
  */
-const CACHE = "household-static-v1";
-const PRECACHE = ["/offline.html", "/icons/icon-192.png", "/manifest.webmanifest"];
+const CACHE = "household-static-v2";
+const PRECACHE = ["/offline.html", "/kiosk-offline.html", "/icons/icon-192.png", "/manifest.webmanifest"];
 
 self.addEventListener("install", (event) => {
   event.waitUntil(caches.open(CACHE).then((c) => c.addAll(PRECACHE)).then(() => self.skipWaiting()));
@@ -30,8 +30,10 @@ self.addEventListener("fetch", (event) => {
   if (url.origin !== self.location.origin) return;
 
   // Page loads: network only; the offline page when there is no connection.
+  // The kitchen screen's offline page retries /kiosk every 30 s by itself.
   if (req.mode === "navigate") {
-    event.respondWith(fetch(req).catch(() => caches.match("/offline.html")));
+    const fallback = url.pathname === "/kiosk" ? "/kiosk-offline.html" : "/offline.html";
+    event.respondWith(fetch(req).catch(() => caches.match(fallback)));
     return;
   }
 

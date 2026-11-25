@@ -3,7 +3,7 @@
  * manifest and icons without cookies, so they must load before sign-in.
  * They hold no household data: see public/sw.js.
  */
-export const PWA_FILES = ["/manifest.webmanifest", "/sw.js", "/offline.html"] as const;
+export const PWA_FILES = ["/manifest.webmanifest", "/kiosk.webmanifest", "/sw.js", "/offline.html", "/kiosk-offline.html"] as const;
 
 /**
  * The only paths reachable without an allowlisted session. Everything else
