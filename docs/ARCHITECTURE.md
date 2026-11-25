@@ -329,7 +329,7 @@ Ask Claude also gets `house_projects`, `questionable_transactions`,
 `check_recalls` (CPSC, `www.saferproducts.gov`) and `maintenance_research`
 (the provider's own web search, no new host).
 
-Migration 0015 seeds Pavel's maintenance schedule, equipment and project
+Migration 0016 seeds Pavel's maintenance schedule, equipment and project
 history (2026-11-25), without invoice/order numbers or individuals' names.
 
 ## Kitchen kiosk and family hub
