@@ -304,8 +304,33 @@ data. Page: `/assistant`, history at `/assistant/history`.
    policy and are undone from its history.
 
 Steps 1 and 2 log each fix in `finance_review_actions` with what is needed
-to undo it; undo leaves rows that were changed again since. Migration 0014
-also seeds the monthly "Change AC filters" task (Pavel, 2026-11-25).
+to undo it; undo leaves rows that were changed again since.
+
+## House upkeep and the house audit
+
+`/maintenance` holds four things: **action items** (`maintenance_tasks`
+with area, parts, last-done and next-due dates and a repeat interval;
+completing one records the date and schedules the next), the **house
+project history** (`maintenance_projects`, optionally linked to the bank
+transaction that paid for it), **home equipment** (`maintenance_assets`,
+with CPSC recall checks), and the **questionable transactions** tracker.
+
+The **house audit** (`src/assistant/house-audit.ts`) runs on demand ("Run
+audit now") and weekly per member after the 7 AM / 7 PM bank sync (the
+`simplefin-sync` cron route; no extra Railway job). It links each dated
+project to its payment (same amount within $1 and 60 days, vendor name
+breaking ties), then sends open questionable transactions (date, merchant,
+amount, category only) to Claude, whose guesses wait in the tracker for the
+member. Cash withdrawals are always asked. Answers in the tracker go
+through `review.ts`, which can add a house project, equipment and upkeep in
+one undoable Ask Claude changeset.
+
+Ask Claude also gets `house_projects`, `questionable_transactions`,
+`check_recalls` (CPSC, `www.saferproducts.gov`) and `maintenance_research`
+(the provider's own web search, no new host).
+
+Migration 0015 seeds Pavel's maintenance schedule, equipment and project
+history (2026-11-25), without invoice/order numbers or individuals' names.
 
 ## Kitchen kiosk and family hub
 

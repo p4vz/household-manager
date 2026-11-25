@@ -1,5 +1,5 @@
 import "server-only";
-import { and, asc, desc, eq, inArray, isNull, lte, notInArray, or, sql } from "drizzle-orm";
+import { and, asc, desc, eq, inArray, isNull, lte, ne, notInArray, or, sql } from "drizzle-orm";
 import { db } from "@/core/db/client";
 import { HiddenAccountError, visibleTo, type Viewer } from "../access";
 import { financeAccounts, financeReviewQuestions as q, financeReviewState, financeTransactions as t } from "../schema";
@@ -34,6 +34,9 @@ export async function setLargeThreshold(viewer: Viewer, amount: number) {
   return v;
 }
 
+/** Not answered or skipped yet (an audit guess still counts as open). */
+export const notDone = or(isNull(q.transactionId), eq(q.status, "suggested"));
+
 const columns = {
   id: t.id,
   date: t.postedDate,
@@ -67,7 +70,7 @@ export async function largePurchases(viewer: Viewer, threshold: number, limit = 
     .from(t)
     .innerJoin(financeAccounts, eq(t.accountId, financeAccounts.id))
     .leftJoin(q, eq(q.transactionId, t.id))
-    .where(and(largeWhere(viewer, threshold), isNull(q.transactionId)))
+    .where(and(largeWhere(viewer, threshold), notDone))
     .orderBy(desc(t.postedDate), asc(t.merchant))
     .limit(limit + 1);
   const [{ n }] = await db()
@@ -75,13 +78,13 @@ export async function largePurchases(viewer: Viewer, threshold: number, limit = 
     .from(t)
     .innerJoin(financeAccounts, eq(t.accountId, financeAccounts.id))
     .leftJoin(q, eq(q.transactionId, t.id))
-    .where(and(largeWhere(viewer, threshold), isNull(q.transactionId)));
+    .where(and(largeWhere(viewer, threshold), notDone));
   const done = await db()
     .select({ ...columns, status: q.status, answer: q.answer, outcome: q.outcome, answeredAt: q.answeredAt })
     .from(q)
     .innerJoin(t, eq(q.transactionId, t.id))
     .innerJoin(financeAccounts, eq(t.accountId, financeAccounts.id))
-    .where(visibleTo(viewer))
+    .where(and(visibleTo(viewer), ne(q.status, "suggested")))
     .orderBy(desc(q.answeredAt))
     .limit(100);
   return { open: open.slice(0, limit), openCount: n, done };
@@ -106,7 +109,7 @@ export async function recordLargePurchaseAnswer(
   outcome: { summary: string; changesetId: string | null } | null,
 ) {
   await reviewTransaction(viewer, transactionId);
-  const values = { viewer, status, answer, outcome, answeredAt: new Date() };
+  const values = { viewer, status, answer, outcome, suggestion: null, answeredAt: new Date() };
   await db()
     .insert(q)
     .values({ transactionId, ...values })
@@ -120,12 +123,12 @@ export async function dismissLargePurchasesAt(viewer: Viewer, merchant: string, 
     .from(t)
     .innerJoin(financeAccounts, eq(t.accountId, financeAccounts.id))
     .leftJoin(q, eq(q.transactionId, t.id))
-    .where(and(largeWhere(viewer, threshold), isNull(q.transactionId), eq(t.merchant, merchant)));
+    .where(and(largeWhere(viewer, threshold), notDone, eq(t.merchant, merchant)));
   if (!rows.length) return 0;
   await db()
     .insert(q)
     .values(rows.map((r) => ({ transactionId: r.id, viewer, status: "dismissed" as const, answer: null, outcome: null })))
-    .onConflictDoNothing();
+    .onConflictDoUpdate({ target: q.transactionId, set: { status: "dismissed", viewer, answeredAt: new Date() } });
   return rows.length;
 }
 

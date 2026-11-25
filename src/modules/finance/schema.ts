@@ -337,20 +337,28 @@ export const financeReviewState = pgTable("finance_review_state", {
   largeThreshold: money("large_threshold").notNull().default(500),
   /** Category mapping proposal (see review/categories.ts), kept until applied or rebuilt. */
   categoryProposal: jsonb("category_proposal"),
+  /** Last house audit (expenses matched to house history, new ones classified), and what it found. */
+  houseAuditAt: timestamp("house_audit_at", { withTimezone: true }),
+  houseAuditNote: text("house_audit_note"),
   updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
 });
 
 /**
- * Large purchases the review asked about: answered ("What was this for?")
- * or dismissed. A purchase with a row here is not asked about again.
+ * Transactions the review or the house audit asked about: answered ("What
+ * was this for?") or dismissed, and the audit's open guesses (suggested).
+ * An answered or dismissed transaction is not asked about again.
  */
+export type HouseSuggestion = { houseRelated: boolean; title: string | null; area: string | null; confidence: "high" | "medium" | "low" };
+
 export const financeReviewQuestions = pgTable("finance_review_questions", {
   transactionId: uuid("transaction_id")
     .primaryKey()
     .references(() => financeTransactions.id, { onDelete: "cascade" }),
   viewer: text("viewer", { enum: ["user1", "user2"] }).notNull(),
-  status: text("status", { enum: ["answered", "dismissed"] }).notNull(),
+  /** suggested = the house audit's guess, still open for the member to confirm. */
+  status: text("status", { enum: ["suggested", "answered", "dismissed"] }).notNull(),
   answer: text("answer"),
+  suggestion: jsonb("suggestion").$type<HouseSuggestion>(),
   /** What came of the answer: a short summary and the Ask Claude changeset holding the edits. */
   outcome: jsonb("outcome").$type<{ summary: string; changesetId: string | null }>(),
   answeredAt: timestamp("answered_at", { withTimezone: true }).notNull().defaultNow(),

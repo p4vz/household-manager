@@ -1,5 +1,7 @@
 import "server-only";
 import { z } from "zod";
+import { runWebResearch } from "@/core/ai/run";
+import { sanitizeReferencePayload } from "@/core/ai/sanitize";
 import { forAssistant, ownerLabel, type ScrubMode } from "@/mcp/sanitize";
 import { TOOLS as MCP_TOOLS, type ToolContext } from "@/mcp/tools";
 import * as calendar from "@/modules/calendar/api";
@@ -12,6 +14,7 @@ import {
   adapterFor,
   MerchantRuleFields,
   AssetFields,
+  ProjectFields,
   ReturnFields,
   sameFields,
   ShoppingFields,
@@ -102,6 +105,11 @@ function queued(env: ToolEnv, changed: number) {
 }
 
 const ACTION = z.enum(["create", "update", "delete"]);
+
+const ResearchAnswer = z.object({
+  answer: z.string(),
+  recommendations: z.array(z.object({ item: z.string(), interval: z.string().nullable(), note: z.string().nullable() })),
+});
 
 export const TOOLS: AssistantTool[] = [
   // ------------------------------------------------------------ finance reads
@@ -220,6 +228,9 @@ export const TOOLS: AssistantTool[] = [
         actualCost: t.actualCost,
         completedOn: t.completedOn,
         repeatsEveryDays: t.recurrenceDays,
+        area: t.area,
+        parts: t.parts,
+        lastDoneOn: t.lastDoneOn,
         notes: t.notes,
       }));
     },
@@ -240,6 +251,83 @@ export const TOOLS: AssistantTool[] = [
         cost: a.cost,
         notes: a.notes,
       }));
+    },
+  },
+  {
+    name: "house_projects",
+    description:
+      "House project and expense history (renovations, repairs, appliance purchases): date or period, title, vendor, description, amount, and whether a bank payment is linked. Each has a ref for edit_house_project. Use with search_transactions to cross-check the history against spending.",
+    input: {},
+    kind: "read",
+    scrub: "reference",
+    async run(_args, { refs }) {
+      return (await maintenance.listProjects()).map((p) => ({
+        ref: refs.ref("house_project", p.id),
+        date: p.date,
+        period: p.period,
+        title: p.title,
+        vendor: p.vendor,
+        description: p.description,
+        amount: p.amount,
+        amountNote: p.amountNote,
+        paymentLinked: Boolean(p.transactionId),
+      }));
+    },
+  },
+  {
+    name: "questionable_transactions",
+    description:
+      "The house audit's open queue: cash withdrawals, uncategorized spending and likely house expenses the member hasn't explained yet, with the audit's guess if any. Refs work with edit_transactions.",
+    input: { limit: z.number().int().min(1).max(100).optional() },
+    kind: "read",
+    scrub: "finance",
+    async run(args, { ctx, refs }) {
+      const linked = (await maintenance.listProjects()).map((p) => p.transactionId).filter((x): x is string => Boolean(x));
+      const { rows, count } = await finance.houseQuestions(ctx.viewer, { linkedIds: linked, limit: (args.limit as number | undefined) ?? 50 });
+      return {
+        open: count,
+        transactions: rows.map((r) => ({
+          ref: refs.ref("transaction", r.id),
+          kind: r.kind,
+          date: r.date,
+          merchant: r.merchant,
+          amount: r.amount,
+          category: r.category,
+          notes: r.notes ?? undefined,
+          guess: r.suggestion ?? undefined,
+        })),
+      };
+    },
+  },
+  {
+    name: "check_recalls",
+    description:
+      "Search U.S. CPSC product recalls for a product, e.g. 'GE refrigerator' or 'Sharp microwave'. Give brand and product type only, never serial or model registration numbers.",
+    input: { product: z.string().min(3).max(60) },
+    kind: "read",
+    scrub: "reference",
+    async run(args) {
+      const hits = await maintenance.searchRecalls(String(args.product));
+      return { source: "U.S. Consumer Product Safety Commission (saferproducts.gov)", recalls: hits };
+    },
+  },
+  {
+    name: "maintenance_research",
+    description:
+      "Look up maintenance recommendations on the web (manufacturer guidance, intervals, parts, known issues), e.g. 'APEC RO membrane replacement interval'. Returns findings with sources. Takes a while; use it when the member asks for recommendations.",
+    input: { question: z.string().min(5).max(200) },
+    kind: "read",
+    scrub: "reference",
+    async run(args) {
+      const { output, sources } = await runWebResearch({
+        tier: "flagship",
+        system: "You research home maintenance: manufacturer recommendations, service intervals, parts, recalls and known problems. Prefer manufacturer and government sources.",
+        task: "Answer the household's maintenance question with concrete intervals and parts where the sources give them.",
+        payload: sanitizeReferencePayload({ question: String(args.question) }),
+        schema: ResearchAnswer,
+        maxSearches: 5,
+      });
+      return { ...output, sources: sources.slice(0, 8) };
     },
   },
   {
@@ -389,6 +477,9 @@ export const TOOLS: AssistantTool[] = [
       estimatedCost: z.number().min(0).nullable().optional(),
       recurrenceDays: z.number().int().min(1).max(3650).nullable().optional().describe("Repeat this many days after done; null = one-off"),
       notes: z.string().max(1000).nullable().optional(),
+      area: z.string().max(60).nullable().optional().describe("e.g. Water filtration, HVAC & heating, Exterior & stormwater"),
+      parts: z.string().max(300).nullable().optional().describe("Parts or supplies needed"),
+      lastDoneOn: z.iso.date().nullable().optional(),
     },
     kind: "edit",
     scrub: "reference",
@@ -435,6 +526,37 @@ export const TOOLS: AssistantTool[] = [
         return queued(env, 1);
       }
       return queued(env, (await draftUpdate(env, "upkeep_asset", key, AssetFields.partial().parse(rest))) ? 1 : 0);
+    },
+  },
+  {
+    name: "edit_house_project",
+    description: "Add, update or delete an entry in the house project and expense history. update/delete need the ref from house_projects. Leave out invoice, order and account numbers and people's full names.",
+    input: {
+      action: ACTION,
+      ref: z.string().max(12).optional(),
+      date: z.iso.date().nullable().optional(),
+      period: z.string().max(40).nullable().optional().describe("When only a period is known, e.g. '2022 – 2023'"),
+      title: z.string().max(120).optional(),
+      vendor: z.string().max(120).nullable().optional(),
+      description: z.string().max(1000).nullable().optional(),
+      amount: z.number().min(0).nullable().optional(),
+      amountNote: z.string().max(60).nullable().optional(),
+    },
+    kind: "edit",
+    scrub: "reference",
+    async run(args, env) {
+      const { action, ref, ...rest } = args as { action: string; ref?: string } & Fields;
+      if (action === "create") {
+        const f = ProjectFields.parse({ date: null, period: null, vendor: null, description: null, amount: null, amountNote: null, ...rest });
+        env.drafts.add({ entity: "house_project", op: "create", key: null, label: f.title, before: null, after: f });
+        return queued(env, 1);
+      }
+      const key = env.refs.resolve(String(ref ?? ""), "house_project");
+      if (action === "delete") {
+        await draftDelete(env, "house_project", key);
+        return queued(env, 1);
+      }
+      return queued(env, (await draftUpdate(env, "house_project", key, ProjectFields.partial().parse(rest))) ? 1 : 0);
     },
   },
   {

@@ -182,7 +182,7 @@ describe("finance review: large purchases to house upkeep", () => {
     });
     const out = await answerLargePurchase(PAVEL, furnace.id, "That was the new furnace, Pat Example paid", NOW);
     expect(out.summary).toMatch(/furnace/);
-    const [asset] = await maintenance.listAssets();
+    const asset = (await maintenance.listAssets()).find((a) => a.name === "Furnace");
     expect(asset).toMatchObject({ name: "Furnace", kind: "hvac", cost: 8400, installedOn: "2026-05-01" });
     const tasks = await maintenance.listOpenTasks();
     expect(tasks.find((x) => x.title === "HVAC service")).toMatchObject({ recurrenceDays: 365, dueDate: "2027-04-01" });
@@ -198,7 +198,7 @@ describe("finance review: large purchases to house upkeep", () => {
     const [set] = await listChangesets(contextFor(PAVEL, NOW));
     expect(set.status).toBe("applied");
     await undoChangeset(contextFor(PAVEL, NOW), out.changesetId!);
-    expect(await maintenance.listAssets()).toHaveLength(0);
+    expect((await maintenance.listAssets()).some((a) => a.name === "Furnace")).toBe(false);
     expect((await maintenance.listOpenTasks()).some((x) => x.title === "HVAC service")).toBe(false);
   });
 
@@ -218,11 +218,25 @@ describe("finance review: large purchases to house upkeep", () => {
 });
 
 describe("house upkeep seed", () => {
-  it("has the monthly AC filter change on the calendar after migrations", async () => {
+  it("has Pavel's maintenance items, equipment and project history after migrations", async () => {
     const tasks = await maintenance.listOpenTasks();
-    const ac = tasks.find((t) => t.title === "Change AC filters");
-    expect(ac).toMatchObject({ recurrenceDays: 30, dueDate: "2026-12-01" });
-    const events = await db.select().from(calendarEvents).where(eq(calendarEvents.sourceRef, ac!.id));
-    expect(events.map((e) => e.title)).toEqual(["Maintenance: Change AC filters"]);
+    const filters = tasks.find((t) => t.title === "Replace HVAC air filters");
+    expect(filters).toMatchObject({ recurrenceDays: 30, area: "HVAC & heating", dueDate: "2026-12-01" });
+    expect(tasks.find((t) => t.title === "Replace RO pre-filters")).toMatchObject({ recurrenceDays: 182, area: "Water filtration" });
+    expect(tasks.find((t) => t.title === "Heating tune-up and boiler flush")).toMatchObject({ recurrenceDays: 365, lastDoneOn: "2026-08-28" });
+    expect(tasks.find((t) => t.title === "Replace attic AC coil")).toMatchObject({ recurrenceDays: null, estimatedCost: 1500, dueDate: "2027-03-01" });
+    expect(tasks).toHaveLength(11);
+    const events = await db.select().from(calendarEvents).where(eq(calendarEvents.sourceRef, filters!.id));
+    expect(events.map((e) => e.title)).toEqual(["Maintenance: Replace HVAC air filters"]);
+    const expected = await finance.listExpectedExpenses("2026-01-01");
+    expect(expected.map((e) => e.title)).toContain("Replace attic AC coil");
+
+    const projects = await maintenance.listProjects();
+    expect(projects).toHaveLength(13);
+    expect(projects.find((p) => p.title === "PECO gas line relocation")).toMatchObject({ date: "2025-01-29", amount: 3966.74 });
+    expect(projects.at(-1)?.period).toMatch(/2022|2023/);
+    // No invoice, order or work-order numbers, no individuals' names.
+    expect(JSON.stringify(projects)).not.toMatch(/#\d|Work Order|Invoice|Order #|Shawn|Param|Chris/);
+    expect((await maintenance.listAssets()).length).toBeGreaterThanOrEqual(10);
   });
 });

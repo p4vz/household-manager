@@ -36,6 +36,7 @@ const ENTITY: Record<string, string> = {
   merchant_rule: "Category rule",
   upkeep_task: "Upkeep task",
   upkeep_asset: "Home equipment",
+  house_project: "House project",
   shopping_item: "Shopping item",
   purchase_return: "Return",
   chore: "Chore",
@@ -44,6 +45,8 @@ const ENTITY: Record<string, string> = {
 const FIELD: Record<string, string> = {
   isTransfer: "Transfer",
   installedOn: "Installed",
+  amountNote: "Amount note",
+  lastDoneOn: "Last done",
   dueDate: "Due",
   estimatedCost: "Estimated cost",
   recurrenceDays: "Repeats every (days)",
@@ -75,12 +78,15 @@ function fieldLabel(k: string) {
   return FIELD[k] ?? k.charAt(0).toUpperCase() + k.slice(1);
 }
 
+/** Internal links (ids) that mean nothing on screen. */
+const HIDDEN = new Set(["transactionId"]);
+
 function Diff({ c }: { c: ChangeRow }) {
   if (c.op === "create") {
     return (
       <ul className="text-xs opacity-80">
         {Object.entries(c.after ?? {})
-          .filter(([, v]) => v !== null && v !== "" && v !== false)
+          .filter(([k, v]) => v !== null && v !== "" && v !== false && !HIDDEN.has(k))
           .map(([k, v]) => (
             <li key={k}>
               {fieldLabel(k)}: <span className="text-green-700">{show(v)}</span>

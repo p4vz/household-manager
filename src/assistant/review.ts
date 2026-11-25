@@ -35,6 +35,10 @@ const Plan = z.object({
     })
     .nullable()
     .describe("Equipment or part of the house this purchase bought or replaced, if any. Null for repairs to equipment already listed."),
+  project: z
+    .object({ title: z.string().describe("e.g. 'Furnace replacement', 'Gutter repair'"), description: z.string().nullable() })
+    .nullable()
+    .describe("When it was work on the house or a purchase for it: an entry for the house project history. Null otherwise."),
   tasks: z
     .array(
       z.object({
@@ -49,9 +53,9 @@ const Plan = z.object({
 });
 
 const SYSTEM = [
-  "You keep a household's house-upkeep records. A member explained a large purchase. Decide whether it concerns the house.",
-  "If it does, record the equipment it bought or replaced and the routine upkeep that equipment needs, with sensible intervals (HVAC service yearly, water heater flush yearly, roof inspection every 2 years, gutter cleaning twice a year).",
-  "Never repeat an upkeep task or equipment that already exists. Never invent facts the member did not give; leave unknown fields null.",
+  "You keep a household's house-upkeep records. A member explained a purchase or cash withdrawal. Decide whether it concerns the house.",
+  "If it does, add it to the house project history, record the equipment it bought or replaced and the routine upkeep that equipment needs, with sensible intervals (HVAC service yearly, water heater flush yearly, roof inspection every 2 years, gutter cleaning twice a year).",
+  "Never repeat an upkeep task, equipment or house project that already exists (houseProjects); if this payment belongs to one of them, set project to null. Never invent facts the member did not give; leave unknown fields null.",
   "Never include card, account, serial or phone numbers or people's full names.",
 ].join(" ");
 
@@ -60,7 +64,7 @@ const validDay = (s: string | null | undefined) => (s && /^\d{4}-\d{2}-\d{2}$/.t
 
 export type AnswerResult = { summary: string; changesetId: string | null };
 
-export async function answerLargePurchase(user: HouseholdUser, transactionId: string, rawAnswer: string, now = new Date()): Promise<AnswerResult> {
+export async function answerTransaction(user: HouseholdUser, transactionId: string, rawAnswer: string, now = new Date()): Promise<AnswerResult> {
   const ctx = contextFor(user, now);
   const legal = legalNamesFromEnv();
   const answer = scrubReferenceText(rawAnswer.trim().slice(0, MAX_ANSWER), legal);
@@ -71,7 +75,7 @@ export async function answerLargePurchase(user: HouseholdUser, transactionId: st
   let plan: z.infer<typeof Plan> | null = null;
   let aiError: string | null = null;
   try {
-    const [tasks, equipment] = await Promise.all([maintenance.listOpenTasks(), maintenance.listAssets()]);
+    const [tasks, equipment, projects] = await Promise.all([maintenance.listOpenTasks(), maintenance.listAssets(), maintenance.listProjects()]);
     plan = await runStructured({
       tier: "flagship",
       system: SYSTEM,
@@ -83,6 +87,7 @@ export async function answerLargePurchase(user: HouseholdUser, transactionId: st
           memberAnswer: answer,
           openUpkeepTasks: tasks.map((x) => x.title),
           equipment: equipment.map((x) => x.name),
+          houseProjects: projects.slice(0, 60).map((x) => ({ title: x.title, date: x.date ?? x.period })),
         },
         legal,
       ),
@@ -103,6 +108,26 @@ export async function answerLargePurchase(user: HouseholdUser, transactionId: st
     }
   }
   if (plan?.houseRelated) {
+    if (plan.project?.title.trim()) {
+      const title = plan.project.title.trim().slice(0, 120);
+      drafts.add({
+        entity: "house_project",
+        op: "create",
+        key: null,
+        label: `${title} (${txn.date})`,
+        before: null,
+        after: {
+          date: txn.date,
+          period: null,
+          title,
+          vendor: txn.merchant.slice(0, 120),
+          description: scrubReferenceText(plan.project.description ?? answer, legal).slice(0, 1000) || null,
+          amount: Math.abs(txn.amount),
+          amountNote: null,
+          transactionId,
+        },
+      });
+    }
     if (plan.equipment) {
       const f = AssetFields.safeParse({
         name: plan.equipment.name.trim().slice(0, 80),
@@ -137,3 +162,6 @@ export async function answerLargePurchase(user: HouseholdUser, transactionId: st
   await finance.recordLargePurchaseAnswer(ctx.viewer, transactionId, "answered", answer, outcome);
   return outcome;
 }
+
+/** The large-purchase step and the questionable-transactions tracker share one flow. */
+export const answerLargePurchase = answerTransaction;

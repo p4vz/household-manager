@@ -596,3 +596,15 @@ export {
   type LargePurchase,
 } from "./review/large";
 export { listReviewActions, undoReviewAction } from "./review/log";
+export {
+  houseQuestions,
+  paymentsNear,
+  paymentsMatching,
+  saveHouseSuggestions,
+  houseAuditState,
+  setHouseAuditState,
+  HOME_VENDOR_PATTERN,
+  type HouseQuestion,
+  type HouseQuestionKind,
+} from "./review/house";
+export type { HouseSuggestion } from "./schema";

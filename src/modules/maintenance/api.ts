@@ -1,10 +1,14 @@
 import "server-only";
-import { and, asc, eq, gte, isNull, lte, or } from "drizzle-orm";
+import { and, asc, desc, eq, gte, isNull, lte, or, sql } from "drizzle-orm";
 import { bus } from "@/core/bus";
+import { searchRecalls } from "./recalls";
 import { db } from "@/core/db/client";
-import { ASSET_KINDS, ASSET_KIND_LABELS, maintenanceAssets, maintenanceTasks, type AssetKind } from "./schema";
+import { ASSET_KINDS, ASSET_KIND_LABELS, maintenanceAssets, maintenanceProjects, maintenanceTasks, type AssetKind, type RecallHit } from "./schema";
 
-export { ASSET_KINDS, ASSET_KIND_LABELS, type AssetKind };
+export { ASSET_KINDS, ASSET_KIND_LABELS, type AssetKind, type RecallHit };
+
+/** Areas the maintenance list is grouped by. Free text is allowed too. */
+export const UPKEEP_AREAS = ["Water filtration", "HVAC & heating", "Plumbing", "Exterior & stormwater", "Appliances", "Electrical", "Yard", "Other"] as const;
 
 /**
  * Home maintenance public API: upkeep tasks with due dates, optional costs
@@ -17,6 +21,9 @@ export type ScheduleTaskInput = {
   estimatedCost?: number | null;
   recurrenceDays?: number | null;
   notes?: string | null;
+  area?: string | null;
+  parts?: string | null;
+  lastDoneOn?: string | null;
 };
 
 export async function scheduleTask(input: ScheduleTaskInput & { previousTaskId?: string | null }) {
@@ -28,6 +35,9 @@ export async function scheduleTask(input: ScheduleTaskInput & { previousTaskId?:
       estimatedCost: input.estimatedCost ?? null,
       recurrenceDays: input.recurrenceDays ?? null,
       notes: input.notes ?? null,
+      area: input.area ?? null,
+      parts: input.parts ?? null,
+      lastDoneOn: input.lastDoneOn ?? null,
       previousTaskId: input.previousTaskId ?? null,
     })
     .returning();
@@ -82,6 +92,9 @@ export async function completeTask(
     estimatedCost: task.estimatedCost,
     recurrenceDays: task.recurrenceDays,
     notes: task.notes,
+    area: task.area,
+    parts: task.parts,
+    lastDoneOn: input.date,
     previousTaskId: task.id,
   });
   return { nextTaskId };
@@ -104,6 +117,7 @@ export async function listDueTasks(throughDate: string, limit = 20) {
       dueDate: maintenanceTasks.dueDate,
       recurrenceDays: maintenanceTasks.recurrenceDays,
       notes: maintenanceTasks.notes,
+      parts: maintenanceTasks.parts,
     })
     .from(maintenanceTasks)
     .where(and(isNull(maintenanceTasks.completedOn), lte(maintenanceTasks.dueDate, throughDate)))
@@ -120,6 +134,9 @@ export async function updateTask(taskId: string, input: Partial<ScheduleTaskInpu
       ...(input.estimatedCost !== undefined && { estimatedCost: input.estimatedCost }),
       ...(input.recurrenceDays !== undefined && { recurrenceDays: input.recurrenceDays }),
       ...(input.notes !== undefined && { notes: input.notes }),
+      ...(input.area !== undefined && { area: input.area }),
+      ...(input.parts !== undefined && { parts: input.parts }),
+      ...(input.lastDoneOn !== undefined && { lastDoneOn: input.lastDoneOn }),
     })
     .where(eq(maintenanceTasks.id, taskId));
   const [task] = await db().select().from(maintenanceTasks).where(eq(maintenanceTasks.id, taskId));
@@ -204,4 +221,83 @@ export async function deleteAsset(id: string) {
 
 export async function listAssets() {
   return db().select().from(maintenanceAssets).orderBy(asc(maintenanceAssets.kind), asc(maintenanceAssets.name));
+}
+
+/** Stores the result of a product-recall check for one piece of equipment. */
+export async function setAssetRecalls(id: string, recalls: RecallHit[], at = new Date()) {
+  await db().update(maintenanceAssets).set({ recalls, recallCheckedAt: at }).where(eq(maintenanceAssets.id, id));
+}
+
+// ---------- house project and expense history ----------
+
+export type ProjectInput = {
+  date?: string | null;
+  period?: string | null;
+  title: string;
+  vendor?: string | null;
+  description?: string | null;
+  amount?: number | null;
+  amountNote?: string | null;
+  /** Finance transaction this project was paid with (opaque id). */
+  transactionId?: string | null;
+};
+
+export async function addProject(input: ProjectInput): Promise<string> {
+  const [row] = await db()
+    .insert(maintenanceProjects)
+    .values({
+      date: input.date ?? null,
+      period: input.period ?? null,
+      title: input.title,
+      vendor: input.vendor ?? null,
+      description: input.description ?? null,
+      amount: input.amount ?? null,
+      amountNote: input.amountNote ?? null,
+      transactionId: input.transactionId ?? null,
+    })
+    .returning({ id: maintenanceProjects.id });
+  return row.id;
+}
+
+export async function getProject(id: string) {
+  const [row] = await db().select().from(maintenanceProjects).where(eq(maintenanceProjects.id, id));
+  return row ?? null;
+}
+
+export async function updateProject(id: string, patch: Partial<ProjectInput>) {
+  const set = Object.fromEntries(Object.entries(patch).filter(([, v]) => v !== undefined));
+  if (!Object.keys(set).length) return;
+  await db().update(maintenanceProjects).set(set).where(eq(maintenanceProjects.id, id));
+}
+
+export async function deleteProject(id: string) {
+  await db().delete(maintenanceProjects).where(eq(maintenanceProjects.id, id));
+}
+
+/** Newest first; undated rows (known only by period) last. */
+export async function listProjects() {
+  return db()
+    .select()
+    .from(maintenanceProjects)
+    .orderBy(sql`${maintenanceProjects.date} desc nulls last`, desc(maintenanceProjects.createdAt));
+}
+
+// ---------- recalls ----------
+
+export { searchRecalls };
+
+/** Checks one piece of equipment against CPSC recalls and keeps the result on it. */
+export async function checkAssetRecalls(id: string, at = new Date()) {
+  const asset = await getAsset(id);
+  if (!asset) throw new Error("Equipment not found");
+  const hits = await searchRecalls(asset.name);
+  await setAssetRecalls(id, hits, at);
+  return hits;
+}
+
+/** "monthly", "every 6 months", "yearly", "every 2½ years"; "one-off" without a repeat. */
+export function everyLabel(days: number | null | undefined): string {
+  if (!days) return "one-off";
+  const known: Record<number, string> = { 7: "weekly", 14: "every 2 weeks", 30: "monthly", 31: "monthly", 60: "every 2 months", 90: "every 3 months", 91: "every 3 months", 182: "every 6 months", 183: "every 6 months", 365: "yearly", 730: "every 2 years", 913: "every 2½ years", 1095: "every 3 years" };
+  return known[days] ?? `every ${days} days`;
 }

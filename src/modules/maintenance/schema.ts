@@ -1,4 +1,4 @@
-import { date, integer, numeric, pgTable, text, timestamp, uuid } from "drizzle-orm/pg-core";
+import { date, integer, jsonb, numeric, pgTable, text, timestamp, uuid } from "drizzle-orm/pg-core";
 
 export const maintenanceTasks = pgTable("maintenance_tasks", {
   id: uuid("id").primaryKey().defaultRandom(),
@@ -12,6 +12,12 @@ export const maintenanceTasks = pgTable("maintenance_tasks", {
   notes: text("notes"),
   /** The task this one was scheduled from when its predecessor was completed. */
   previousTaskId: uuid("previous_task_id"),
+  /** Area of the house: "Water filtration", "HVAC & heating", "Exterior & stormwater". */
+  area: text("area"),
+  /** What to buy or have on hand, e.g. "GE MWF filter". */
+  parts: text("parts"),
+  /** When this was last done (carried from the completed predecessor, or entered by hand). */
+  lastDoneOn: date("last_done_on"),
   createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
 });
 
@@ -42,5 +48,32 @@ export const maintenanceAssets = pgTable("maintenance_assets", {
   installedOn: date("installed_on"),
   cost: numeric("cost", { precision: 12, scale: 2, mode: "number" }),
   notes: text("notes"),
+  /** Last product-recall check (CPSC), newest results first. */
+  recallCheckedAt: timestamp("recall_checked_at", { withTimezone: true }),
+  recalls: jsonb("recalls").$type<RecallHit[]>(),
+  createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+});
+
+export type RecallHit = { title: string; date: string | null; url: string | null; hazard: string | null; remedy: string | null };
+
+/**
+ * House project and expense history: renovations, repairs, appliance
+ * purchases. Entered by hand, seeded from Pavel's tracker, or added from a
+ * transaction in the questionable-transactions tracker (then `transactionId`
+ * links the bank record; it is an opaque id, never shown or sent to an AI).
+ */
+export const maintenanceProjects = pgTable("maintenance_projects", {
+  id: uuid("id").primaryKey().defaultRandom(),
+  /** Exact date when known. */
+  date: date("date"),
+  /** Shown instead of a date when only a period is known ("2022 – 2023"). */
+  period: text("period"),
+  title: text("title").notNull(),
+  vendor: text("vendor"),
+  description: text("description"),
+  amount: numeric("amount", { precision: 12, scale: 2, mode: "number" }),
+  /** For amounts that aren't one number: "~$600 – $800", "Included in scope". */
+  amountNote: text("amount_note"),
+  transactionId: uuid("transaction_id"),
   createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
 });

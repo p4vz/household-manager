@@ -408,7 +408,7 @@ export default async function FinanceReviewPage({ searchParams }: PageProps<"/fi
       <section id="upkeep" className="space-y-3 scroll-mt-4">
         <h2 className="text-xl font-semibold">4. House upkeep</h2>
         <p className="text-sm text-muted-foreground">
-          What the answers above have added so far, plus the monthly AC filter change. Manage everything on{" "}
+          The house history, equipment and action items, including what the answers above added. Manage everything on{" "}
           <Link className="underline" href="/maintenance">Home maintenance</Link>, or ask Claude to add more.
         </p>
         <div className="grid gap-4 sm:grid-cols-2">

@@ -22,6 +22,8 @@ export const STATIC_OUTBOUND_HOSTS = [
   "api.open-meteo.com",
   "en.wikipedia.org",
   "overpass-api.de",
+  // House upkeep: CPSC product recalls (keyless; only a product phrase is sent)
+  "www.saferproducts.gov",
 ] as const;
 
 export const OUTBOUND_HOSTS: ReadonlySet<string> = new Set<string>(STATIC_OUTBOUND_HOSTS);
