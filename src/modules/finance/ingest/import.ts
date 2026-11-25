@@ -127,6 +127,7 @@ export async function commitCsvImport(viewer: Viewer, text: string, mapping: Acc
         merchant: r.merchant,
         category: r.category,
         subcategory: r.subcategory,
+        categorySource: r.category ? ("import" as const) : null,
         notes: r.notes,
         pending: r.pending,
         isTransfer: r.isTransfer,

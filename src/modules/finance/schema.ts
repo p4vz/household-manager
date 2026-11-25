@@ -88,6 +88,14 @@ export const financeAccounts = pgTable(
   (t) => [uniqueIndex("finance_accounts_simplefin_uq").on(t.simplefinId)],
 );
 
+/**
+ * Where a transaction's category came from: import (Simplifi/Mint history),
+ * manual (a person), rule (a merchant rule), history (matched against past
+ * transactions), ai (Claude), legacy (synced before sources were recorded).
+ */
+export const CATEGORY_SOURCES = ["import", "manual", "rule", "history", "ai", "legacy"] as const;
+export type CategorySource = (typeof CATEGORY_SOURCES)[number];
+
 export const financeTransactions = pgTable(
   "finance_transactions",
   {
@@ -105,6 +113,12 @@ export const financeTransactions = pgTable(
     merchant: text("merchant").notNull(),
     category: text("category"),
     subcategory: text("subcategory"),
+    /** Where the category came from (see CATEGORY_SOURCES). Null when uncategorized or set before this existed. */
+    categorySource: text("category_source", { enum: CATEGORY_SOURCES }),
+    /** Short "why" for an automatic category, shown on hover. No amounts or account details. */
+    categoryReason: text("category_reason"),
+    /** SimpleFIN memo, with any account numbers stripped. */
+    memo: text("memo"),
     pending: boolean("pending").notNull().default(false),
     /** Transfers between household accounts are excluded from spending. */
     isTransfer: boolean("is_transfer").notNull().default(false),
@@ -154,10 +168,14 @@ export const financeTransactionLinks = pgTable(
 );
 
 /** Learned merchant -> category mapping (from CSV history and user edits). */
+export const RULE_SOURCES = ["learned", "manual", "ai"] as const;
+
 export const financeCategoryRules = pgTable("finance_category_rules", {
   merchant: text("merchant").primaryKey(),
   category: text("category").notNull(),
   subcategory: text("subcategory"),
+  /** learned = from imported history; manual = a person set it; ai = an older Claude guess from the name alone. */
+  source: text("source", { enum: RULE_SOURCES }).notNull().default("learned"),
   updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
 });
 

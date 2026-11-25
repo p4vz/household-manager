@@ -173,7 +173,11 @@ export async function updateTransactionFields(viewer: Viewer, id: string, patch:
   await db()
     .update(t)
     .set({
-      ...(patch.category !== undefined && { category: patch.category?.trim() || null }),
+      ...(patch.category !== undefined && {
+        category: patch.category?.trim() || null,
+        categorySource: patch.category?.trim() ? ("manual" as const) : null,
+        categoryReason: null,
+      }),
       ...(patch.subcategory !== undefined && { subcategory: patch.subcategory?.trim() || null }),
       ...(patch.notes !== undefined && { notes: patch.notes?.trim().slice(0, 500) || null }),
       ...(patch.isTransfer !== undefined && { isTransfer: patch.isTransfer }),

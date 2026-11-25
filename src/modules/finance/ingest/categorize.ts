@@ -1,16 +1,9 @@
 import "server-only";
-import { inArray, sql } from "drizzle-orm";
+import { sql } from "drizzle-orm";
 import { db } from "@/core/db/client";
 import { financeCategoryRules } from "../schema";
 
 export type CategoryRule = { category: string; subcategory: string | null };
-
-export async function loadRules(merchants: string[]): Promise<Map<string, CategoryRule>> {
-  const unique = [...new Set(merchants.map(ruleKey))];
-  if (unique.length === 0) return new Map();
-  const rows = await db().select().from(financeCategoryRules).where(inArray(financeCategoryRules.merchant, unique));
-  return new Map(rows.map((r) => [r.merchant, { category: r.category, subcategory: r.subcategory }]));
-}
 
 export function ruleKey(merchant: string): string {
   return merchant.trim().toLowerCase();
@@ -31,7 +24,7 @@ export async function learnRules(rows: { merchant: string; category: string | nu
   }
   const values = [...counts.entries()].map(([merchant, byCat]) => {
     const best = [...byCat.values()].sort((a, b) => b.n - a.n)[0].rule;
-    return { merchant, category: best.category, subcategory: best.subcategory };
+    return { merchant, category: best.category, subcategory: best.subcategory, source: "learned" as const };
   });
   for (let i = 0; i < values.length; i += 500) {
     const chunk = values.slice(i, i + 500);
@@ -43,8 +36,11 @@ export async function learnRules(rows: { merchant: string; category: string | nu
         set: {
           category: sqlExcluded("category"),
           subcategory: sqlExcluded("subcategory"),
+          source: sqlExcluded("source"),
           updatedAt: new Date(),
         },
+        // A rule a person set outranks imported history.
+        setWhere: sql`${financeCategoryRules.source} <> 'manual'`,
       });
   }
 }
