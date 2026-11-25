@@ -113,6 +113,13 @@
       "when": 1795634641242,
       "tag": "0015_event_details",
       "breakpoints": true
+    },
+    {
+      "idx": 16,
+      "version": "7",
+      "when": 1795635359175,
+      "tag": "0016_kiosk_adult_mode",
+      "breakpoints": true
     }
   ]
 }

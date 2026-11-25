@@ -29,8 +29,8 @@ update here and in the tests that enforce it.
 | Path | Who | How it is protected |
 | --- | --- | --- |
 | `/signin` | anyone | shows the Google button, nothing else |
-| `/kiosk/pair` | anyone | a code box; its one action trades a one-time pairing code for a kiosk cookie (see "Kitchen kiosk") |
-| `/kiosk` | allowlisted users or a paired kiosk device | session, or a device token checked against the database by the page and every kiosk action |
+| `/kiosk/pair` | anyone | a code box; its one action trades a one-time pairing code for a kiosk cookie (see "Kitchen kiosk"). Also `clearUnpairedScreenAction`, which clears kiosk cookies only when the pairing no longer works |
+| `/kiosk` | a paired kiosk device | device token checked against the database by the page and every kiosk action, with an ability check (kid-safe, or adult mode by PIN). A member without a pairing sees only "Make this the kitchen screen". A browser in kitchen mode can reach nothing else |
 | `/api/auth/*` | anyone | Auth.js OAuth flow; allowlist enforced in callbacks |
 | `/manifest.webmanifest`, `/kiosk.webmanifest`, `/sw.js`, `/offline.html`, `/kiosk-offline.html`, `/icons/*` | anyone | static PWA files with no household data; the service worker caches only these and Next.js build files, never pages or data |
 | `/api/cron/simplefin-sync`, `/api/cron/monthly-advisor`, `/api/cron/card-catalog`, `/api/cron/family-hub` | Railway cron only | `Authorization: Bearer $CRON_SECRET`, constant-time compare, fails closed if the secret is missing or short |
@@ -87,35 +87,67 @@ account. Pavel chose a paired device token (2026-11-23):
   (checked and consumed in one UPDATE), and at most 3 are open. Code entry
   is rate limited to 5 tries per 10 minutes per address and 30 per hour in
   total. Only SHA-256 hashes of codes are stored.
-- **One-tap pairing.** A signed-in member who opens the kiosk (the
-  "Kitchen mode" button) sees "Pair this screen". It makes the same device
-  token directly, with no code (`pairThisScreenAction`, an
-  `authedAction`, so a kiosk cookie alone can never pair another screen).
-  After that the member can sign out of Google on that device and the
-  screen keeps only kiosk access.
+- **Kitchen mode from the app.** A signed-in member taps "Kitchen mode"
+  on the device that should become the screen and confirms. That makes
+  the same device token directly, with no code (`enterKitchenModeAction`,
+  an `authedAction`, so a kiosk cookie alone can never pair another
+  screen), signs the member out on that device, and needs an adult PIN to
+  be set first (leaving needs one). Opening `/kiosk` with a member session
+  but no pairing shows that button instead of the kiosk: the kitchen screen
+  never runs on a parent's Google session.
 - **Device token.** Pairing sets a 256-bit random token as the `hm_kiosk`
   cookie: httpOnly, `Secure` in production, `SameSite=Strict`, path
   `/kiosk`, one year. The database keeps only its SHA-256 hash
   (`core_kiosk_devices`). Settings lists paired screens with "Unpair",
   which revokes the token on its next request.
-- **What it opens.** The proxy honours the cookie only for the exact path
-  `/kiosk` (the page and its Server Actions, which post to that path);
-  every other path still needs an allowlisted Google session. The page and
-  each kiosk action (`kioskAction()` in `core/actions/kiosk-action.ts`)
-  verify the token against the database. All other actions use
+- **Locked to the kiosk.** Pairing also sets `hm_kiosk_lock` (path `/`,
+  `SameSite=Lax`, no secret). While it is there the proxy sends every page
+  except `/kiosk`, `/kiosk/pair` and the PWA files back to `/kiosk`, answers
+  403 to `/api/*` (Google sign-in included) and deletes any Auth.js session
+  cookie in that browser, so kids can't leave for the app or sign in there.
+  A screen paired before the lock existed gets it on its next `/kiosk`
+  visit. Only "Exit kitchen mode" (adult mode) removes it; a screen
+  unpaired in Settings offers "Use as a normal browser", which does nothing
+  while the pairing still works (`clearUnpairedScreenAction`).
+- **What it opens.** The device cookie works only on the exact path
+  `/kiosk` (the page and its Server Actions, which post to that path). The
+  page and each kiosk action (`kioskAction()` in
+  `core/actions/kiosk-action.ts`) verify the token against the database and
+  check the device first, before any session. All other actions use
   `authedAction()`, which a kiosk cookie never satisfies, so posting another
   page's action id to `/kiosk` is refused.
-- **What the kiosk can do.** Read: family Google calendars, household
-  calendar entries other than finance reminders, chores, shopping, returns,
-  upkeep due in two weeks. Write: tick or un-tick a chore, add a one-time
-  chore; on shopping lists add, tick and drag items, add lists (blank or
-  from a template) and stores, reorder, rename, put a list off until a
-  date and save a list as a template; add a return or move
-  its status, mark an upkeep task done, refresh the calendar, and add or
-  edit events on the family Google calendar (title, time, address and
-  notes) and add pictures to them. Kids use the screen, so deleting a
-  calendar event or a picture is member-only (the phone app; Google keeps
-  deleted events for 30 days), and the kiosk has no way back into the app.
+- **Kid-safe by default.** Every kiosk action names an ability
+  (`core/kiosk/permissions.ts`). A paired screen gets only the child-safe
+  ones: read family Google calendars, household calendar entries other than
+  finance reminders, chores, shopping, returns, upkeep due in two weeks;
+  tick or un-tick a chore, add a one-time chore; on shopping lists add,
+  tick and drag items, add lists (blank or from a template) and stores,
+  reorder, rename, put a list off and save a list as a template; add a
+  return; refresh the calendar; add or edit events on the family Google
+  calendar (title, time, address and notes) and add pictures to them.
+- **Adult mode (adult PIN).** "🔒 Adult" on the screen asks for the
+  household adult PIN. A correct PIN gives that screen adult abilities for
+  5 minutes, held on the server (`core_kiosk_devices.adult_until`), or until
+  "Lock": delete an event or a picture, mark upkeep done, move a return
+  along, and "Exit kitchen mode" (unpairs the screen and removes both
+  cookies). The PIN is 4 to 8 digits (no repeats or runs like 1234), set and
+  changed only in Settings by a signed-in member, stored as a salted scrypt
+  hash (`core_kiosk_adult_pin`), and changing it ends adult mode on every
+  screen. Five wrong PINs lock that screen out for 15 minutes; tries are
+  also capped at 10 a minute in memory. A short PIN is weak against someone
+  holding the database, so the protection is online: only a paired screen
+  can try one. `startAdultMode()` (`core/kiosk/adult.ts`) is separate from
+  the PIN check so a fingerprint or face passkey can replace the PIN later.
+- **Never on the kiosk, even in adult mode.** Finance, trips, settings,
+  Ask Claude and the assistant (MCP) are member-only `authedAction`s and
+  pages; the proxy keeps the screen off them. Deleting anything else
+  (shopping items, stores, lists, templates, chores), adding kids or
+  recurring chores stay member-only too.
+  `tests/kiosk-lockdown.integration.test.ts` calls every server action in
+  the app as a paired screen and checks that only the listed kid-safe ones
+  get through, and that the adult ones work only in adult mode;
+  `tests/proxy-kiosk.test.ts` checks the lock; `tests/boundaries.test.ts`
+  checks the action files.
 - **Event notes and pictures.** Notes are the Google event's description,
   stored as plain text in the mirror. They are left out of what the in-app
   assistant reads. Pictures can't live in Google, so they stay in the app:
@@ -123,22 +155,36 @@ account. Pavel chose a paired device token (2026-11-23):
   checked by file signature, limited to 1 MB and 8 per event, encrypted with
   `DOC_VAULT_KEY`, and decrypted only when someone opens that event. They
   are deleted with the event.
-  Deleting anything else (including shopping items, stores, lists and
-  templates), adding kids or recurring chores, and every finance, trips and
-  settings page stay member-only. `tests/boundaries.test.ts` checks this.
-- **Risk accepted.** Anyone standing at the screen can use those kiosk
+- **Risk accepted.** Anyone standing at the screen can use the kid-safe
   actions, and someone who takes the device can keep using the kiosk until
   it is unpaired. Return notes and order references are shown on the wall,
   so text holding a card-number-shaped number (13 to 19 digits passing the
-  Luhn check) is refused.
+  Luhn check) is refused. The app can't stop someone leaving the browser
+  itself (home button, recent apps): Android does that, below.
 
 ### Kiosk setup and self-recovery
 
 The screen runs without a paid kiosk browser: open `/kiosk` in Chrome on
 the DeX phone, pair it, then "Add to Home screen". It installs as its own
 app ("Kitchen", `public/kiosk.webmanifest`: start `/kiosk`, full screen,
-landscape) and shares Chrome's cookies, so the pairing carries over. Pin
-it with Android's App pinning and turn on "Stay awake while charging".
+landscape) and shares Chrome's cookies, so the pairing carries over. Turn
+on "Stay awake while charging".
+
+Lock the phone itself down too, so kids can't leave the browser:
+
+1. Give the phone a screen-lock PIN the kids don't know (Settings →
+   Lock screen).
+2. Turn on App pinning with "Ask for PIN before unpinning" (Settings →
+   Security and privacy → More security settings → Pin app; on stock
+   Android, Settings → Security → App pinning). Open the Kitchen app, open
+   Recent apps, tap its icon → Pin. Unpinning (Back + Recents held) then
+   asks for the phone's PIN.
+3. Don't sign into Google with a parent's account in that phone's Chrome,
+   and don't keep the Household app installed there. Kitchen mode signs
+   the app session out and the lock refuses Google sign-in, but a Google
+   account in the browser itself could open Gmail or other sites.
+4. Optional: turn off "Install unknown apps" and set Google Play to ask
+   for authentication on every purchase.
 
 `useKioskWatchdog()` keeps it alive unattended (rules in
 `src/modules/family/ui/watchdog.ts`): it reloads when fresh renders stop
