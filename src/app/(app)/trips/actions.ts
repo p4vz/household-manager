@@ -53,7 +53,11 @@ import {
   updateDiningPlace,
   updateTrip,
   applyTemplateToTrip,
+  dismissTripCharges,
+  linkTripCharges,
+  unlinkTripCharges,
 } from "@/modules/trips/api";
+import { viewerFromLabel } from "@/modules/finance/api";
 import { zonedToUtc } from "@/modules/trips/ui/format";
 
 /**
@@ -562,3 +566,35 @@ export async function deleteDocumentAction(f: FormData) {
 
 /** Decrypted bytes go back only to the signed-in member who asked, as a server action result. */
 export const openDocumentAction = authedAction(z.object({ id }), ({ id }) => openDocument(id));
+
+// ---------- spend: bank charges on a trip ----------
+
+/** Checkbox values are "<transactionId>" or "<transactionId>:<stepId>". */
+const picks = (f: FormData) => f.getAll("pick").filter((v): v is string => typeof v === "string" && v.length > 0);
+const Pick = z.string().regex(/^[0-9a-f-]{36}(:[0-9a-f-]{36})?$/i);
+
+const tripCharges = authedAction(
+  z.object({
+    tripId: id,
+    action: z.enum(["link", "dismiss", "unlink"]),
+    picks: z.array(Pick).min(1, "Tick at least one charge").max(500),
+    stepId: optId,
+  }),
+  async ({ tripId, action, picks, stepId }, user) => {
+    const viewer = viewerFromLabel(user.owner);
+    const txIds = picks.map((p) => p.split(":")[0]);
+    if (action === "dismiss") return dismissTripCharges(viewer, tripId, txIds);
+    if (action === "unlink") return unlinkTripCharges(viewer, txIds);
+    // Link: each charge to its suggested step, unless one step was chosen for all.
+    const byStep = new Map<string | null, string[]>();
+    for (const p of picks) {
+      const [tx, suggested] = p.split(":");
+      const step = stepId ?? suggested ?? null;
+      byStep.set(step, [...(byStep.get(step) ?? []), tx]);
+    }
+    for (const [step, txs] of byStep) await linkTripCharges(viewer, tripId, txs, { stepId: step });
+  },
+);
+export async function tripChargesAction(f: FormData) {
+  await guarded(backTo(f), () => tripCharges({ tripId: str(f, "tripId"), action: str(f, "action"), picks: picks(f), stepId: str(f, "stepId") }));
+}

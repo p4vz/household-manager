@@ -33,6 +33,7 @@ function systemPrompt(ctx: AssistantCtx): string {
     "RULES (always): " + THE_RULE.slice(0, 2).join(" "),
     "Never ask for or guess names, account, card or routing numbers. Values shown as [redacted] were removed on purpose.",
     "Use the read tools to answer. Cross-check modules when it helps (e.g. upkeep costs against card spending, trip budgets against actual spend, returns against purchases). Show the numbers you relied on.",
+    "Trip money: trip_spending gives a trip's plan vs actual from bank charges, flags and suggested charges. When asked what a trip cost, use it and say that only charges on accounts this member can see are counted. Link suggested charges with link_trip_charges when the member asks or agrees (strong suggestions are usually right; ask about possible ones). For which card to book with, use trip_card_plan or best_card_for_purchases.",
     "To clean up or change data, use the edit_* and set_merchant_rule tools. They only draft changes. After your reply the member sees each change with its before and after values.",
     `Batches of up to ${AUTO_APPLY_MAX} changes without deletes apply at once; bigger batches or any delete wait for the member's approval. Everything can be undone from the change history. At most ${MAX_CHANGES_PER_BATCH} changes per reply.`,
     "Only change what the member asked for, or what you proposed and they agreed to. When a cleanup is ambiguous, describe it and ask first. Never invent data.",

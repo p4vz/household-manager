@@ -478,6 +478,34 @@ export type { PlannedPurchase, PurchasePlan, BonusStatus } from "./rewards/bonus
  */
 export { planCardsForPurchases };
 
+export {
+  autoLinkTransactions,
+  clearTransactionLinks,
+  householdLinkCandidates,
+  linkCandidates,
+  linkedTransactions,
+  setTransactionLinks,
+  transactionsWithLinks,
+  type LinkableTransaction,
+  type TransactionLink,
+} from "./links";
+export { LINK_STATUSES, LINK_SOURCES, type LinkStatus, type LinkSource } from "./schema";
+
+/**
+ * Rewards on specific transactions (a trip's charges): what each earned on
+ * the card used and what the best household card would have earned, from
+ * the same deterministic audit as Finance → Rewards. Only cards and charges
+ * this member can see.
+ */
+export async function rewardsForTransactions(viewer: Viewer, ids: string[], fromDate: string) {
+  if (!ids.length) return { rows: [], earned: 0, missed: 0 };
+  const { audit } = await runRewardsAudit(viewer, fromDate);
+  const wanted = new Set(ids);
+  const rows = (audit?.rows ?? []).filter((r) => wanted.has(r.txnId));
+  const sum = (f: (r: (typeof rows)[number]) => number) => Math.round(rows.reduce((s, r) => s + f(r), 0)) / 100;
+  return { rows, earned: sum((r) => r.actualCents), missed: sum((r) => r.missedCents) };
+}
+
 /**
  * Active household credit cards, for "paid with" pickers in other modules.
  * Lists every card by nickname and owner (both members know each card

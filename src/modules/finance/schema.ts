@@ -110,6 +110,42 @@ export const financeTransactions = pgTable(
   ],
 );
 
+/**
+ * Ties a bank transaction to something in another module: a trip (and,
+ * optionally, one of its itinerary steps), or an upkeep task. Finance owns
+ * the table so every module links charges the same way, and so reads go
+ * through the same privacy rule as the transaction itself: a member only
+ * ever sees links on transactions from joint accounts or their own.
+ *
+ * One link per transaction per module. `dismissed` records "not this one"
+ * so automatic matching never suggests it again for that target.
+ */
+export const LINK_STATUSES = ["linked", "dismissed"] as const;
+export const LINK_SOURCES = ["auto", "manual", "assistant"] as const;
+export type LinkStatus = (typeof LINK_STATUSES)[number];
+export type LinkSource = (typeof LINK_SOURCES)[number];
+
+export const financeTransactionLinks = pgTable(
+  "finance_transaction_links",
+  {
+    transactionId: uuid("transaction_id")
+      .notNull()
+      .references(() => financeTransactions.id, { onDelete: "cascade" }),
+    module: text("module").notNull(),
+    /** The trip id, upkeep task id, ... in the other module. */
+    targetId: text("target_id").notNull(),
+    /** A finer target inside it, such as an itinerary step id. */
+    detailId: text("detail_id"),
+    status: text("status", { enum: LINK_STATUSES }).notNull().default("linked"),
+    source: text("source", { enum: LINK_SOURCES }).notNull(),
+    createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+  },
+  (t) => [
+    primaryKey({ columns: [t.transactionId, t.module] }),
+    index("finance_txn_links_target_idx").on(t.module, t.targetId),
+  ],
+);
+
 /** Learned merchant -> category mapping (from CSV history and user edits). */
 export const financeCategoryRules = pgTable("finance_category_rules", {
   merchant: text("merchant").primaryKey(),

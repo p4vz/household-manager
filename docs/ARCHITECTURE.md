@@ -191,6 +191,30 @@ What changed in the move:
   yet, because each needs new OAuth scopes: Google Photos, Drive backup and
   the Calendar mirror. The offline service worker is also not ported yet.
 
+## Trip spending (bank charges on trips)
+
+Charges are tied to things in other modules through one finance table,
+`finance_transaction_links` (one row per transaction per module: `module`,
+`target_id`, optional `detail_id`, `status` linked/dismissed, `source`
+auto/manual/assistant). Finance owns it so every read goes through the same
+privacy rule as the transaction (`finance/links.ts`, viewer first). Other
+modules can reuse it with their own `module` name (an upkeep task, say).
+
+- `trips/spend.ts` (pure): matching rules and plan vs actual. Strong matches:
+  the company on an itinerary step at about its cost (or during the trip, or
+  a refund), or charged in a trip town during the trip. Possible: trip-like
+  categories during the trip, travel bookings in the 180 days before, the
+  step's company at a different amount.
+- After every `finance.transactionsSynced`, trips links strong matches for
+  recent and upcoming trips (`autoLinkTripCharges`). It never overrides a
+  link a person made or dismissed, and skips charges two trips both claim.
+- `/trips/[slug]/spend` shows plan vs actual, flags, suggestions, linked
+  charges (per step) and rewards earned vs the best card. Totals count only
+  charges the signed-in member can see.
+- A step with a linked charge counts as paid in `tripCardPlan`.
+- Ask Claude: `trip_spending`, `link_trip_charges` (undoable, entity
+  `trip_charge`), `trip_card_plan`, `best_card_for_purchases`.
+
 ## Card catalog
 
 A stored, kept-current copy of each card product's published terms, so the
