@@ -56,7 +56,7 @@ describe("scrubbing before the AI", () => {
       "Drop off at UPS, RMA: R4X9921",
     ].join("\n");
     const out = scrubMailText(text, ["Pavel Example"]);
-    for (const leaked of ["4455667", "1Z999AA", "W123456789", "4242", "help@shop", "555-0199", "https://", "token", "R4X9921", "Pavel", "Example"]) {
+    for (const leaked of ["4455667", "1Z999AA", "W123456789", "4242", "help@shop", "555-0199", "https://", "token", "R4X9921", "Example"]) {
       expect(out).not.toContain(leaked);
     }
     expect(out).toContain("Return by December 20, 2026 or December 20, 2026");

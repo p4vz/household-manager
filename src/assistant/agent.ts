@@ -5,7 +5,7 @@ import { z } from "zod";
 import { runClaudeCode } from "@/core/ai/claude-code";
 import { getApiKey } from "@/core/ai/keys";
 import { languageModel } from "@/core/ai/provider";
-import { legalNamesFromEnv, scrubReferenceText } from "@/core/ai/sanitize";
+import { householdNicknames, legalNamesFromEnv, scrubReferenceText } from "@/core/ai/sanitize";
 import { getAiSettings } from "@/core/ai/store";
 import { THE_RULE } from "@/core/oauth/permissions";
 import { DraftBook, MAX_CHANGES_PER_BATCH } from "./changesets";
@@ -42,7 +42,16 @@ function systemPrompt(ctx: AssistantCtx): string {
     "You cannot move money, pay, book, change accounts, bank connections, keys or settings. Say so if asked.",
     "In your reply, say plainly what you changed or proposed (it is listed under your reply). Refer to rows by date, merchant or title, never by ref. Be concise.",
     "Someone in the family has coeliac disease. Treat gluten as a medical restriction.",
-  ].join("\n");
+    peopleLine(),
+  ]
+    .filter(Boolean)
+    .join("\n");
+}
+
+/** "Danya (Daniel), Raya (Raisa)": nicknames from HOUSEHOLD_LEGAL_NAMES, so Claude uses them. Never surnames. */
+export function peopleLine(): string {
+  const nicks = householdNicknames();
+  return nicks.length ? `People in the household go by: ${nicks.join(", ")}. Call them by these names (first names only, never surnames).` : "";
 }
 
 function transcript(history: ChatMessage[], userText: string): string {

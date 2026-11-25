@@ -31,7 +31,7 @@ describe("assistant on the subscription", () => {
     expect(opts.inProcessTools.allow).toEqual(TOOL_NAMES);
     expect(opts.webSearch).toBeFalsy();
     expect(opts.prompt).not.toContain("4111");
-    expect(opts.prompt).not.toContain("Pat");
+    expect(opts.prompt).not.toContain("Example");
     expect(opts.system).toMatch(/Never share account numbers/);
   });
 
