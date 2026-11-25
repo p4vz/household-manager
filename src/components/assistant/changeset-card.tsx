@@ -40,6 +40,7 @@ const ENTITY: Record<string, string> = {
   shopping_item: "Shopping item",
   purchase_return: "Return",
   chore: "Chore",
+  trip_charge: "Trip charge",
 };
 
 const FIELD: Record<string, string> = {
@@ -55,6 +56,7 @@ const FIELD: Record<string, string> = {
   returnDeadline: "Return by",
   done: "Done",
   merchant: "Merchant",
+  link: "Trip link",
 };
 
 const STATUS: Record<string, { text: string; variant: "default" | "secondary" | "warning" | "destructive" | "outline" }> = {
