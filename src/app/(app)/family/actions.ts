@@ -26,6 +26,13 @@ import {
   memberFromLabel,
   setReturnStatus,
   today,
+  GOAL_KINDS,
+  GoalError,
+  MAX_GOAL_TARGET,
+  archiveGoal,
+  createGoal,
+  markRewardGiven,
+  repeatGoal,
 } from "@/modules/family/api";
 import { rateLimit } from "@/core/net/rate-limit";
 
@@ -34,6 +41,7 @@ const id = z.uuid();
 
 function refresh() {
   revalidatePath("/family");
+  revalidatePath("/family/progress");
   revalidatePath("/kiosk");
   revalidatePath("/calendar");
 }
@@ -179,3 +187,36 @@ export const removeEventPhotoAction = authedAction(z.object({ id }), async ({ id
   refresh();
   return { error: null as string | null };
 });
+
+// ---- Chore goals: parents set them and hand out rewards from the phone ----
+
+type GoalResult = { error: string | null };
+
+async function goalWrite(fn: () => Promise<unknown>): Promise<GoalResult> {
+  try {
+    await fn();
+  } catch (err) {
+    if (err instanceof GoalError || err instanceof SensitiveTextError) return { error: err.message };
+    throw err;
+  }
+  refresh();
+  return { error: null };
+}
+
+export const createGoalAction = authedAction(
+  z.object({
+    kidId: id,
+    choreId: id,
+    kind: z.enum(GOAL_KINDS),
+    target: z.number().int().min(2).max(MAX_GOAL_TARGET),
+    reward: z.string().trim().min(1).max(80),
+    rewardEmoji: z.string().max(8).optional(),
+  }),
+  async (input, user) => goalWrite(() => createGoal(input, user.owner)),
+);
+
+export const markRewardGivenAction = authedAction(z.object({ id }), async (input) => goalWrite(() => markRewardGiven(input.id)));
+
+export const repeatGoalAction = authedAction(z.object({ id }), async (input, user) => goalWrite(() => repeatGoal(input.id, user.owner)));
+
+export const archiveGoalAction = authedAction(z.object({ id }), async (input) => goalWrite(() => archiveGoal(input.id)));

@@ -148,6 +148,13 @@
       "when": 1795639249165,
       "tag": "0020_kiosk_adult_mode",
       "breakpoints": true
+    },
+    {
+      "idx": 21,
+      "version": "7",
+      "when": 1795639476051,
+      "tag": "0021_chore_goals",
+      "breakpoints": true
     }
   ]
 }

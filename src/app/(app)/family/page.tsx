@@ -55,6 +55,7 @@ export default async function FamilyPage() {
       </div>
       <FamilyPhone
         kids={hub.kids}
+        progress={hub.progress}
         shopping={hub.shopping}
         stores={hub.stores}
         returns={hub.returns}

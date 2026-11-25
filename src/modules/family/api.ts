@@ -217,6 +217,25 @@ export async function choreBoard(now = new Date()): Promise<BoardKid[]> {
   });
 }
 
+// --------------------------------------------------- goals and progress ----
+
+export {
+  archiveGoal,
+  choreHistory,
+  createGoal,
+  kidProgress,
+  listGoals,
+  markRewardGiven,
+  repeatGoal,
+  GoalError,
+  GOAL_KINDS,
+  MAX_GOAL_TARGET,
+  type ChoreHistory,
+  type GoalView,
+  type KidProgress,
+} from "./goals-api";
+export type { Badge } from "./goals";
+
 // ------------------------------------------------------------ shopping ----
 
 export {

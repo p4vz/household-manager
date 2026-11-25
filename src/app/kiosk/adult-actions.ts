@@ -4,6 +4,7 @@ import { revalidatePath } from "next/cache";
 import { cookies } from "next/headers";
 import { z } from "zod";
 import { kioskAction } from "@/core/actions/kiosk-action";
+import { askKitchen, KITCHEN_MAX_QUESTION, KITCHEN_MAX_TURNS } from "@/assistant/kitchen";
 import { endAdultMode, tryAdultPin } from "@/core/kiosk/adult";
 import { revokeKioskDevice } from "@/core/kiosk/devices";
 import { KIOSK_COOKIE, KIOSK_LOCK_COOKIE } from "@/core/kiosk/pairing";
@@ -14,8 +15,9 @@ import { CalendarWriteError, deleteGoogleEvent, removeEventPhoto } from "@/modul
 /**
  * Adult mode on the kitchen screen (core/kiosk/adult.ts). Trying the PIN and
  * locking again are open to the screen; everything else here needs adult
- * mode, checked on the server by kioskAction's ability. Money, trips,
- * settings and the assistant are not reachable from the screen even then.
+ * mode, checked on the server by kioskAction's ability. Money, trips and
+ * settings are not reachable from the screen even then, and Ask Claude here
+ * only knows what the kitchen screen shows (assistant/kitchen.ts).
  */
 const id = z.uuid();
 
@@ -68,6 +70,25 @@ export const removeEventPhotoAdultAction = kioskAction("calendar.photo.remove", 
   refresh();
   return { error: null };
 });
+
+/** Ask Claude about the calendar, chores, shopping, returns and upkeep. Nothing is stored. */
+export const askKitchenAction = kioskAction(
+  "assistant.kitchen",
+  z.object({
+    history: z.array(z.object({ role: z.enum(["user", "assistant"]), text: z.string().max(2000) })).max(KITCHEN_MAX_TURNS * 2),
+    question: z.string().trim().min(1).max(KITCHEN_MAX_QUESTION),
+  }),
+  async ({ history, question }, actor): Promise<{ answer: string | null; error: string | null }> => {
+    const who = actor.kind === "kiosk" ? actor.device.id : "member";
+    if (!rateLimit(`kiosk-ask:${who}`, 20, 10 * 60_000)) return { answer: null, error: "That's a lot of questions. Try again in a few minutes." };
+    try {
+      return { answer: await askKitchen(history, question), error: null };
+    } catch (err) {
+      const m = err instanceof Error ? err.message : "";
+      return { answer: null, error: /key|subscription|configur/i.test(m) ? "Claude isn't set up yet. Add it in Settings on your phone." : "Claude couldn't answer. Try again." };
+    }
+  },
+);
 
 /**
  * Leaves kitchen mode on this screen: unpairs it and removes both kiosk

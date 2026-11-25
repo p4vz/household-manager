@@ -20,7 +20,11 @@ export type AdultControls = {
   unlock: (input: { pin: string }) => Promise<{ ok: true; until: string } | { ok: false; error: string }>;
   lock: (input: Record<string, never>) => Promise<void>;
   exit: (input: Record<string, never>) => Promise<void>;
+  /** Ask Claude about what's on this screen (adult mode only). */
+  ask: (input: { history: ChatTurn[]; question: string }) => Promise<{ answer: string | null; error: string | null }>;
 };
+
+type ChatTurn = { role: "user" | "assistant"; text: string };
 
 /**
  * Kiosk header controls:
@@ -85,10 +89,11 @@ export function KioskControls({ adult }: { adult: AdultControls }) {
   );
 }
 
-function AdultMode({ until, unlock, lock, exit }: AdultControls) {
+function AdultMode({ until, unlock, lock, exit, ask }: AdultControls) {
   const router = useRouter();
   const [asking, setAsking] = useState(false);
   const [leaving, setLeaving] = useState(false);
+  const [chatting, setChatting] = useState(false);
   const [now, setNow] = useState(() => Date.now());
   const [pending, start] = useTransition();
   const end = until ? Date.parse(until) : 0;
@@ -153,9 +158,13 @@ function AdultMode({ until, unlock, lock, exit }: AdultControls) {
       >
         Lock
       </button>
+      <button type="button" className={`${btn} border-violet-600 text-violet-800`} onClick={() => setChatting(true)}>
+        💬 Ask Claude
+      </button>
       <button type="button" className={btn} onClick={() => setLeaving(true)}>
         Exit kitchen mode
       </button>
+      {chatting ? <KitchenChat ask={ask} onClose={() => setChatting(false)} /> : null}
       {leaving ? (
         <Modal title="Exit kitchen mode?" onClose={() => setLeaving(false)}>
           <p className="mb-4">
@@ -230,6 +239,82 @@ function PinPad({ title, onClose, submit }: { title: string; onClose: () => void
       <div className="mt-3">
         <ErrorNote error={error} />
       </div>
+    </Modal>
+  );
+}
+
+const SUGGESTIONS = ["What's on this week?", "Who still has chores today?", "What do we need from the store?", "Any returns due soon?"];
+
+/**
+ * Ask Claude about what's on the kitchen screen. The conversation lives
+ * only here: closing the box or adult mode running out forgets it.
+ */
+function KitchenChat({ ask, onClose }: { ask: AdultControls["ask"]; onClose: () => void }) {
+  const [turns, setTurns] = useState<ChatTurn[]>([]);
+  const [text, setText] = useState("");
+  const [error, setError] = useState<string | null>(null);
+  const [busy, setBusy] = useState(false);
+  const send = async (question: string) => {
+    const q = question.trim();
+    if (!q || busy) return;
+    setBusy(true);
+    setError(null);
+    setText("");
+    const history = turns;
+    setTurns([...history, { role: "user", text: q }]);
+    try {
+      const r = await ask({ history: history.slice(-20), question: q.slice(0, 500) });
+      if (r.answer) setTurns((t) => [...t, { role: "assistant", text: r.answer! }]);
+      else setError(r.error ?? "Claude couldn't answer. Try again.");
+    } catch {
+      setError("Claude couldn't answer. Adult mode may have ended.");
+    } finally {
+      setBusy(false);
+    }
+  };
+  return (
+    <Modal title="💬 Ask Claude" onClose={onClose}>
+      <p className="mb-2 text-sm opacity-70">About the calendar, chores, shopping, returns and upkeep only. Nothing is saved.</p>
+      <div className="mb-3 max-h-[50vh] space-y-2 overflow-y-auto">
+        {turns.length === 0 ? (
+          <div className="flex flex-wrap gap-2">
+            {SUGGESTIONS.map((s) => (
+              <button key={s} type="button" className={`${tap} border text-base`} onClick={() => send(s)}>
+                {s}
+              </button>
+            ))}
+          </div>
+        ) : null}
+        {turns.map((t, i) => (
+          <div
+            key={i}
+            className={`whitespace-pre-wrap rounded-xl px-3 py-2 text-lg ${t.role === "user" ? "ml-10 bg-sky-100 text-sky-950" : "mr-10 bg-slate-100 dark:bg-slate-800"}`}
+          >
+            {t.text}
+          </div>
+        ))}
+        {busy ? <div className="mr-10 rounded-xl bg-slate-100 px-3 py-2 text-lg opacity-70 dark:bg-slate-800">Thinking…</div> : null}
+      </div>
+      <ErrorNote error={error} />
+      <form
+        className="mt-2 flex gap-2"
+        onSubmit={(e) => {
+          e.preventDefault();
+          void send(text);
+        }}
+      >
+        <input
+          value={text}
+          onChange={(e) => setText(e.target.value)}
+          maxLength={500}
+          placeholder="Ask about this week, chores, shopping…"
+          className="min-h-12 flex-1 rounded-xl border px-3 text-lg"
+          autoFocus
+        />
+        <button type="submit" disabled={busy || !text.trim()} className={`${tap} bg-violet-600 text-white disabled:opacity-50`}>
+          Ask
+        </button>
+      </form>
     </Modal>
   );
 }

@@ -2,7 +2,8 @@ import "server-only";
 import { homeWeather } from "@/core/weather/home-weather";
 import { householdTimeZone } from "@/core/time/zoned";
 import { KIOSK_DAYS_AHEAD, kioskCalendar, monthGridStart } from "@/modules/calendar/api";
-import { choreBoard, deadlineUrgency, listReturns, shoppingBoard } from "@/modules/family/api";
+import { choreBoard, deadlineUrgency, kidProgress, listReturns, shoppingBoard } from "@/modules/family/api";
+import type { KidProgressView } from "@/modules/family/ui/goal-strip";
 import type { ReturnView } from "@/modules/family/ui/returns-panel";
 import type { UpkeepView } from "@/modules/family/ui/upkeep-panel";
 import { householdToday, longDate, relativeDue, shortDate } from "@/modules/family/ui/dates";
@@ -15,14 +16,37 @@ export async function loadHub(now = new Date()) {
   const twoWeeks = new Date(`${today}T00:00:00Z`);
   twoWeeks.setUTCDate(twoWeeks.getUTCDate() + 14);
 
-  const [calendar, kids, shopping, returns, tasks, weather] = await Promise.all([
+  const [calendar, kids, shopping, returns, tasks, weather, progressRows] = await Promise.all([
     kioskCalendar(KIOSK_DAYS_AHEAD, now, { from: monthGridStart(today) }),
     choreBoard(now),
     shoppingBoard(now),
     listReturns(),
     listDueTasks(twoWeeks.toISOString().slice(0, 10)),
     homeWeather(),
+    kidProgress(now),
   ]);
+  const progress: Record<string, KidProgressView> = Object.fromEntries(
+    progressRows.map((p) => [
+      p.kidId,
+      {
+        goals: p.goals.map((g) => ({
+          id: g.id,
+          choreTitle: g.choreTitle,
+          choreIcon: g.choreIcon,
+          kind: g.kind,
+          target: g.target,
+          progress: g.progress,
+          reached: g.reached,
+          reward: g.reward,
+          rewardEmoji: g.rewardEmoji,
+          unit: g.unit,
+        })),
+        badges: p.badges,
+        bestStreak: p.bestStreak,
+        nextBadge: p.nextBadge,
+      },
+    ]),
+  );
 
   const returnViews: ReturnView[] = returns.map((r) => ({
     ...r,
@@ -55,6 +79,7 @@ export async function loadHub(now = new Date()) {
     todayLabel: longDate(today),
     calendar: { ...calendar, syncedLabel, syncError: calendar.sync.ok ? null : calendar.sync.message },
     kids,
+    progress,
     shopping,
     stores: shopping.stores,
     returns: returnViews,
