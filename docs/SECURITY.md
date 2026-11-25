@@ -78,6 +78,13 @@ configured provider to read the issuer and product name. If the model reports
 a readable card number, nothing is stored. Assistants (MCP, in-app) never get
 pictures.
 
+Home binder files (manuals, warranties, insurance, property tax) are sealed
+with DOC_VAULT_KEY the same way, up to 8 MB, downloaded only by a signed-in
+member, and never sent to an AI or an assistant; the binder has no field for
+policy or account numbers. Subscriptions and net worth follow the account
+rule above (joint plus the viewer's own, enforced in the module API) and are
+not exposed to assistants.
+
 Account and card numbers, even masked ones, are stripped from bank names and
 typed names before they are stored. Only the last 4 digits are kept, in their
 own column (`finance_accounts.last4`, Pavel's choice, 2026-11-25), so people

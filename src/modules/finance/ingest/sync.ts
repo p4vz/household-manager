@@ -2,7 +2,8 @@ import "server-only";
 import { and, desc, eq, gte, inArray, isNull, notInArray, sql } from "drizzle-orm";
 import { bus } from "@/core/bus";
 import { db } from "@/core/db/client";
-import { financeAccounts, financeSyncRuns, financeTransactions } from "../schema";
+import { householdTimeZone as tz, zonedParts } from "@/core/time/zoned";
+import { financeAccounts, financeBalanceSnapshots, financeSyncRuns, financeTransactions } from "../schema";
 import { loadRules } from "./categorize";
 import type { Viewer } from "../access";
 import { getAccessUrl, newAccountOwner } from "./credentials";
@@ -144,6 +145,12 @@ export async function applyAccountSet(data: SimplefinAccountSet, owner: Viewer |
         },
       })
       .returning();
+
+    // One balance per account per day, for net worth history.
+    await db()
+      .insert(financeBalanceSnapshots)
+      .values({ accountId: account.id, date: zonedParts(new Date(acct["balance-date"] * 1000), tz()).date, balance: acct.balance })
+      .onConflictDoUpdate({ target: [financeBalanceSnapshots.accountId, financeBalanceSnapshots.date], set: { balance: acct.balance } });
 
     if (acct.transactions.length === 0) continue;
 

@@ -141,6 +141,13 @@
       "when": 1795636377870,
       "tag": "0019_vehicles",
       "breakpoints": true
+    },
+    {
+      "idx": 20,
+      "version": "7",
+      "when": 1795639308752,
+      "tag": "0020_home_binder_subscriptions_net_worth",
+      "breakpoints": true
     }
   ]
 }
