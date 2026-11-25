@@ -3,12 +3,16 @@
 import { revalidatePath } from "next/cache";
 import { z } from "zod";
 import { authedAction } from "@/core/actions/authed-action";
+import { requireUser } from "@/core/auth/guard";
 import { rateLimit } from "@/core/net/rate-limit";
 import {
+  BINDER_KINDS,
+  BinderUploadError,
   CAR_DUE_KINDS,
   MAX_UPLOAD_TEXT,
   fileCarDue,
   fileEvent,
+  fileInBinder,
   fileReturn,
   fileUpkeep,
   noteOnTransaction,
@@ -111,3 +115,33 @@ export const fileUpkeepAction = authedAction(
   z.object({ title: short(120).min(1), dueDate: date, recurrenceDays: z.number().int().min(1).max(3650).nullable(), parts: short(300).nullable() }),
   async (input) => attempt("upkeep", () => fileUpkeep(input), ["/maintenance"]),
 );
+
+const BinderInput = z.object({ title: short(120).min(1), category: z.enum(BINDER_KINDS), expiresOn: date.nullable() });
+
+/** Files the member's photo or PDF in the home binder. FormData because it carries the file. */
+export async function fileBinderAction(form: FormData): Promise<Result & { href: string | null }> {
+  const user = await requireUser();
+  const input = BinderInput.parse({
+    title: form.get("title"),
+    category: form.get("category"),
+    expiresOn: (form.get("expiresOn") as string | null) || null,
+  });
+  const file = form.get("file");
+  if (!(file instanceof File) || file.size === 0) return { error: "Choose the file again, then file it.", href: null };
+  try {
+    const out = await fileInBinder({
+      ...input,
+      file: { bytes: Buffer.from(await file.arrayBuffer()), mediaType: file.type, fileName: file.name },
+      addedBy: viewerFromLabel(user.owner),
+    });
+    revalidatePath("/maintenance/binder");
+    revalidatePath("/maintenance");
+    refreshHome();
+    return { error: null, href: out.href };
+  } catch (err) {
+    if (err instanceof BinderUploadError || err instanceof SensitiveTextError) return { error: err.message, href: null };
+    console.warn(`[upload] binder failed: ${err instanceof Error ? err.name : "error"}`);
+    const msg = err instanceof Error && /DOC_VAULT_KEY/.test(err.message) ? "Set DOC_VAULT_KEY on the server to keep files in the binder." : "That didn't save. Try again, or add it in the home binder.";
+    return { error: msg, href: null };
+  }
+}

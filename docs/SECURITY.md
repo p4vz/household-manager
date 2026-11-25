@@ -500,8 +500,12 @@ two-person household app.
 ## Home page upload and "Needs attention"
 
 - **Upload ("Drop anything here").** Photos are read on the member's device
-  with the same Tesseract OCR; the picture is never uploaded. PDFs are not
-  read at all: only the file name and the member's note go to the AI. The
+  with the same Tesseract OCR; the picture is not uploaded for reading. PDFs
+  are not read at all: only the file name and the member's note go to the
+  AI. The original photo or PDF is uploaded only when the member taps "Keep
+  … in the binder", and is then stored encrypted by the home binder
+  (`addBinderDocument`, 8 MB limit, needs DOC_VAULT_KEY); it never goes to
+  the AI. The
   text goes through `scrubMailText()` (numeric dates rewritten with slashes
   first so they survive) and `sanitizeReferencePayload()`; car nicknames are
   the only stored data sent. Claude's answer is re-checked (real dates, no

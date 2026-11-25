@@ -15,6 +15,7 @@ export type UploadActions = {
   noteOnTransaction: (input: { id: string; note: string }) => Promise<Result>;
   fileCarDue: (input: { carId: string; kind: UploadReading["carDue"][number]["kind"]; dueDate: string }) => Promise<Result>;
   fileUpkeep: (input: { title: string; dueDate: string; recurrenceDays: number | null; parts: string | null }) => Promise<Result>;
+  fileBinder: (form: FormData) => Promise<Result & { href: string | null }>;
 };
 
 const field = "min-h-10 w-full rounded-lg border bg-transparent px-2 text-sm";
@@ -47,7 +48,7 @@ const BINDER_LABELS: Record<NonNullable<UploadReading["binder"]>["kind"], string
 export function UploadInbox({ actions, cars, today }: { actions: UploadActions; cars: { id: string; name: string }[]; today: string }) {
   const [text, setText] = useState("");
   const [note, setNote] = useState("");
-  const [file, setFile] = useState<{ name: string; kind: "image" | "pdf"; preview: string | null } | null>(null);
+  const [file, setFile] = useState<{ name: string; kind: "image" | "pdf"; preview: string | null; original: File } | null>(null);
   const [status, setStatus] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
@@ -74,7 +75,7 @@ export function UploadInbox({ actions, cars, today }: { actions: UploadActions; 
     setError(null);
     setReading(null);
     if (f.type === "application/pdf" || /\.pdf$/i.test(f.name)) {
-      setFile({ name: f.name, kind: "pdf", preview: null });
+      setFile({ name: f.name, kind: "pdf", preview: null, original: f });
       setStatus("PDFs aren't read here. Say what it is below (optional), then tap Ask Claude.");
       return;
     }
@@ -82,7 +83,7 @@ export function UploadInbox({ actions, cars, today }: { actions: UploadActions; 
       setError("Use a photo, a screenshot or a PDF.");
       return;
     }
-    setFile({ name: f.name, kind: "image", preview: URL.createObjectURL(f) });
+    setFile({ name: f.name, kind: "image", preview: URL.createObjectURL(f), original: f });
     setBusy(true);
     setStatus("Reading the picture on this device…");
     try {
@@ -226,18 +227,7 @@ export function UploadInbox({ actions, cars, today }: { actions: UploadActions; 
           {reading.upkeep.map((u, i) => (
             <UpkeepSuggestion key={`u${i}`} initial={u} today={today} action={actions.fileUpkeep} />
           ))}
-          {reading.binder ? (
-            <Suggestion title={`Home binder: ${BINDER_LABELS[reading.binder.kind]}`}>
-              <p className="text-sm">
-                {reading.binder.title}
-                {reading.binder.expiresOn ? ` · ends ${reading.binder.expiresOn}` : ""}
-              </p>
-              <p className="text-xs opacity-70">Keep the file in the home binder so it&apos;s there when you need it. Nothing was saved from here.</p>
-              <Link href="/maintenance" className={`${button} inline-flex items-center`}>
-                Open Home maintenance
-              </Link>
-            </Suggestion>
-          ) : null}
+          {reading.binder ? <BinderSuggestion initial={reading.binder} file={file?.original ?? null} action={actions.fileBinder} /> : null}
           {reading.newCard ? (
             <Suggestion title="New credit card">
               <p className="text-xs opacity-70">
@@ -251,7 +241,7 @@ export function UploadInbox({ actions, cars, today }: { actions: UploadActions; 
           {reading.advice ? <p className="text-sm opacity-80">💡 {reading.advice}</p> : null}
           {nothing && !reading.advice ? <p className="text-sm opacity-70">Claude didn&apos;t find anything to add. Add a note saying what it is and try again.</p> : null}
           <p className="text-xs opacity-60">
-            Pictures are read on this device and not uploaded or kept. Card, account, order and phone numbers are removed before the text goes to Claude.
+            Pictures are read on this device and not uploaded unless you file them in the home binder. Card, account, order and phone numbers are removed before the text goes to Claude.
           </p>
         </div>
       ) : null}
@@ -470,6 +460,75 @@ function UpkeepSuggestion({ initial, today, action }: { initial: UploadReading["
         <input aria-label="Parts" placeholder="Parts needed" className={`${field} sm:col-span-2`} value={u.parts ?? ""} maxLength={300} onChange={(x) => setU({ ...u, parts: x.target.value || null })} />
       </div>
       <FileButton label="Add to upkeep" filing={filing} onClick={() => filing.run(() => action(u))} doneText="Added to upkeep." doneHref="/maintenance#items" />
+    </Suggestion>
+  );
+}
+
+const MAX_BINDER_BYTES = 8 * 1024 * 1024;
+
+function BinderSuggestion({ initial, file, action }: { initial: NonNullable<UploadReading["binder"]>; file: File | null; action: UploadActions["fileBinder"] }) {
+  const [b, setB] = useState(initial);
+  const [state, setState] = useState<{ busy: boolean; href: string | null; error: string | null }>({ busy: false, href: null, error: null });
+  const tooBig = file != null && file.size > MAX_BINDER_BYTES;
+
+  async function save() {
+    if (!file) return;
+    setState({ busy: true, href: null, error: null });
+    const form = new FormData();
+    form.set("title", b.title);
+    form.set("category", b.kind);
+    form.set("expiresOn", b.expiresOn ?? "");
+    form.set("file", file);
+    try {
+      const res = await action(form);
+      setState({ busy: false, href: res.href, error: res.error });
+    } catch {
+      setState({ busy: false, href: null, error: "That didn't save. Try again." });
+    }
+  }
+
+  return (
+    <Suggestion title={`📁 Home binder: ${BINDER_LABELS[b.kind]}`}>
+      <div className="grid gap-2 sm:grid-cols-3">
+        <input aria-label="Title" className={`${field} sm:col-span-3`} value={b.title} maxLength={120} onChange={(x) => setB({ ...b, title: x.target.value })} />
+        <select aria-label="Kind" className={field} value={b.kind} onChange={(x) => setB({ ...b, kind: x.target.value as typeof b.kind })}>
+          {Object.entries(BINDER_LABELS).map(([k, label]) => (
+            <option key={k} value={k}>
+              {label}
+            </option>
+          ))}
+        </select>
+        <label className="flex items-center gap-2 text-sm sm:col-span-2">
+          <span className="shrink-0 opacity-70">Ends / due</span>
+          <input aria-label="Ends or due" type="date" className={field} value={b.expiresOn ?? ""} onChange={(x) => setB({ ...b, expiresOn: x.target.value || null })} />
+        </label>
+      </div>
+      {state.href ? (
+        <p className="text-sm text-green-700">
+          ✓ Filed in the binder.{" "}
+          <Link href={state.href} className="underline">
+            Open
+          </Link>
+        </p>
+      ) : !file ? (
+        <p className="text-sm">
+          Take a photo or choose the file above to keep it, or add it in the{" "}
+          <Link href="/maintenance/binder" className="underline">
+            home binder
+          </Link>
+          .
+        </p>
+      ) : tooBig ? (
+        <p className="text-sm text-red-600">That file is larger than 8 MB. Store a compressed scan instead.</p>
+      ) : (
+        <>
+          <button type="button" className={primary} disabled={state.busy || !b.title.trim()} onClick={save}>
+            {state.busy ? "Saving…" : `Keep ${file.name.length > 30 ? "this file" : file.name} in the binder`}
+          </button>
+          <p className="text-xs opacity-70">The file is uploaded and stored encrypted. Ending or due dates become reminders in Home maintenance.</p>
+        </>
+      )}
+      {state.error ? <p className="text-sm text-red-600">{state.error}</p> : null}
     </Suggestion>
   );
 }

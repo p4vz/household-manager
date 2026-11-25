@@ -1,3 +1,4 @@
+import { randomBytes } from "node:crypto";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import type { Db } from "@/core/db/client";
 import { financeAccounts, financeTransactions, maintenanceTasks } from "@/core/db/schema";
@@ -168,5 +169,23 @@ describe("home page upload", () => {
     await inbox.fileUpkeep({ title: "Descale dishwasher", dueDate: "2026-12-01", recurrenceDays: 90, parts: "Descaler" });
     expect((await maintenance.listOpenTasks()).find((t) => t.title === "Descale dishwasher")).toMatchObject({ recurrenceDays: 90, parts: "Descaler" });
     await expect(inbox.fileUpkeep({ title: "Pay 4111 1111 1111 1111", dueDate: TODAY, recurrenceDays: null, parts: null })).rejects.toThrow(/card number/);
+  });
+
+  it("files the member's PDF in the home binder, encrypted, with its end date", async () => {
+    vi.stubEnv("DOC_VAULT_KEY", randomBytes(32).toString("base64"));
+    const bytes = Buffer.from("%PDF-1.4 dishwasher warranty");
+    const out = await inbox.fileInBinder({
+      title: "Bosch dishwasher warranty",
+      category: "warranty",
+      expiresOn: "2028-06-30",
+      file: { bytes, mediaType: "application/pdf", fileName: "warranty.pdf" },
+      addedBy: "user1",
+    });
+    expect(out.href).toBe(`/maintenance/binder#doc-${out.id}`);
+    const docs = await maintenance.listBinder();
+    expect(docs.find((d: { id: string }) => d.id === out.id)).toMatchObject({ title: "Bosch dishwasher warranty", category: "warranty", expiresOn: "2028-06-30" });
+    await expect(
+      inbox.fileInBinder({ title: "Big", category: "manual", expiresOn: null, file: { bytes: Buffer.alloc(9 * 1024 * 1024), mediaType: "application/pdf", fileName: "big.pdf" }, addedBy: "user1" }),
+    ).rejects.toThrow(/8 MB/);
   });
 });
