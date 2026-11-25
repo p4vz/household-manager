@@ -1,46 +1,157 @@
-import { ACCOUNT_KINDS, OWNERS, OWNER_LABELS, listAccounts } from "@/modules/finance/api";
-import { updateAccountAction } from "../actions";
+import Link from "next/link";
+import { Badge } from "@/components/ui/badge";
+import { requireUserOrRedirect } from "@/core/auth/guard";
+import {
+  ACCOUNT_KINDS,
+  ACCOUNT_KIND_LABELS,
+  OWNERS,
+  OWNER_LABELS,
+  cardImagesConfigured,
+  listAccounts,
+  viewerFromLabel,
+  type Owner,
+} from "@/modules/finance/api";
+import { CardPictureUpload } from "@/modules/finance/ui/card-picture";
+import { removeCardPictureAction, updateAccountAction, uploadCardPictureAction } from "../actions";
+
+const input = "w-full rounded border bg-transparent px-2 py-1";
 
 export default async function AccountsPage() {
-  const accounts = await listAccounts();
+  const user = await requireUserOrRedirect();
+  const viewer = viewerFromLabel(user.owner);
+  const accounts = await listAccounts(viewer);
+  const pictures = cardImagesConfigured();
+  const other: Owner = viewer === "user1" ? "user2" : "user1";
+  const groups: { owner: Owner; title: string; note: string }[] = [
+    { owner: "joint", title: "Joint", note: "Both of you see these accounts and their transactions in Finance." },
+    { owner: viewer, title: OWNER_LABELS[viewer], note: `Only you see these in Finance. ${OWNER_LABELS[other]} sees that they exist, nothing more.` },
+    { owner: other, title: OWNER_LABELS[other], note: `${OWNER_LABELS[other]}'s personal accounts. Their balances and transactions are private to ${OWNER_LABELS[other]}.` },
+  ];
+  const notLinked = accounts.filter((a) => a.active && !a.linked).length;
+
   return (
-    <section className="space-y-4">
-      <h1 className="text-2xl font-semibold">Accounts and cards</h1>
-      {accounts.length === 0 ? <p className="opacity-70">No accounts yet. Connect SimpleFIN or import a CSV.</p> : null}
-      <div className="space-y-2">
-        {accounts.map((a) => (
-          <form key={a.id} action={updateAccountAction} className="flex flex-wrap items-end gap-3 rounded-xl border p-4 text-sm">
-            <input type="hidden" name="id" value={a.id} />
-            <div className="min-w-48 flex-1">
-              <div className="opacity-60">
-                {a.institution ? `${a.institution} · ` : ""}
-                {a.bankName} {a.linked ? "· bank sync" : "· CSV only"}
-              </div>
-              <input name="displayName" defaultValue={a.displayName ?? ""} placeholder="Display name, e.g. Alex's Sapphire"
-                className="mt-1 w-full rounded border bg-transparent px-2 py-1" />
-            </div>
-            <label>
-              Owner
-              <select name="owner" defaultValue={a.owner} className="ml-2 rounded border bg-transparent px-2 py-1">
-                {OWNERS.map((o) => <option key={o} value={o}>{OWNER_LABELS[o]}</option>)}
-              </select>
-            </label>
-            <label>
-              Type
-              <select name="kind" defaultValue={a.kind} className="ml-2 rounded border bg-transparent px-2 py-1">
-                {ACCOUNT_KINDS.map((k) => <option key={k} value={k}>{k}</option>)}
-              </select>
-            </label>
-            <label className="flex items-center gap-1">
-              <input type="checkbox" name="active" defaultChecked={a.active} /> Active
-            </label>
-            <span className="w-28 text-right tabular-nums">
-              {a.balance != null ? a.balance.toLocaleString("en-US", { style: "currency", currency: a.currency }) : ""}
-            </span>
-            <button className="rounded border px-3 py-1">Save</button>
-          </form>
-        ))}
+    <section className="max-w-5xl space-y-6">
+      <div className="space-y-1">
+        <h1 className="text-2xl font-semibold">Accounts and cards</h1>
+        <p className="text-sm text-muted-foreground">
+          Every household account, with its official name, your nickname and who owns it. Change the owner to Joint to share an
+          account in Finance.
+        </p>
       </div>
+
+      {notLinked > 0 ? (
+        <p className="rounded-md bg-warning/10 p-3 text-sm text-warning">
+          {notLinked === 1 ? "1 account only has" : `${notLinked} accounts only have`} CSV history. Add{" "}
+          {notLinked === 1 ? "it" : "them"} to your SimpleFIN connection so new transactions keep coming in.{" "}
+          <Link href="/settings#bank-sync" className="underline">Bank sync settings</Link>
+        </p>
+      ) : null}
+
+      <p className="text-xs text-muted-foreground">
+        Card pictures: use the front of the card with the number covered or cropped out. Pictures are encrypted on the server,
+        shown only to the two of you on this page, and never sent to an AI or an assistant.
+        {!pictures ? " Set DOC_VAULT_KEY on the server to turn pictures on." : ""}
+      </p>
+
+      {accounts.length === 0 ? <p className="text-muted-foreground">No accounts yet. Connect SimpleFIN or import a CSV.</p> : null}
+
+      {groups.map((g) => {
+        const rows = accounts.filter((a) => a.owner === g.owner);
+        if (rows.length === 0) return null;
+        return (
+          <div key={g.owner} className="space-y-2">
+            <div>
+              <h2 className="text-lg font-semibold">{g.title}</h2>
+              <p className="text-xs text-muted-foreground">{g.note}</p>
+            </div>
+            {rows.map((a) => (
+              <div key={a.id} className={`flex flex-wrap gap-4 rounded-xl border p-4 text-sm ${a.active ? "" : "opacity-60"}`}>
+                <div className="w-40 shrink-0 space-y-2">
+                  {a.image ? (
+                    // eslint-disable-next-line @next/next/no-img-element
+                    <img src={a.image} alt={`${a.displayName ?? a.officialNameShown} card`} className="aspect-[1.586] w-40 rounded-lg border object-cover" />
+                  ) : (
+                    <div className="flex aspect-[1.586] w-40 items-center justify-center rounded-lg border border-dashed text-xs text-muted-foreground">
+                      No picture
+                    </div>
+                  )}
+                  {a.canEdit ? (
+                    <div className="flex items-center gap-2">
+                      <CardPictureUpload accountId={a.id} hasPicture={Boolean(a.image)} upload={uploadCardPictureAction} disabled={!pictures} />
+                      {a.image ? (
+                        <form action={removeCardPictureAction}>
+                          <input type="hidden" name="accountId" value={a.id} />
+                          <button className="text-xs underline">Remove</button>
+                        </form>
+                      ) : null}
+                    </div>
+                  ) : null}
+                </div>
+
+                <div className="min-w-64 flex-1 space-y-2">
+                  <div className="flex flex-wrap items-center gap-2 text-xs text-muted-foreground">
+                    <span>From the bank: {a.institution ? `${a.institution} · ` : ""}{a.bankName}</span>
+                    {a.linked ? (
+                      <Badge variant="outline">Bank sync</Badge>
+                    ) : (
+                      <Link href="/settings#bank-sync">
+                        <Badge variant="outline" className="border-warning text-warning">CSV only: add to bank sync</Badge>
+                      </Link>
+                    )}
+                    {!a.active ? <Badge variant="outline">Inactive</Badge> : null}
+                  </div>
+
+                  {a.canEdit ? (
+                    <form action={updateAccountAction} className="grid gap-2 sm:grid-cols-2">
+                      <input type="hidden" name="id" value={a.id} />
+                      <label className="space-y-1">
+                        <span className="text-xs text-muted-foreground">Official name</span>
+                        <input name="officialName" defaultValue={a.officialName ?? ""} placeholder={a.catalogProduct ?? a.bankName} className={input} />
+                      </label>
+                      <label className="space-y-1">
+                        <span className="text-xs text-muted-foreground">Our nickname</span>
+                        <input name="displayName" defaultValue={a.displayName ?? ""} placeholder="e.g. Grocery card" className={input} />
+                      </label>
+                      <label className="space-y-1">
+                        <span className="text-xs text-muted-foreground">Owner</span>
+                        <select name="owner" defaultValue={a.owner} className={input}>
+                          {OWNERS.map((o) => <option key={o} value={o}>{OWNER_LABELS[o]}</option>)}
+                        </select>
+                      </label>
+                      <label className="space-y-1">
+                        <span className="text-xs text-muted-foreground">Type</span>
+                        <select name="kind" defaultValue={a.kind} className={input}>
+                          {ACCOUNT_KINDS.map((k) => <option key={k} value={k}>{ACCOUNT_KIND_LABELS[k]}</option>)}
+                        </select>
+                      </label>
+                      <div className="flex items-center gap-4 sm:col-span-2">
+                        <label className="flex items-center gap-1">
+                          <input type="checkbox" name="active" defaultChecked={a.active} /> Active
+                        </label>
+                        <span className="tabular-nums text-muted-foreground">
+                          {a.balance != null ? `Balance ${a.balance.toLocaleString("en-US", { style: "currency", currency: a.currency })}` : ""}
+                        </span>
+                        <button className="ml-auto rounded border px-3 py-1">Save</button>
+                      </div>
+                    </form>
+                  ) : (
+                    <dl className="grid gap-x-4 gap-y-1 sm:grid-cols-[auto_1fr]">
+                      <dt className="text-muted-foreground">Official name</dt>
+                      <dd>{a.officialNameShown}</dd>
+                      <dt className="text-muted-foreground">Nickname</dt>
+                      <dd>{a.displayName ?? "None"}</dd>
+                      <dt className="text-muted-foreground">Owner</dt>
+                      <dd>{OWNER_LABELS[a.owner]} (private)</dd>
+                      <dt className="text-muted-foreground">Type</dt>
+                      <dd>{ACCOUNT_KIND_LABELS[a.kind]}</dd>
+                    </dl>
+                  )}
+                </div>
+              </div>
+            ))}
+          </div>
+        );
+      })}
     </section>
   );
 }

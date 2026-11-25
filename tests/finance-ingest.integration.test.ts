@@ -51,7 +51,7 @@ describe("SimpleFIN sync", () => {
     const first = await syncSimplefin({ trigger: "setup", now: new Date("2026-11-20T12:00:00Z"), fetcher: async () => data });
     expect(first).toMatchObject({ status: "ok", inserted: 2, accounts: 1 });
 
-    const [acct] = await listAccounts();
+    const [acct] = await listAccounts("user1");
     expect(acct).toMatchObject({ bankName: "Sapphire Preferred", institution: "Chase", kind: "credit" });
     await db.update(financeAccounts).set({ displayName: "Alex's Sapphire", owner: "user1" }).where(eq(financeAccounts.id, acct.id));
 
@@ -62,7 +62,7 @@ describe("SimpleFIN sync", () => {
 
     const second = await syncSimplefin({ trigger: "cron", now: new Date("2026-11-21T00:00:00Z"), fetcher });
     expect(second).toMatchObject({ status: "ok", inserted: 0 });
-    const [after] = await listAccounts();
+    const [after] = await listAccounts("user1");
     expect(after).toMatchObject({ displayName: "Alex's Sapphire", owner: "user1" });
     expect(await db.select().from(financeTransactions)).toHaveLength(2);
   });
@@ -97,18 +97,18 @@ describe("Simplifi CSV import", () => {
       now: new Date("2026-11-20T12:00:00Z"),
       fetcher: async () => bankData([{ id: "T1", date: "2026-09-01", amount: "-12.00", desc: "BLUE BOTTLE" }]),
     });
-    const preview = await previewCsvImport(CSV);
+    const preview = await previewCsvImport("user1", CSV);
     expect(preview.accounts.map((a) => [a.name, a.rows])).toEqual([
       ["Chase Sapphire", 3],
       ["Old Savings", 1],
     ]);
-    const [sapphire] = await listAccounts();
+    const [sapphire] = await listAccounts("user1");
 
     const mapping = { "Chase Sapphire": sapphire.id, "Old Savings": "new" };
-    const result = await commitCsvImport(CSV, mapping);
+    const result = await commitCsvImport("user1", CSV, mapping);
     expect(result).toMatchObject({ inserted: 3, coveredBySimplefin: 1, alreadyPresent: 0 });
 
-    const again = await commitCsvImport(CSV, { "Chase Sapphire": sapphire.id, "Old Savings": "skip" });
+    const again = await commitCsvImport("user1", CSV, { "Chase Sapphire": sapphire.id, "Old Savings": "skip" });
     expect(again).toMatchObject({ inserted: 0, alreadyPresent: 2 });
 
     // Category rules learned from history now apply to synced rows.
@@ -122,10 +122,10 @@ describe("Simplifi CSV import", () => {
   });
 
   it("removes CSV rows that a later SimpleFIN link covers", async () => {
-    const preview = await previewCsvImport(CSV);
+    const preview = await previewCsvImport("user1", CSV);
     expect(preview.accounts[0].suggestedAccountId).toBeNull();
-    await commitCsvImport(CSV, { "Chase Sapphire": "new", "Old Savings": "skip" });
-    const [csvAcct] = await listAccounts();
+    await commitCsvImport("user1", CSV, { "Chase Sapphire": "new", "Old Savings": "skip" });
+    const [csvAcct] = await listAccounts("user1");
     // Simulate linking: the user maps SimpleFIN onto the CSV account.
     await db.update(financeAccounts).set({ simplefinId: "ACT-1" }).where(eq(financeAccounts.id, csvAcct.id));
     await syncSimplefin({

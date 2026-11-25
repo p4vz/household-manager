@@ -1,10 +1,12 @@
 import "server-only";
 import { open, seal } from "@/core/secrets/secret-box";
+import type { Viewer } from "../access";
 import { deleteSetting, getSetting, setSetting } from "@/core/settings/store";
 
 const KEY = "finance.simplefin";
 
-type Stored = { sealedAccessUrl: string; linkedAt: string };
+/** `connectedBy`: who linked the banks; accounts found by the sync start as theirs. */
+type Stored = { sealedAccessUrl: string; linkedAt: string; connectedBy?: Viewer };
 
 /**
  * SIMPLEFIN_ACCESS_URL in the environment wins. Otherwise the URL claimed
@@ -17,8 +19,21 @@ export async function getAccessUrl(): Promise<string | null> {
   return stored?.sealedAccessUrl ? open(stored.sealedAccessUrl) : null;
 }
 
-export async function storeAccessUrl(accessUrl: string): Promise<void> {
-  await setSetting(KEY, { sealedAccessUrl: seal(accessUrl), linkedAt: new Date().toISOString() } satisfies Stored);
+export async function storeAccessUrl(accessUrl: string, connectedBy?: Viewer): Promise<void> {
+  await setSetting(KEY, { sealedAccessUrl: seal(accessUrl), linkedAt: new Date().toISOString(), connectedBy } satisfies Stored);
+}
+
+/**
+ * Owner for an account the bank sync sees for the first time. Accounts start
+ * private to whoever linked the banks, so nothing shows up for the other
+ * member until someone marks it Joint on the Accounts page. An access URL set
+ * in the environment (or linked before this was recorded) counts as User 1's,
+ * who manages the deployment.
+ */
+export async function newAccountOwner(): Promise<Viewer> {
+  if (process.env.SIMPLEFIN_ACCESS_URL) return "user1";
+  const stored = (await getSetting(KEY)) as Stored | undefined;
+  return stored?.connectedBy ?? "user1";
 }
 
 /** Forget the stored access URL. Synced accounts and transactions stay. */

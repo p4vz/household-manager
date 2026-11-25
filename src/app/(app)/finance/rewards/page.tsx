@@ -4,6 +4,7 @@ import { Progress } from "@/components/ui/progress";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { formatMoney } from "@/lib/utils";
 import Link from "next/link";
+import { requireUserOrRedirect } from "@/core/auth/guard";
 import {
   OWNER_LABELS,
   cardCatalog,
@@ -14,6 +15,7 @@ import {
   listCatalogChanges,
   rewardsAudit,
   signupBonusOverview,
+  viewerFromLabel,
 } from "@/modules/finance/api";
 import { AdvisorButton } from "@/modules/finance/ui/advisor-button";
 import { changeLines, daysAgo } from "@/modules/finance/ui/catalog-format";
@@ -31,15 +33,16 @@ const MONTHS = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "
 const input = "h-8 rounded-md border bg-background px-2";
 
 export default async function RewardsPage() {
+  const viewer = viewerFromLabel((await requireUserOrRedirect()).owner);
   const [cards, { audit }, advisor, catalog, drift, candidates, changes, bonuses] = await Promise.all([
-    listCardsWithProfiles(),
-    rewardsAudit("12M"),
-    latestAdvisorReport(),
+    listCardsWithProfiles(viewer),
+    rewardsAudit(viewer, "12M"),
+    latestAdvisorReport(viewer),
     cardCatalog(),
-    catalogDriftForCards(),
-    catalogComparison("12M"),
+    catalogDriftForCards(viewer),
+    catalogComparison(viewer, "12M"),
     listCatalogChanges({ limit: 40 }),
-    signupBonusOverview(),
+    signupBonusOverview(viewer),
   ]);
   const driftByCard = new Map(drift.map((d) => [d.accountId, d]));
   const toReview = changes.filter((c) => c.status === "pending" || !c.seen).length;

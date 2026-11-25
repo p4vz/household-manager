@@ -3,7 +3,7 @@
 import { revalidatePath } from "next/cache";
 import { z } from "zod";
 import { authedAction } from "@/core/actions/authed-action";
-import { requireUser } from "@/core/auth/guard";
+import { requireUser, type HouseholdUser } from "@/core/auth/guard";
 import {
   ACCOUNT_KINDS,
   OWNERS,
@@ -31,24 +31,33 @@ import {
   rejectCatalogChange,
   saveCatalogTermsByUser,
   CardTerms,
+  viewerFromLabel,
+  setAccountImage,
+  deleteAccountImage,
+  MAX_CARD_IMAGE_BYTES,
 } from "@/modules/finance/api";
+
+/** Finance data is read and changed as the signed-in member (private accounts). */
+const as = (user: HouseholdUser) => viewerFromLabel(user.owner);
 
 const MAX_CSV_CHARS = 14 * 1024 * 1024;
 
 const AccountInput = z.object({
   id: z.uuid(),
   displayName: z.string().max(80).nullable(),
+  officialName: z.string().max(120).nullable(),
   owner: z.enum(OWNERS),
   kind: z.enum(ACCOUNT_KINDS),
   active: z.boolean(),
 });
 
-const saveAccount = authedAction(AccountInput, ({ id, ...patch }) => updateAccount(id, patch));
+const saveAccount = authedAction(AccountInput, ({ id, ...patch }, user) => updateAccount(as(user), id, patch));
 
 export async function updateAccountAction(form: FormData) {
   await saveAccount({
     id: form.get("id"),
     displayName: (form.get("displayName") as string | null) || null,
+    officialName: (form.get("officialName") as string | null) || null,
     owner: form.get("owner"),
     kind: form.get("kind"),
     active: form.get("active") === "on",
@@ -56,9 +65,39 @@ export async function updateAccountAction(form: FormData) {
   revalidatePath("/finance/accounts");
 }
 
-export const previewCsvAction = authedAction(z.object({ text: z.string().max(MAX_CSV_CHARS) }), async ({ text }) => {
+// ---------- card pictures ----------
+
+type PictureState = null | { ok: true } | { ok: false; error: string };
+
+const picture = authedAction(
+  z.object({
+    accountId: z.uuid(),
+    file: z.instanceof(File).refine((f) => f.size > 0 && f.size <= MAX_CARD_IMAGE_BYTES, "The picture is too large (600 KB at most)"),
+  }),
+  async ({ accountId, file }, user) => setAccountImage(as(user), accountId, Buffer.from(await file.arrayBuffer())),
+);
+export async function uploadCardPictureAction(_prev: PictureState, form: FormData): Promise<PictureState> {
+  // Check the session outside the try so a refusal is not turned into a message.
+  await requireUser();
   try {
-    return { ok: true as const, preview: await previewCsvImport(text) };
+    await picture({ accountId: form.get("accountId"), file: form.get("file") });
+    revalidatePath("/finance/accounts");
+    return { ok: true };
+  } catch (err) {
+    const msg = err instanceof z.ZodError ? err.issues[0]?.message : err instanceof Error ? err.message : null;
+    return { ok: false, error: msg ?? "Could not save the picture" };
+  }
+}
+
+const removePicture = authedAction(z.object({ accountId: z.uuid() }), ({ accountId }, user) => deleteAccountImage(as(user), accountId));
+export async function removeCardPictureAction(form: FormData) {
+  await removePicture({ accountId: form.get("accountId") });
+  revalidatePath("/finance/accounts");
+}
+
+export const previewCsvAction = authedAction(z.object({ text: z.string().max(MAX_CSV_CHARS) }), async ({ text }, user) => {
+  try {
+    return { ok: true as const, preview: await previewCsvImport(as(user), text) };
   } catch (err) {
     return { ok: false as const, error: err instanceof Error ? err.message : "Could not read the file" };
   }
@@ -69,8 +108,8 @@ export const commitCsvAction = authedAction(
     text: z.string().max(MAX_CSV_CHARS),
     mapping: z.record(z.string(), z.union([z.uuid(), z.literal("new"), z.literal("skip")])),
   }),
-  async ({ text, mapping }) => {
-    const result = await commitCsvImport(text, mapping);
+  async ({ text, mapping }, user) => {
+    const result = await commitCsvImport(as(user), text, mapping);
     revalidatePath("/finance");
     return result;
   },
@@ -87,17 +126,17 @@ export const drillDownAction = authedAction(
     subcategory: z.string().max(100).nullable().optional(),
     merchant: z.string().max(200).optional(),
   }),
-  (q) => drillDownTransactions(q),
+  (q, user) => drillDownTransactions(as(user), q),
 );
 
 // ---------- budgets ----------
 
 const CategoryLimit = z.object({ category: z.string().min(1).max(100), limit: z.coerce.number().min(0).max(1_000_000) });
 
-const accept = authedAction(CategoryLimit, ({ category, limit }) => setBudget(category, limit, "auto"));
-const override = authedAction(CategoryLimit, ({ category, limit }) => setBudget(category, limit, "manual"));
-const remove = authedAction(z.object({ category: z.string().min(1).max(100) }), ({ category }) => removeBudget(category));
-const acceptAll = authedAction(z.object({}), () => acceptAllSuggestions());
+const accept = authedAction(CategoryLimit, ({ category, limit }, user) => setBudget(as(user), category, limit, "auto"));
+const override = authedAction(CategoryLimit, ({ category, limit }, user) => setBudget(as(user), category, limit, "manual"));
+const remove = authedAction(z.object({ category: z.string().min(1).max(100) }), ({ category }, user) => removeBudget(as(user), category));
+const acceptAll = authedAction(z.object({}), (_, user) => acceptAllSuggestions(as(user)));
 const options = authedAction(
   z.object({ basis: z.union([z.literal(3), z.literal(6)]), excludeOutliers: z.boolean() }),
   (o) => saveBudgetOptions(o),
@@ -166,7 +205,7 @@ const profile = authedAction(
     (p) => !p.signupStart || !p.signupDeadline || p.signupStart <= p.signupDeadline,
     "The sign-up offer ends before it starts",
   ),
-  ({ accountId, ...p }) => saveCardProfile(accountId, p),
+  ({ accountId, ...p }, user) => saveCardProfile(as(user), accountId, p),
 );
 export async function saveCardProfileAction(form: FormData) {
   await profile({
@@ -197,7 +236,7 @@ const rule = authedAction(
     validTo: z.iso.date().nullable(),
     label: z.string().max(60).nullable(),
   }),
-  ({ accountId, ...r }) => addCardRule(accountId, r),
+  ({ accountId, ...r }, user) => addCardRule(as(user), accountId, r),
 );
 export async function addCardRuleAction(form: FormData) {
   const capAmount = form.get("capAmount") || null;
@@ -215,13 +254,13 @@ export async function addCardRuleAction(form: FormData) {
   revalidatePath("/finance/rewards");
 }
 
-const removeRule = authedAction(z.object({ id: z.uuid() }), ({ id }) => deleteCardRule(id));
+const removeRule = authedAction(z.object({ id: z.uuid() }), ({ id }, user) => deleteCardRule(as(user), id));
 export async function deleteCardRuleAction(form: FormData) {
   await removeRule({ id: form.get("id") });
   revalidatePath("/finance/rewards");
 }
 
-const advisor = authedAction(z.object({}), () => runAdvisorNow());
+const advisor = authedAction(z.object({}), (_, user) => runAdvisorNow(as(user)));
 export async function runAdvisorAction() {
   try {
     await advisor({});
@@ -236,21 +275,21 @@ export async function runAdvisorAction() {
 
 const productId = z.string().regex(/^[a-z0-9-]{1,80}$/);
 
-const link = authedAction(z.object({ accountId: z.uuid(), productId: productId.nullable() }), ({ accountId, productId }) =>
-  linkCardToCatalog(accountId, productId),
+const link = authedAction(z.object({ accountId: z.uuid(), productId: productId.nullable() }), ({ accountId, productId }, user) =>
+  linkCardToCatalog(as(user), accountId, productId),
 );
 export async function linkCardToCatalogAction(form: FormData) {
   await link({ accountId: form.get("accountId"), productId: form.get("productId") || null });
   revalidatePath("/finance/rewards");
 }
 
-const apply = authedAction(z.object({ accountId: z.uuid() }), ({ accountId }) => applyCatalogTermsToCard(accountId));
+const apply = authedAction(z.object({ accountId: z.uuid() }), ({ accountId }, user) => applyCatalogTermsToCard(as(user), accountId));
 export async function applyCatalogTermsAction(form: FormData) {
   await apply({ accountId: form.get("accountId") });
   revalidatePath("/finance/rewards");
 }
 
-const keep = authedAction(z.object({ accountId: z.uuid() }), ({ accountId }) => keepCardRules(accountId));
+const keep = authedAction(z.object({ accountId: z.uuid() }), ({ accountId }, user) => keepCardRules(as(user), accountId));
 export async function keepCardRulesAction(form: FormData) {
   await keep({ accountId: form.get("accountId") });
   revalidatePath("/finance/rewards");

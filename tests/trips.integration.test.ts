@@ -27,13 +27,13 @@ beforeEach(async () => {
     .insert(financeAccounts)
     .values([
       { bankName: "Sapphire", displayName: "Sapphire", owner: "user1", kind: "credit" },
-      { bankName: "Venture", displayName: "Venture", owner: "user2", kind: "credit" },
+      { bankName: "Venture", displayName: "Venture", owner: "joint", kind: "credit" },
     ])
     .returning();
   [sapphire, venture] = rows.map((r) => r.id);
-  await finance.saveCardProfile(sapphire, { rewardType: "points", baseRate: 1, centsPerUnit: 1.5, annualFee: 95, annualFeeMonth: null });
-  await finance.addCardRule(sapphire, { matchType: "category", match: "Travel", rate: 3, capAmount: null, capPeriod: null, validFrom: null, validTo: null, label: null });
-  await finance.saveCardProfile(venture, {
+  await finance.saveCardProfile("user1", sapphire, { rewardType: "points", baseRate: 1, centsPerUnit: 1.5, annualFee: 95, annualFeeMonth: null });
+  await finance.addCardRule("user1", sapphire, { matchType: "category", match: "Travel", rate: 3, capAmount: null, capPeriod: null, validFrom: null, validTo: null, label: null });
+  await finance.saveCardProfile("user1", venture, {
     rewardType: "points",
     baseRate: 2,
     centsPerUnit: 1,
@@ -77,7 +77,7 @@ describe("trips module", () => {
 
   it("recommends routing trip bookings to the card with an open sign-up bonus", async () => {
     const { id } = await newTrip();
-    const plan = await trips.tripCardPlan(id, NOW);
+    const plan = await trips.tripCardPlan("user1", id, NOW);
     const venturePlan = plan.bonuses.find((b) => b.card === "Venture")!;
     // $1,100 - $100 refund = $1,000 spent; payments do not count.
     expect(venturePlan).toMatchObject({ spent: 1000, remaining: 3000, metWithPlan: true, bonusValue: 750 });
@@ -96,7 +96,7 @@ describe("trips module", () => {
       { bookingStatus: "booked", confirmation: "ABC123", provider: "United", bookingUrl: null, seatNote: null, verifyBy: null, cost: 2400, paidWithAccountId: sapphire, chargeDate: "2026-11-20" },
       "user1",
     );
-    const plan = await trips.tripCardPlan(id, NOW);
+    const plan = await trips.tripCardPlan("user1", id, NOW);
     expect(plan.steps.find((s) => s.id === flight.id)).toMatchObject({ paidWith: "Sapphire", plan: null });
     // The hotel alone cannot reach Venture's minimum, so it goes to the 3x travel card.
     expect(plan.steps.find((s) => s.kind === "lodging")!.plan).toMatchObject({ reason: "multiplier", recommended: { card: "Sapphire" } });

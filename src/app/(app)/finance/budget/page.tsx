@@ -1,5 +1,6 @@
 import { Button } from "@/components/ui/button";
-import { budgetOverview } from "@/modules/finance/api";
+import { requireUserOrRedirect } from "@/core/auth/guard";
+import { budgetOverview, viewerFromLabel } from "@/modules/finance/api";
 import { BudgetTable } from "@/modules/finance/ui/budget-table";
 import {
   acceptAllBudgetsAction,
@@ -10,14 +11,15 @@ import {
 } from "../actions";
 
 export default async function BudgetPage() {
-  const { options, month, rows } = await budgetOverview();
+  const viewer = viewerFromLabel((await requireUserOrRedirect()).owner);
+  const { options, month, rows } = await budgetOverview(viewer);
   return (
     <section className="max-w-4xl space-y-6">
       <div className="flex flex-wrap items-end gap-4">
         <div>
           <h1 className="text-2xl font-semibold">Budget · {month}</h1>
           <p className="text-sm text-muted-foreground">
-            Targets come from your last {options.basis} complete months of actual spending.
+            Your budget: targets come from your last {options.basis} complete months of spending on joint accounts and your own.
           </p>
         </div>
         <form action={budgetOptionsAction} className="ml-auto flex items-center gap-3 text-sm">

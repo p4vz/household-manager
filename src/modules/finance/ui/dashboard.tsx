@@ -40,12 +40,18 @@ const COLORS = [
   "var(--chart-7)",
   "var(--chart-8)",
 ];
-const OWNERS: { key: OwnerFilter; label: string }[] = [
-  { key: "all", label: "All Household" },
-  { key: "user1", label: "Me" },
-  { key: "user2", label: "Wife" },
-  { key: "joint", label: "Joint" },
-];
+/**
+ * The server only sends joint accounts and the viewer's own, so the filter
+ * offers just those: everything I can see, only mine, only joint.
+ */
+const NAMES = { user1: "Pavel", user2: "Raisa" } as const;
+function ownerOptions(viewer: "user1" | "user2"): { key: OwnerFilter; label: string }[] {
+  return [
+    { key: "all", label: `${NAMES[viewer]} + Joint` },
+    { key: viewer, label: NAMES[viewer] },
+    { key: "joint", label: "Joint" },
+  ];
+}
 
 type Txn = {
   id: string;
@@ -70,6 +76,7 @@ export function FinanceDashboard(props: {
   categoryFacts: CategoryFact[];
   merchantFacts: MerchantFact[];
   accounts: { id: string; name: string; owner: string }[];
+  viewer: "user1" | "user2";
   drillDown: (q: DrillQuery) => Promise<Txn[]>;
 }) {
   const [owner, setOwner] = useState<OwnerFilter>("all");
@@ -114,7 +121,7 @@ export function FinanceDashboard(props: {
     <div className="space-y-6">
       {/* Filters */}
       <div className="flex flex-wrap items-center gap-3">
-        <Segmented options={OWNERS} value={owner} onChange={(v) => { setOwner(v); setAccountIds(null); setDrill(null); }} />
+        <Segmented options={ownerOptions(props.viewer)} value={owner} onChange={(v) => { setOwner(v); setAccountIds(null); setDrill(null); }} />
         <Segmented options={RANGES.map((r) => ({ key: r, label: r }))} value={range} onChange={(v) => { setRange(v); setDrill(null); }} />
         <select
           className="h-9 rounded-md border bg-background px-2 text-sm"

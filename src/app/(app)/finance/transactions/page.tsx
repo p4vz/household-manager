@@ -1,10 +1,12 @@
 import { Button } from "@/components/ui/button";
 import { formatMoney } from "@/lib/utils";
-import { OWNER_LABELS, listRecentTransactions } from "@/modules/finance/api";
+import { requireUserOrRedirect } from "@/core/auth/guard";
+import { OWNER_LABELS, listRecentTransactions, viewerFromLabel } from "@/modules/finance/api";
 import { categorizeWithAiAction, setMerchantCategoryAction } from "../actions";
 
 export default async function TransactionsPage() {
-  const rows = await listRecentTransactions(300);
+  const viewer = viewerFromLabel((await requireUserOrRedirect()).owner);
+  const rows = await listRecentTransactions(viewer, 300);
   const uncategorized = rows.filter((r) => !r.category && !r.isTransfer).length;
   const categories = [...new Set(rows.map((r) => r.category).filter(Boolean))].sort() as string[];
   return (

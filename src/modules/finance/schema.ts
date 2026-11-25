@@ -1,10 +1,12 @@
 import { sql } from "drizzle-orm";
 import {
   boolean,
+  customType,
   date,
   index,
   integer,
   jsonb,
+  primaryKey,
   numeric,
   pgTable,
   text,
@@ -13,19 +15,49 @@ import {
   uuid,
 } from "drizzle-orm/pg-core";
 
-/** Who an account belongs to. `user1`/`user2` follow ALLOWED_EMAILS order. */
+/**
+ * Who an account belongs to. `user1`/`user2` follow ALLOWED_EMAILS order
+ * (on screen: Pavel / Raisa). A personal account and its transactions are
+ * visible in Finance only to its owner; see ./access.ts.
+ */
 export const OWNERS = ["user1", "user2", "joint"] as const;
 export type Owner = (typeof OWNERS)[number];
 
-export const ACCOUNT_KINDS = ["credit", "checking", "savings", "loan", "investment", "other"] as const;
+export const ACCOUNT_KINDS = [
+  "credit",
+  "business_credit",
+  "checking",
+  "business_checking",
+  "savings",
+  "loan",
+  "investment",
+  "other",
+] as const;
 export type AccountKind = (typeof ACCOUNT_KINDS)[number];
 
+/** Kinds that earn card rewards (personal and business credit cards). */
+export const CARD_KINDS: AccountKind[] = ["credit", "business_credit"];
+
+export const ACCOUNT_KIND_LABELS: Record<AccountKind, string> = {
+  credit: "Credit card",
+  business_credit: "Business credit card",
+  checking: "Checking",
+  business_checking: "Business checking",
+  savings: "Savings",
+  loan: "Loan",
+  investment: "Investment",
+  other: "Other",
+};
+
 const money = (name: string) => numeric(name, { precision: 14, scale: 2, mode: "number" });
+const bytea = customType<{ data: Buffer; driverData: Buffer }>({ dataType: () => "bytea" });
 
 /**
  * Accounts and cards. No account or card numbers are stored: SimpleFIN
- * gives an opaque id, and the bank's display name is kept only as
- * `bankName` (it is never sent to an LLM; `displayName` is).
+ * gives an opaque id, and digit runs are stripped from the bank's name
+ * before it is saved as `bankName` (never sent to an LLM; `displayName`,
+ * the household's nickname, is). `officialName` is the product name, e.g.
+ * "Chase Freedom Unlimited", set on the Accounts page.
  */
 export const financeAccounts = pgTable(
   "finance_accounts",
@@ -35,6 +67,7 @@ export const financeAccounts = pgTable(
     institution: text("institution"),
     bankName: text("bank_name").notNull(),
     displayName: text("display_name"),
+    officialName: text("official_name"),
     owner: text("owner", { enum: OWNERS }).notNull().default("joint"),
     kind: text("kind", { enum: ACCOUNT_KINDS }).notNull().default("other"),
     active: boolean("active").notNull().default(true),
@@ -112,11 +145,39 @@ export const financeExpectedExpenses = pgTable(
   (t) => [uniqueIndex("finance_expected_source_uq").on(t.sourceModule, t.sourceRef)],
 );
 
-/** Monthly limit per spending category. `source` = accepted suggestion or manual override. */
-export const financeBudgets = pgTable("finance_budgets", {
-  category: text("category").primaryKey(),
-  monthlyLimit: money("monthly_limit").notNull(),
-  source: text("source", { enum: ["auto", "manual"] }).notNull(),
+/**
+ * Monthly limit per spending category, per member: each member's budget
+ * covers the accounts they can see (joint + their own), so limits are kept
+ * apart. `source` = accepted suggestion or manual override.
+ */
+export const financeBudgets = pgTable(
+  "finance_budgets",
+  {
+    viewer: text("viewer", { enum: ["user1", "user2"] }).notNull(),
+    category: text("category").notNull(),
+    monthlyLimit: money("monthly_limit").notNull(),
+    source: text("source", { enum: ["auto", "manual"] }).notNull(),
+    updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
+  },
+  (t) => [primaryKey({ columns: [t.viewer, t.category] })],
+);
+
+/**
+ * Picture of a card, uploaded on the Accounts page. Encrypted with
+ * DOC_VAULT_KEY (AES-256-GCM) before it reaches the database, shown only to
+ * signed-in household members, and never sent to an AI provider or an
+ * assistant. The browser re-encodes it (dropping photo metadata) first.
+ */
+export const financeAccountImages = pgTable("finance_account_images", {
+  accountId: uuid("account_id")
+    .primaryKey()
+    .references(() => financeAccounts.id, { onDelete: "cascade" }),
+  mimeType: text("mime_type", { enum: ["image/jpeg", "image/png", "image/webp"] }).notNull(),
+  cipherText: bytea("cipher_text").notNull(),
+  iv: bytea("iv").notNull(),
+  authTag: bytea("auth_tag").notNull(),
+  bytes: integer("bytes").notNull(),
+  uploadedBy: text("uploaded_by", { enum: ["user1", "user2"] }).notNull(),
   updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
 });
 
@@ -232,8 +293,13 @@ export const financeCardCatalogChanges = pgTable(
   (t) => [index("finance_catalog_changes_product_idx").on(t.productId, t.detectedAt)],
 );
 
+/**
+ * Advisor reports, one stream per member (each covers what that member can
+ * see). Reports from before private accounts have no viewer and are not shown.
+ */
 export const financeAdvisorReports = pgTable("finance_advisor_reports", {
   id: uuid("id").primaryKey().defaultRandom(),
+  viewer: text("viewer", { enum: ["user1", "user2"] }),
   createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
   trigger: text("trigger", { enum: ["manual", "monthly"] }).notNull(),
   provider: text("provider").notNull(),
