@@ -8,6 +8,8 @@ import { listConnections } from "@/core/oauth/server";
 import { memberDisplayName } from "@/core/auth/display-name";
 import { AssistantRule, PermissionCheckboxes } from "@/components/assistant-permissions";
 import { KioskPairingCode } from "@/components/kiosk-pairing";
+import { AppUpdatePanel } from "@/components/pwa/app-update-panel";
+import { InstallAppButton } from "@/components/pwa/install-app-button";
 import { listKioskDevices } from "@/core/kiosk/devices";
 import { BankSyncSettings, type BankSyncView } from "@/modules/finance/ui/bank-sync-settings";
 import { householdTimeZone, syncStatus } from "@/modules/finance/api";
@@ -125,6 +127,12 @@ export default async function SettingsPage() {
           ))}
           <button type="submit" className="rounded-lg bg-foreground px-4 py-2 text-background">Save</button>
         </form>
+      </div>
+
+      <div id="phone-app" className="scroll-mt-6 space-y-3 rounded-xl border p-6">
+        <h2 className="font-medium">Phone app</h2>
+        <InstallAppButton />
+        <AppUpdatePanel />
       </div>
 
       <div className="space-y-3 rounded-xl border p-6">

@@ -13,9 +13,9 @@ export default async function AppLayout({ children }: LayoutProps<"/">) {
 
   return (
     <div className="flex flex-1 flex-col">
-      <header className="flex items-center gap-6 border-b px-6 py-3 text-sm">
+      <header className="flex flex-wrap items-center gap-x-6 gap-y-2 border-b px-4 py-3 text-sm sm:px-6">
         <Link href="/" className="font-semibold">Household</Link>
-        <nav className="flex gap-4">
+        <nav className="order-last flex w-full gap-4 overflow-x-auto whitespace-nowrap sm:order-none sm:w-auto">
           {MODULE_DEFINITIONS.map((m) => (
             <Link key={m.name} href={m.href} className="opacity-80 hover:opacity-100">
               {m.title}
@@ -28,7 +28,7 @@ export default async function AppLayout({ children }: LayoutProps<"/">) {
           <button type="submit" className="underline">Sign out</button>
         </form>
       </header>
-      <main className="flex-1 p-6">{children}</main>
+      <main className="flex-1 p-4 sm:p-6">{children}</main>
     </div>
   );
 }

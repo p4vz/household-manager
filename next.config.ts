@@ -1,4 +1,14 @@
+import { readFileSync } from "node:fs";
 import type { NextConfig } from "next";
+
+/** Build id from scripts/write-version.mjs (run by `npm run build`); "dev" otherwise. */
+function appVersion(): string {
+  try {
+    return (JSON.parse(readFileSync("public/version.json", "utf8")) as { version?: string }).version || "dev";
+  } catch {
+    return "dev";
+  }
+}
 
 /**
  * Security headers applied to every response. The app has no public API and
@@ -21,6 +31,8 @@ const securityHeaders = [
 
 const nextConfig: NextConfig = {
   poweredByHeader: false,
+  // Installed phone apps compare this with /version.json to offer "Update app".
+  env: { HM_APP_VERSION: appVersion() },
   // The Agent SDK starts Claude Code from its platform package at runtime; keep it out of the bundle.
   serverExternalPackages: ["postgres", "@anthropic-ai/claude-agent-sdk"],
   experimental: {

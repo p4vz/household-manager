@@ -1,9 +1,10 @@
 /**
  * Static files that make the app installable (PWA). Browsers fetch the
  * manifest and icons without cookies, so they must load before sign-in.
- * They hold no household data: see public/sw.js.
+ * They hold no household data: see public/sw.js. /version.json holds only
+ * the build id (scripts/write-version.mjs).
  */
-export const PWA_FILES = ["/manifest.webmanifest", "/kiosk.webmanifest", "/sw.js", "/offline.html", "/kiosk-offline.html"] as const;
+export const PWA_FILES = ["/manifest.webmanifest", "/kiosk.webmanifest", "/sw.js", "/offline.html", "/kiosk-offline.html", "/version.json"] as const;
 
 /**
  * The only paths reachable without an allowlisted session. Everything else
