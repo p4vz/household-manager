@@ -2,6 +2,7 @@ import "server-only";
 import { and, desc, eq } from "drizzle-orm";
 import { db } from "@/core/db/client";
 import { householdTimeZone } from "@/core/time/zoned";
+import { bookShelves, shelveIfNew } from "./books-api";
 import { assertNoCardNumber } from "./guard";
 import { LANGUAGE_LABEL, MINUTES_TO_COUNT, READING_LANGUAGES, readingStats, type ReadingLanguage, type ReadingStats } from "./reading";
 import { familyKids, familyReadingLog } from "./schema";
@@ -65,6 +66,7 @@ export async function addReading(input: ReadingInput, now = new Date(), opts: Re
     .insert(familyReadingLog)
     .values({ kidId: input.kidId, ...f, createdAt: now })
     .returning({ id: familyReadingLog.id });
+  await shelveIfNew(input.kidId, f.book, f.language);
   return row.id;
 }
 
@@ -78,6 +80,7 @@ export async function updateReading(id: string, patch: Partial<Omit<ReadingInput
   if (!current) throw new ReadingError("That entry is gone.");
   const f = check({ day: current.day, book: current.book, language: current.language, minutes: current.minutes, pages: current.pages, ...patch }, now, opts.backdateDays);
   await db().update(familyReadingLog).set(f).where(eq(familyReadingLog.id, id));
+  if (patch.book) await shelveIfNew(current.kidId, f.book, f.language);
 }
 
 /**
@@ -125,22 +128,24 @@ export type ReadingSummary = {
   today: { id: string; book: string; language: ReadingLanguage; minutes: number; pages: number | null }[];
   /** Recent entries, newest first (phone history). */
   recent: { id: string; day: string; book: string; language: ReadingLanguage; minutes: number; pages: number | null }[];
-  /** Books this kid logged lately, newest first, for one-tap picking. */
-  books: { book: string; language: ReadingLanguage }[];
+  /** The kid's book shelf: books being read (last read first), then finished ones. */
+  books: { id: string; title: string; author: string | null; language: ReadingLanguage; finished: boolean }[];
 };
 
 export async function readingSummaries(now = new Date()): Promise<Map<string, ReadingSummary>> {
   const today = dayBucket(now, tz());
   const kids = await db().select({ id: familyKids.id }).from(familyKids).where(eq(familyKids.active, true));
-  const rows = await allEntries();
+  const [rows, shelves] = await Promise.all([allEntries(), bookShelves()]);
   return new Map(
     kids.map((k) => {
       const mine = rows.filter((r) => r.kidId === k.id);
-      const books: ReadingSummary["books"] = [];
-      for (const r of mine) {
-        if (books.length >= 6) break;
-        if (!books.some((b) => b.book.toLowerCase() === r.book.toLowerCase())) books.push({ book: r.book, language: r.language });
-      }
+      // Entries are newest first, so the first entry for a title is when it was last read.
+      const lastRead = new Map<string, string>();
+      for (const r of mine) if (!lastRead.has(r.book.toLowerCase())) lastRead.set(r.book.toLowerCase(), r.day);
+      const books = (shelves.get(k.id) ?? [])
+        .map((b, i) => ({ b, i, last: lastRead.get(b.title.toLowerCase()) ?? "" }))
+        .sort((x, y) => Number(x.b.finished) - Number(y.b.finished) || (x.last === y.last ? x.i - y.i : x.last < y.last ? 1 : -1))
+        .map(({ b }) => ({ id: b.id, title: b.title, author: b.author, language: b.language, finished: b.finished }));
       const slim = (r: ReadingRow) => ({ id: r.id, book: r.book, language: r.language, minutes: r.minutes, pages: r.pages });
       return [
         k.id,

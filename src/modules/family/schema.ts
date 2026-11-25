@@ -151,6 +151,29 @@ export const familyReadingLog = pgTable(
 );
 
 /**
+ * Each kid's book shelf: books they are reading, picked from a list when
+ * logging instead of typing the title again. Added by typing, from a photo of
+ * the cover (Claude reads title and author; the photo is not kept), or the
+ * first time a new title is logged. `finished` hides a book from the list.
+ */
+export const familyBooks = pgTable(
+  "family_books",
+  {
+    id: uuid("id").primaryKey().defaultRandom(),
+    kidId: uuid("kid_id")
+      .notNull()
+      .references(() => familyKids.id, { onDelete: "cascade" }),
+    title: text("title").notNull(),
+    author: text("author"),
+    /** "en" or "ru". */
+    language: text("language").notNull(),
+    finished: boolean("finished").notNull().default(false),
+    createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+  },
+  (t) => [index("family_books_kid_idx").on(t.kidId)],
+);
+
+/**
  * Shopping: lists (shown one below the other) hold store sections, which hold
  * item tiles. A list can be deferred until a date (hidden until then) and
  * saved as a template; a template starts new lists.

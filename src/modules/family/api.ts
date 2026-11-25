@@ -44,6 +44,18 @@ export {
   type ReadingRow,
   type ReadingSummary,
 } from "./reading-api";
+export {
+  addBook,
+  bookShelves,
+  deleteBook,
+  getBook,
+  readBookCover,
+  updateBook,
+  BookError,
+  MAX_COVER_BYTES,
+  type Book,
+  type BookCover,
+} from "./books-api";
 export { LANGUAGE_LABEL, MINUTES_TO_COUNT, READING_LANGUAGES, STREAK_MILESTONE, TOTAL_MILESTONE, type ReadingLanguage } from "./reading";
 
 const tz = () => householdTimeZone();

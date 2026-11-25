@@ -26,7 +26,11 @@ describe("reading log", () => {
     const r = (await family.readingSummaries(at("2026-11-05"))).get(kidId)!;
     expect(r.stats).toMatchObject({ streak: 5, totalDays: 5, todayShare: 1 });
     expect(r.today).toHaveLength(2);
-    expect(r.books.map((b) => b.book)).toEqual(["Чук и Гек", "Matilda"]);
+    // Logged titles go on the shelf by themselves, last read first.
+    expect(r.books.map((b) => [b.title, b.language, b.finished])).toEqual([
+      ["Чук и Гек", "ru", false],
+      ["Matilda", "en", false],
+    ]);
 
     // Taking the entry back takes the milestone back.
     await family.deleteReading(second);
