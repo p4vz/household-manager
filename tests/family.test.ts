@@ -37,8 +37,9 @@ describe("chore periods (4 AM America/New_York)", () => {
 
   it("colours return deadlines", () => {
     expect(deadlineUrgency("2026-11-23", "2026-11-22")).toBe("overdue");
-    expect(deadlineUrgency("2026-11-23", "2026-11-25")).toBe("urgent");
-    expect(deadlineUrgency("2026-11-23", "2026-11-30")).toBe("soon");
+    expect(deadlineUrgency("2026-11-23", "2026-11-25")).toBe("soon");
+    expect(deadlineUrgency("2026-11-23", "2026-11-28")).toBe("soon");
+    expect(deadlineUrgency("2026-11-23", "2026-11-29")).toBe("ok");
     expect(deadlineUrgency("2026-11-23", "2026-12-15")).toBe("ok");
     expect(deadlineUrgency("2026-11-23", null)).toBe("ok");
   });
@@ -136,8 +137,8 @@ describe("Google calendars", () => {
   it("parses labels and colours and keeps ids out of the key", () => {
     const s = parseCalendarSources("Pavel|#2563EB|a@gmail.com;Kids|kids@group.calendar.google.com\nbad");
     expect(s).toEqual([
-      { key: "pavel", label: "Pavel", color: "#2563eb", calendarId: "a@gmail.com" },
-      { key: "kids", label: "Kids", color: "#db2777", calendarId: "kids@group.calendar.google.com" },
+      { key: "pavel", label: "Pavel", color: "#2563eb", calendarId: "a@gmail.com", writable: false },
+      { key: "kids", label: "Kids", color: "#db2777", calendarId: "kids@group.calendar.google.com", writable: false },
     ]);
   });
 

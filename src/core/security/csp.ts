@@ -41,6 +41,10 @@ export function contentSecurityPolicy(nonce: string, isDev = process.env.NODE_EN
     // React needs eval in development only, for its error overlays.
     `script-src 'self' 'nonce-${nonce}' 'strict-dynamic'${isDev ? " 'unsafe-eval'" : ""}`,
     "script-src-attr 'none'",
+    // 'strict-dynamic' ignores 'self' for scripts, so the service worker
+    // (public/sw.js) needs its own directive.
+    "worker-src 'self'",
+    "manifest-src 'self'",
     "style-src 'self' 'unsafe-inline'",
     "img-src 'self' data: https://lh3.googleusercontent.com",
     "font-src 'self'",

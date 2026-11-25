@@ -7,17 +7,28 @@ import { addDays, householdTimeZone, zonedMidnight, zonedParts } from "@/core/ti
 import { buildAgenda, type AgendaDay } from "./agenda";
 import {
   calendarSources,
+  CalendarWriteError,
+  createGoogleEvent,
+  deleteGoogleEvent,
   googleCalendarConfigured,
   googleSyncState,
   storedGoogleEvents,
   syncGoogleCalendars,
+  updateGoogleEvent,
   type GoogleSyncState,
 } from "./google";
 import { calendarEvents } from "./schema";
 
-export type { AgendaDay, AgendaItem } from "./agenda";
+export type { AgendaDay, AgendaItem, EditableEvent } from "./agenda";
 export type { GoogleSyncState } from "./google";
-export { syncGoogleCalendars };
+export type { EventInput } from "./google-config";
+/**
+ * Two-way family calendar: add, change or delete an event on the shared
+ * Google calendar ("Pavel + Raisa"). Each call goes to Google first and then
+ * updates the local mirror. Failures throw CalendarWriteError with a message
+ * that is safe to show on screen.
+ */
+export { syncGoogleCalendars, createGoogleEvent, updateGoogleEvent, deleteGoogleEvent, CalendarWriteError };
 
 /**
  * Calendar module public API. Other modules call these functions directly
@@ -93,6 +104,8 @@ export type KioskCalendar = {
   days: AgendaDay[];
   legend: { label: string; color: string }[];
   configured: boolean;
+  /** Label of the calendar new events go to, e.g. "Pavel + Raisa". */
+  writableLabel: string | null;
   sync: GoogleSyncState;
 };
 
@@ -131,6 +144,7 @@ export async function kioskCalendar(days: number, now = new Date()): Promise<Kio
     days: buildAgenda({ today, days, tz, google, household: shown, sources }),
     legend: sources.map((s) => ({ label: s.label, color: s.color })),
     configured: googleCalendarConfigured(),
+    writableLabel: googleCalendarConfigured() ? (sources.find((s) => s.writable)?.label ?? null) : null,
     sync,
   };
 }

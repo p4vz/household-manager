@@ -8,6 +8,8 @@ import { ReturnsPanel, type ReturnView } from "./returns-panel";
 import { ShoppingPanel, type ShoppingItemView } from "./shopping-panel";
 import { UpkeepPanel, type UpkeepView } from "./upkeep-panel";
 import type { AgendaDayView } from "./calendar-panel";
+import type { EventActions } from "./event-modal";
+import { PhoneCalendar } from "./phone-calendar";
 
 type Fn<I, O = void> = (input: I) => Promise<O>;
 
@@ -28,6 +30,16 @@ export type FamilyPhoneActions = {
   setStaple: Fn<{ id: string; isStaple: boolean }>;
   deleteShopping: Fn<{ id: string }>;
   deleteReturn: Fn<{ id: string }>;
+  calendar: EventActions;
+  syncCalendar: () => Promise<{ ok: boolean; message: string | null }>;
+};
+
+export type PhoneCalendarView = {
+  days: AgendaDayView[];
+  today: string;
+  writableLabel: string | null;
+  configured: boolean;
+  syncError: string | null;
 };
 
 const KID_COLOR_LIST = ["#2563eb", "#db2777", "#16a34a", "#ea580c", "#7c3aed", "#0891b2"] as const;
@@ -40,6 +52,7 @@ export function FamilyPhone({
   returns,
   upkeep,
   today,
+  calendar,
   dateLabel,
   icons,
   actions,
@@ -50,12 +63,14 @@ export function FamilyPhone({
   returns: ReturnView[];
   upkeep: UpkeepView[];
   today: AgendaDayView | undefined;
+  calendar: PhoneCalendarView;
   dateLabel: string;
   icons: readonly string[];
   actions: FamilyPhoneActions;
 }) {
-  const [tab, setTab] = useState<"shopping" | "chores" | "returns" | "upkeep" | "setup">("shopping");
+  const [tab, setTab] = useState<"calendar" | "shopping" | "chores" | "returns" | "upkeep" | "setup">("calendar");
   const tabs = [
+    ["calendar", "📅", "Calendar"],
     ["shopping", "🛒", "Shop"],
     ["chores", "⭐", "Chores"],
     ["returns", "📦", "Returns"],
@@ -68,7 +83,7 @@ export function FamilyPhone({
       <div className="flex gap-2">
         <PrintTodayButtons className={`${tap} flex-1 border`} dateLabel={dateLabel} kids={kids} today={today} returns={returns} upkeep={upkeep} />
       </div>
-      <nav className="sticky top-0 z-10 grid grid-cols-5 gap-1 rounded-xl bg-slate-100 p-1 dark:bg-slate-800">
+      <nav className="sticky top-0 z-10 grid grid-cols-6 gap-1 rounded-xl bg-slate-100 p-1 dark:bg-slate-800">
         {tabs.map(([key, icon, label]) => (
           <button
             key={key}
@@ -82,7 +97,9 @@ export function FamilyPhone({
         ))}
       </nav>
       <div className="h-[calc(100dvh-14rem)] min-h-96">
-        {tab === "shopping" ? (
+        {tab === "calendar" ? (
+          <PhoneCalendar {...calendar} actions={actions.calendar} sync={actions.syncCalendar} />
+        ) : tab === "shopping" ? (
           <ShoppingPanel
             items={shopping}
             stores={stores}

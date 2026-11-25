@@ -1,10 +1,17 @@
 /**
+ * Static files that make the app installable (PWA). Browsers fetch the
+ * manifest and icons without cookies, so they must load before sign-in.
+ * They hold no household data: see public/sw.js.
+ */
+export const PWA_FILES = ["/manifest.webmanifest", "/sw.js", "/offline.html"] as const;
+
+/**
  * The only paths reachable without an allowlisted session. Everything else
  * is refused by the proxy (src/proxy.ts) and re-checked by the page, action
  * or route handler itself.
  */
-export const PUBLIC_PATHS = ["/signin", "/kiosk/pair"] as const;
-export const PUBLIC_PATH_PREFIXES = ["/api/auth/"] as const;
+export const PUBLIC_PATHS = ["/signin", "/kiosk/pair", ...PWA_FILES] as const;
+export const PUBLIC_PATH_PREFIXES = ["/api/auth/", "/icons/"] as const;
 
 /**
  * Kitchen kiosk. `/kiosk/pair` is public: it only takes a one-time code made

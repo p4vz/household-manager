@@ -19,8 +19,10 @@ export const calendarEvents = pgTable(
 );
 
 /**
- * Read-only copy of the family's Google Calendar events for the next week or
- * so, refreshed by `syncGoogleCalendars()`. `calendarKey` is the label from
+ * Local mirror of the family's Google Calendar events from yesterday through
+ * the next 9 days, refreshed by `syncGoogleCalendars()` and updated straight
+ * away when the kiosk or a phone adds, edits or deletes an event. `calendarKey` is "family" for the
+ * shared calendar or the label from
  * GOOGLE_CALENDARS (e.g. "pavel"); the Google calendar id itself (often an
  * email address) stays in the environment and is never stored or sent to a
  * browser.
@@ -31,6 +33,12 @@ export const calendarGoogleEvents = pgTable(
     id: uuid("id").primaryKey().defaultRandom(),
     calendarKey: text("calendar_key").notNull(),
     googleEventId: text("google_event_id").notNull(),
+    /** Google's version tag; edits send it as If-Match so a newer change elsewhere is never overwritten. */
+    etag: text("etag"),
+    /** When the event last changed in Google. */
+    googleUpdatedAt: timestamp("updated_at", { withTimezone: true }),
+    /** One occurrence of a repeating event; edits apply to that day only. */
+    recurring: boolean("recurring").notNull().default(false),
     title: text("title").notNull(),
     location: text("location"),
     allDay: boolean("all_day").notNull().default(false),
@@ -40,7 +48,7 @@ export const calendarGoogleEvents = pgTable(
     /** All-day events (end exclusive, as Google sends it). */
     startDate: date("start_date"),
     endDate: date("end_date"),
-    syncedAt: timestamp("synced_at", { withTimezone: true }).notNull().defaultNow(),
+    lastSyncedAt: timestamp("last_synced_at", { withTimezone: true }).notNull().defaultNow(),
   },
   (t) => [
     uniqueIndex("calendar_google_events_uq").on(t.calendarKey, t.googleEventId),

@@ -1,0 +1,21 @@
+{
+  "name": "Household",
+  "short_name": "Household",
+  "description": "Family calendar, chores, shopping, returns and house upkeep",
+  "id": "/family",
+  "start_url": "/family",
+  "scope": "/",
+  "display": "standalone",
+  "orientation": "any",
+  "background_color": "#ffffff",
+  "theme_color": "#0d9488",
+  "icons": [
+    { "src": "/icons/icon-192.png", "sizes": "192x192", "type": "image/png", "purpose": "any" },
+    { "src": "/icons/icon-512.png", "sizes": "512x512", "type": "image/png", "purpose": "any" },
+    { "src": "/icons/maskable-512.png", "sizes": "512x512", "type": "image/png", "purpose": "maskable" }
+  ],
+  "shortcuts": [
+    { "name": "Calendar", "url": "/family" },
+    { "name": "Kitchen screen", "url": "/kiosk" }
+  ]
+}

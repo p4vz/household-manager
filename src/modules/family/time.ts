@@ -53,15 +53,17 @@ export function daysUntil(today: string, deadline: string): number {
   return Math.round((Date.parse(`${deadline}T00:00:00Z`) - Date.parse(`${today}T00:00:00Z`)) / 86_400_000);
 }
 
-export type Urgency = "overdue" | "urgent" | "soon" | "ok";
+export type Urgency = "overdue" | "soon" | "ok";
 
-/** Return deadlines: red when past or within 2 days, amber within 7. */
+/** Returns turn amber this many days before the deadline, red once it has passed. */
+export const RETURN_WARNING_DAYS = 5;
+
+/** Return deadlines: "overdue" (red) once past, "soon" (amber) within RETURN_WARNING_DAYS. */
 export function deadlineUrgency(today: string, deadline: string | null): Urgency {
   if (!deadline) return "ok";
   const d = daysUntil(today, deadline);
   if (d < 0) return "overdue";
-  if (d <= 2) return "urgent";
-  if (d <= 7) return "soon";
+  if (d <= RETURN_WARNING_DAYS) return "soon";
   return "ok";
 }
 

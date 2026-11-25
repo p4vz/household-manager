@@ -99,7 +99,7 @@ export const completeUpkeepAction = kioskAction(z.object({ taskId: id }), async 
 });
 
 export const syncCalendarAction = kioskAction(z.object({}), async () => {
-  const state = await syncGoogleCalendars();
+  const state = await syncGoogleCalendars({ force: true });
   refresh();
   return { ok: state.ok, message: state.message };
 });

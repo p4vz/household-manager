@@ -1,15 +1,27 @@
 "use client";
 
 import { useState, useTransition } from "react";
+import { EventModal, type EditableEventView, type EventActions } from "./event-modal";
 import { tap } from "./kit";
 
-export type AgendaItemView = { key: string; title: string; location: string | null; timeLabel: string; allDay: boolean; color: string; who: string };
+export type AgendaItemView = {
+  key: string;
+  title: string;
+  location: string | null;
+  timeLabel: string;
+  allDay: boolean;
+  color: string;
+  who: string;
+  /** Present for events on the family calendar, which can be edited here. */
+  edit?: EditableEventView;
+};
 export type AgendaDayView = { date: string; label: string; isToday: boolean; items: AgendaItemView[] };
 
 /**
  * Left side of the kiosk: Today + next 3 days (default) or a 7-day week
- * grid, colour-coded per family member's calendar. Read-only, with a manual
- * sync button next to the background refresh.
+ * grid, colour-coded per calendar. "+ Add Event" and a tap on a family
+ * calendar event open the event modal, which writes to Google straight away.
+ * A Sync button sits next to the background refresh.
  */
 export function CalendarPanel({
   days,
@@ -18,6 +30,9 @@ export function CalendarPanel({
   syncedLabel,
   syncError,
   sync,
+  today,
+  writableLabel,
+  eventActions,
 }: {
   days: AgendaDayView[];
   legend: { label: string; color: string }[];
@@ -25,8 +40,12 @@ export function CalendarPanel({
   syncedLabel: string | null;
   syncError: string | null;
   sync: () => Promise<{ ok: boolean; message: string | null }>;
+  today: string;
+  writableLabel: string | null;
+  eventActions: EventActions;
 }) {
   const [view, setView] = useState<"agenda" | "week">("agenda");
+  const [modal, setModal] = useState<{ edit?: EditableEventView } | null>(null);
   const [pending, start] = useTransition();
   const [message, setMessage] = useState<string | null>(null);
 
@@ -67,6 +86,14 @@ export function CalendarPanel({
         >
           <span className={pending ? "inline-block animate-spin" : ""}>⟳</span> {pending ? "Syncing" : "Sync"}
         </button>
+        <button
+          type="button"
+          disabled={!writableLabel}
+          onClick={() => setModal({})}
+          className={`${tap} bg-sky-600 text-lg text-white disabled:opacity-40`}
+        >
+          + Add Event
+        </button>
       </div>
       {!configured ? (
         <p className="rounded-lg bg-amber-100 p-2 text-sm text-amber-900">Google Calendar isn&apos;t connected yet. Showing household events only.</p>
@@ -74,15 +101,26 @@ export function CalendarPanel({
         <p className="rounded-lg bg-red-100 p-2 text-sm text-red-900">Calendar sync problem: {message ?? syncError}</p>
       ) : null}
 
-      {view === "agenda" ? <Agenda days={days.slice(0, 4)} /> : <WeekGrid days={days.slice(0, 7)} />}
+      {view === "agenda" ? <Agenda days={days.slice(0, 4)} onEdit={(edit) => setModal({ edit })} /> : <WeekGrid days={days.slice(0, 7)} onEdit={(edit) => setModal({ edit })} />}
       {syncedLabel ? <p className="text-xs opacity-50">Synced {syncedLabel}</p> : null}
+      {modal && writableLabel ? (
+        <EventModal today={today} initial={modal.edit} calendarLabel={writableLabel} actions={eventActions} onClose={() => setModal(null)} />
+      ) : null}
     </div>
   );
 }
 
-function EventCard({ e, compact = false }: { e: AgendaItemView; compact?: boolean }) {
+type OnEdit = (e: EditableEventView) => void;
+
+export function EventCard({ e, compact = false, onEdit }: { e: AgendaItemView; compact?: boolean; onEdit?: OnEdit }) {
+  const edit = e.edit;
+  const Tag = edit && onEdit ? "button" : "div";
   return (
-    <div className={`rounded-lg border-l-8 bg-white dark:bg-slate-900 ${compact ? "p-1.5" : "p-2"}`} style={{ borderColor: e.color }}>
+    <Tag
+      {...(edit && onEdit ? { type: "button" as const, onClick: () => onEdit(edit), "aria-label": `Edit ${e.title}` } : {})}
+      className={`block w-full rounded-lg border-l-8 bg-white text-left dark:bg-slate-900 ${compact ? "p-1.5" : "min-h-12 p-2"} ${edit && onEdit ? "active:scale-[0.98]" : ""}`}
+      style={{ borderColor: e.color }}
+    >
       <div className={`flex items-baseline gap-2 ${compact ? "flex-col gap-0" : ""}`}>
         <span className={`shrink-0 font-semibold tabular-nums ${compact ? "text-xs" : "w-40 text-base"}`} style={{ color: e.color }}>
           {e.timeLabel}
@@ -91,18 +129,18 @@ function EventCard({ e, compact = false }: { e: AgendaItemView; compact?: boolea
       </div>
       {e.location && !compact ? <div className="truncate pl-[10.5rem] text-sm opacity-70">📍 {e.location}</div> : null}
       {e.location && compact ? <div className="truncate text-xs opacity-70">📍 {e.location}</div> : null}
-    </div>
+    </Tag>
   );
 }
 
-function Agenda({ days }: { days: AgendaDayView[] }) {
+function Agenda({ days, onEdit }: { days: AgendaDayView[]; onEdit: OnEdit }) {
   return (
     <div className="grid min-h-0 flex-1 grid-rows-[2fr_1fr_1fr_1fr] gap-2">
       {days.map((d) => (
         <section key={d.date} className={`flex min-h-0 flex-col rounded-xl p-2 ${d.isToday ? "bg-sky-50 ring-2 ring-sky-400 dark:bg-sky-950" : "bg-slate-100 dark:bg-slate-800"}`}>
           <h3 className={`mb-1 font-bold ${d.isToday ? "text-2xl" : "text-lg"}`}>{d.label}</h3>
           <div className="min-h-0 flex-1 space-y-1 overflow-y-auto overscroll-contain">
-            {d.items.length === 0 ? <p className="opacity-50">Nothing planned</p> : d.items.map((e) => <EventCard key={e.key} e={e} />)}
+            {d.items.length === 0 ? <p className="opacity-50">Nothing planned</p> : d.items.map((e) => <EventCard key={e.key} e={e} onEdit={onEdit} />)}
           </div>
         </section>
       ))}
@@ -110,7 +148,7 @@ function Agenda({ days }: { days: AgendaDayView[] }) {
   );
 }
 
-function WeekGrid({ days }: { days: AgendaDayView[] }) {
+function WeekGrid({ days, onEdit }: { days: AgendaDayView[]; onEdit: OnEdit }) {
   return (
     <div className="grid min-h-0 flex-1 grid-cols-7 gap-1.5">
       {days.map((d) => (
@@ -118,7 +156,7 @@ function WeekGrid({ days }: { days: AgendaDayView[] }) {
           <h3 className="mb-1 text-center text-sm font-bold leading-tight">{d.label}</h3>
           <div className="min-h-0 flex-1 space-y-1 overflow-y-auto overscroll-contain">
             {d.items.map((e) => (
-              <EventCard key={e.key} e={e} compact />
+              <EventCard key={e.key} e={e} compact onEdit={onEdit} />
             ))}
           </div>
         </section>
