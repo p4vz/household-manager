@@ -7,7 +7,12 @@ import { memberDisplayName } from "@/core/auth/display-name";
 import { AssistantRule, PermissionCheckboxes } from "@/components/assistant-permissions";
 import { KioskPairingCode } from "@/components/kiosk-pairing";
 import { listKioskDevices } from "@/core/kiosk/devices";
+import { BankSyncSettings, type BankSyncView } from "@/modules/finance/ui/bank-sync-settings";
+import { householdTimeZone, syncStatus } from "@/modules/finance/api";
 import {
+  connectBankAction,
+  disconnectBankAction,
+  syncBankNowAction,
   disconnectAllAssistantsAction,
   disconnectAssistantAction,
   makeKioskPairingCodeAction,
@@ -24,6 +29,19 @@ export default async function SettingsPage() {
   const mcp = oauthConfig();
   const connections = mcp ? await listConnections() : [];
   const kiosks = await listKioskDevices();
+  const bank = await syncStatus();
+  const lastRun = bank.runs[0];
+  // Status only: the access URL itself never leaves the server.
+  const bankView: BankSyncView = {
+    connected: bank.connection.connected,
+    via: bank.connection.via,
+    linkedAt: bank.connection.linkedAt,
+    lastRun: lastRun ? { status: lastRun.status, at: lastRun.startedAt.toISOString(), messages: lastRun.messages ?? [] } : null,
+    lastOk: bank.lastOk ? { at: bank.lastOk.startedAt.toISOString(), inserted: bank.lastOk.inserted } : null,
+    accounts: bank.simplefinAccounts,
+    transactions: bank.totals?.n ?? 0,
+    timeZone: householdTimeZone(),
+  };
   const configured: Record<AiProvider, boolean> = {
     gemini: Boolean(process.env.GEMINI_API_KEY),
     anthropic: Boolean(process.env.ANTHROPIC_API_KEY),
@@ -32,6 +50,10 @@ export default async function SettingsPage() {
   return (
     <section className="max-w-xl space-y-6">
       <h1 className="text-2xl font-semibold">Settings</h1>
+      <div id="bank-sync" className="scroll-mt-6 space-y-3 rounded-xl border p-6">
+        <h2 className="font-medium">Bank sync (SimpleFIN)</h2>
+        <BankSyncSettings view={bankView} connect={connectBankAction} syncNow={syncBankNowAction} disconnect={disconnectBankAction} />
+      </div>
       <form action={saveAiSettingsAction} className="space-y-5 rounded-xl border p-6">
         <h2 className="font-medium">AI configuration</h2>
         <fieldset className="space-y-2">

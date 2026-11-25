@@ -3,7 +3,7 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 import type { Db } from "@/core/db/client";
 import { financeAccounts, financeTransactions } from "@/core/db/schema";
 import { open, seal } from "@/core/secrets/secret-box";
-import { commitCsvImport, listAccounts, previewCsvImport } from "@/modules/finance/api";
+import { commitCsvImport, disconnectSimplefin, listAccounts, previewCsvImport, syncSimplefinNow, syncStatus } from "@/modules/finance/api";
 import { getAccessUrl, storeAccessUrl } from "@/modules/finance/ingest/credentials";
 import type { SimplefinAccountSet } from "@/modules/finance/ingest/simplefin";
 import { syncSimplefin } from "@/modules/finance/ingest/sync";
@@ -147,5 +147,42 @@ describe("SimpleFIN credentials", () => {
     expect(sealed).not.toContain("hello");
     expect(open(sealed)).toBe("hello");
     expect(() => open(sealed.replace(/.$/, (c) => (c === "A" ? "B" : "A")))).toThrow();
+  });
+});
+
+describe("SimpleFIN from Settings", () => {
+  it("Sync now waits 15 minutes; a new connection always syncs", async () => {
+    const data = bankData([{ id: "T1", date: "2026-11-01", amount: "-12.00", desc: "SQ *BLUE BOTTLE" }]);
+    const fetcher = vi.fn(async () => data);
+    await syncSimplefin({ trigger: "cron", now: new Date("2026-11-20T12:00:00Z"), fetcher });
+    expect(await syncSimplefin({ trigger: "manual", now: new Date("2026-11-20T12:05:00Z"), fetcher })).toMatchObject({
+      status: "skipped",
+      reason: expect.stringContaining("10 min"),
+    });
+    expect(await syncSimplefin({ trigger: "setup", now: new Date("2026-11-20T12:06:00Z"), fetcher })).toMatchObject({ status: "ok" });
+    expect(await syncSimplefin({ trigger: "manual", now: new Date("2026-11-20T12:30:00Z"), fetcher })).toMatchObject({ status: "ok" });
+    expect(fetcher).toHaveBeenCalledTimes(3);
+  });
+
+  it("disconnect forgets the stored key but keeps synced data", async () => {
+    vi.stubEnv("SIMPLEFIN_ACCESS_URL", "");
+    await storeAccessUrl("https://user:secret@bridge.simplefin.org/simplefin");
+    await syncSimplefin({ trigger: "setup", now: new Date("2026-11-20T12:00:00Z"), fetcher: async () => bankData([{ id: "T1", date: "2026-11-01", amount: "-5", desc: "X" }]) });
+
+    const before = await syncStatus();
+    expect(before.connection).toMatchObject({ connected: true, via: "setup" });
+    expect(before.simplefinAccounts).toBe(1);
+    expect(JSON.stringify(before)).not.toContain("secret");
+
+    expect(await disconnectSimplefin()).toMatchObject({ connected: false });
+    expect(await getAccessUrl()).toBeNull();
+    expect(await syncSimplefinNow()).toMatchObject({ status: "skipped", reason: "SimpleFIN is not connected" });
+    expect((await db.select().from(financeTransactions)).length).toBe(1);
+  });
+
+  it("an env access URL wins and is reported as set on the server", async () => {
+    const s = await syncStatus();
+    expect(s.connection).toMatchObject({ connected: true, via: "env" });
+    expect(JSON.stringify(s)).not.toContain("u:p@");
   });
 });
