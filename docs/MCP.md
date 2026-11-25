@@ -1,8 +1,13 @@
 # Connecting Claude, ChatGPT and Gemini
 
-The app exposes a read-only MCP server so an AI assistant can look at the
+The app exposes an MCP server so an AI assistant can look at the
 household's cards, sign-up bonuses, rewards audit and trips, and advise on
-which card to book with. It cannot book, pay or change anything. Security
+which card to book with. It cannot book or pay. It is read-only unless you
+tick a "Make changes" permission for that assistant (Settings > AI
+assistants): then it can add and change kids, chores, shopping lists,
+returns, upkeep, the binder, calendar events or transaction categories the
+way Ask Claude in the app does, with every change in your Ask Claude
+history with Undo, and deletes waiting for your Apply there. Security
 rules are in SECURITY.md ("Assistant access").
 
 ## Turn it on (Railway)

@@ -57,6 +57,14 @@ const PREFIX: Record<string, string> = {
   shopping_item: "s",
   purchase_return: "r",
   chore: "c",
+  kid: "k",
+  chore_goal: "g",
+  shopping_list: "l",
+  shopping_template: "p",
+  calendar_event: "e",
+  binder_entry: "b",
+  upkeep_asset: "q",
+  house_project: "h",
 };
 
 /**

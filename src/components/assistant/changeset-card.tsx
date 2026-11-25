@@ -40,6 +40,7 @@ const ENTITY: Record<string, string> = {
   shopping_item: "Shopping item",
   purchase_return: "Return",
   chore: "Chore",
+  kid: "Kid",
   chore_goal: "Chore goal",
   shopping_list: "Shopping list",
   shopping_template: "List template",
@@ -132,8 +133,9 @@ function Diff({ c }: { c: ChangeRow }) {
     );
   }
   if (c.op === "delete") {
-    const archive = c.entity === "chore" || c.entity === "chore_goal";
-    return <p className="text-xs text-red-700">{archive ? "Archive (history stays)" : "Delete (restorable with Undo)"}</p>;
+    const archive = c.entity === "chore" || c.entity === "chore_goal" || c.entity === "kid";
+    const text = c.entity === "kid" ? "Remove from the board (chores and history stay)" : archive ? "Archive (history stays)" : "Delete (restorable with Undo)";
+    return <p className="text-xs text-red-700">{text}</p>;
   }
   return (
     <ul className="text-xs">

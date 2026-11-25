@@ -4,9 +4,11 @@ import { WebStandardStreamableHTTPServerTransport } from "@modelcontextprotocol/
 import type { McpCaller } from "@/core/oauth/server";
 import { legalNamesFromEnv } from "@/core/ai/sanitize";
 import { oauthConfig } from "@/core/oauth/policy";
+import { connectorToolList, runConnectorTool } from "@/assistant/connector";
+import * as family from "@/modules/family/api";
 import * as trips from "@/modules/trips/api";
 import { forAssistant } from "./sanitize";
-import { serverInstructions, toolsFor } from "./tools";
+import { serverInstructions, toolsFor, type AssistantTool } from "./tools";
 
 /**
  * Names that are scrubbed from every answer: the household's legal names
@@ -14,8 +16,31 @@ import { serverInstructions, toolsFor } from "./tools";
  * into a trip note or a card nickname never leaves the server.
  */
 async function namesToScrub(): Promise<string[]> {
-  const travellers = await trips.listTravelers().catch(() => []);
-  return [...legalNamesFromEnv(), ...travellers.map((t) => t.name)].filter((n) => n.trim().length >= 2);
+  const [travellers, kids] = await Promise.all([trips.listTravelers().catch(() => []), family.listKids().catch(() => [])]);
+  // Kids' first names, as on the chore board, may pass (the "Make changes"
+  // tools manage kids by first name); the rest of a traveller's name is still removed.
+  const kidNames = new Set(kids.map((k) => k.name.trim().toLowerCase()));
+  const travellerParts = travellers.flatMap((t) => {
+    const parts = t.name.trim().split(/\s+/);
+    return parts.some((p) => kidNames.has(p.toLowerCase())) ? parts.filter((p) => !kidNames.has(p.toLowerCase())) : [t.name];
+  });
+  return [...legalNamesFromEnv(), ...travellerParts].filter((n) => n.trim().length >= 2);
+}
+
+/** Ask Claude's tools for connections given a "Make changes" permission (src/assistant/connector.ts). */
+function connectorTools(permissions: ReadonlySet<string>, caller: McpCaller): AssistantTool[] {
+  return connectorToolList()
+    .filter(({ requires }) => requires.every((p) => permissions.has(p)))
+    .map(({ tool, requires }) => ({
+      name: tool.name,
+      title: tool.name.replace(/_/g, " ").replace(/^\w/, (c) => c.toUpperCase()),
+      description: tool.description,
+      input: tool.input,
+      requires,
+      scrub: tool.scrub,
+      writes: tool.kind === "edit",
+      run: (args) => runConnectorTool(tool, args, { grantId: caller.grantId, email: caller.email, owner: caller.owner }),
+    }));
 }
 
 /**
@@ -27,7 +52,7 @@ export async function handleMcpRequest(req: Request, caller: McpCaller): Promise
   const permissions = new Set(caller.permissions);
   const appUrl = oauthConfig()?.issuer ?? null;
   // Only tools whose permissions were all granted are even advertised.
-  const tools = toolsFor(permissions);
+  const tools = [...toolsFor(permissions), ...connectorTools(permissions, caller)];
   const server = new McpServer(
     { name: "household-manager", version: "1.0.0" },
     { instructions: serverInstructions(caller.owner, tools), capabilities: { tools: {} } },
@@ -39,7 +64,9 @@ export async function handleMcpRequest(req: Request, caller: McpCaller): Promise
         title: tool.title,
         description: tool.description,
         inputSchema: tool.input,
-        annotations: { title: tool.title, readOnlyHint: true, destructiveHint: false, idempotentHint: true, openWorldHint: false },
+        annotations: tool.writes
+          ? { title: tool.title, readOnlyHint: false, destructiveHint: "action" in tool.input, idempotentHint: false, openWorldHint: false }
+          : { title: tool.title, readOnlyHint: true, destructiveHint: false, idempotentHint: true, openWorldHint: false },
       },
       async (args: Record<string, unknown>) => {
         try {

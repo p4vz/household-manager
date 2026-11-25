@@ -15,7 +15,7 @@ Read `docs/ARCHITECTURE.md` and `docs/SECURITY.md` before changing code.
 - Modules (`src/modules/*`) call each other only through `api.ts` or events on the bus. Never import another module's schema or internals.
 - Every Server Action uses `authedAction()`. Every page under `(app)` relies on the layout's `requireUserOrRedirect()`.
 - No new HTTP route handlers outside `/api/auth`, `/api/cron` and the reviewed assistant routes (`/api/mcp`, `/api/oauth/*`, `/.well-known/*`). Cron routes must call `isValidCronRequest()`. Assistant routes must return 404 unless `oauthConfig()` is set.
-- Assistant (MCP) tools in `src/mcp/tools.ts` are read-only, call module `api.ts` only, declare the permissions they need (`requires`), and return whitelisted fields (no ids, numbers or names).
+- Assistant (MCP) tools in `src/mcp/tools.ts` are read-only, call module `api.ts` only, declare the permissions they need (`requires`), and return whitelisted fields (no ids, numbers or names). The only writes over MCP are Ask Claude's tools behind the "Make changes" permissions (`src/assistant/connector.ts`), always as changesets with Undo.
 - THE RULE: NEVER share account numbers, crypto wallets, or any other sensitive identifier. Full names are only shared in limited capacity and only when making purchases, if approved by Pavel and/or Raisa; they are never stored in memory. See `THE_RULE` in `src/core/oauth/permissions.ts` and docs/SECURITY.md.
 - Network calls go through `outboundFetch`. New hosts need an entry in `src/core/net/hosts.ts` and `docs/SECURITY.md`.
 - AI calls go through `runStructured()` with a payload from `sanitizePayload()` / `toLlmTransaction()`.
