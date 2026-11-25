@@ -12,6 +12,7 @@ import { listVehicles } from "@/modules/maintenance/api";
 import { MODULE_DEFINITIONS } from "@/modules/registry";
 import {
   fileCarDueAction,
+  fileBinderAction,
   fileEventAction,
   fileReturnAction,
   fileUpkeepAction,
@@ -43,6 +44,7 @@ export default async function Home() {
             noteOnTransaction: noteOnTransactionAction,
             fileCarDue: fileCarDueAction,
             fileUpkeep: fileUpkeepAction,
+            fileBinder: fileBinderAction,
           }}
         />
         <div>

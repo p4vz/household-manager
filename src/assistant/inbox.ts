@@ -5,7 +5,7 @@ import { legalNamesFromEnv, sanitizeReferencePayload } from "@/core/ai/sanitize"
 import { createGoogleEvent } from "@/modules/calendar/api";
 import { addReturn, assertNoCardNumber, isoDateInWords, scrubMailText } from "@/modules/family/api";
 import { paymentsNear, transactionsForEdit, updateTransactionFields, type Viewer } from "@/modules/finance/api";
-import { listOpenTasks, listVehicles, scheduleTask, updateTask } from "@/modules/maintenance/api";
+import { BINDER_CATEGORIES, MAX_BINDER_FILE_BYTES, addBinderDocument, listOpenTasks, listVehicles, scheduleTask, updateTask, type BinderCategory } from "@/modules/maintenance/api";
 
 /**
  * Home page "Drop anything here": a member adds a photo, a PDF or pasted
@@ -36,7 +36,7 @@ export const CAR_DUE_TITLES: Record<CarDueKind, string> = {
   other: "Car paperwork",
 };
 
-export const BINDER_KINDS = ["manual", "warranty", "insurance", "property_tax", "receipt", "other"] as const;
+export const BINDER_KINDS = BINDER_CATEGORIES;
 
 const isoDate = z.string().describe("YYYY-MM-DD");
 const time = z.string().describe("24-hour HH:MM");
@@ -321,3 +321,28 @@ export async function fileUpkeep(u: { title: string; dueDate: string; recurrence
   assertNoCardNumber(u.title, u.parts);
   await scheduleTask({ title: u.title, dueDate: u.dueDate, recurrenceDays: u.recurrenceDays, parts: u.parts, notes: "Added from the home page upload" });
 }
+
+/** Files the original photo or PDF in the home binder (encrypted by the binder; needs DOC_VAULT_KEY). */
+export async function fileInBinder(input: {
+  title: string;
+  category: BinderCategory;
+  expiresOn: string | null;
+  file: { bytes: Buffer; mediaType: string; fileName: string };
+  addedBy: "user1" | "user2";
+}) {
+  assertNoCardNumber(input.title);
+  if (input.file.bytes.length === 0) throw new BinderUploadError("The file is empty.");
+  if (input.file.bytes.length > MAX_BINDER_FILE_BYTES) throw new BinderUploadError("That file is larger than 8 MB. Store a compressed scan instead.");
+  return addBinderDocument({
+    title: input.title,
+    category: input.category,
+    expiresOn: input.expiresOn,
+    bytes: input.file.bytes,
+    mediaType: input.file.mediaType || "application/octet-stream",
+    fileName: input.file.fileName.slice(0, 200) || "document",
+    notes: "Added from the home page upload",
+    addedBy: input.addedBy,
+  });
+}
+
+export class BinderUploadError extends Error {}
