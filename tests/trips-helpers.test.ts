@@ -57,7 +57,7 @@ describe("reference payloads for trip AI", () => {
   it("keeps years but strips long numbers and legal names", () => {
     const out = sanitizeReferencePayload({ reference: "Built in 1387 by Alexandra Smith. Call 0471 123456, card ****1234." }, ["Alexandra Smith"]);
     expect(out.reference).toContain("1387");
-    expect(out.reference).not.toMatch(/Alexandra|Smith|123456|1234\./);
+    expect(out.reference).not.toMatch(/Smith|123456|1234\./);
   });
 });
 

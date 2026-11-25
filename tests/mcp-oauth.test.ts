@@ -109,7 +109,7 @@ describe("assistant output scrub", () => {
       "finance",
       ["Jane Doe"],
     );
-    expect(out).toEqual({ card: "Sapphire [redacted]", owner: "User 1", note: "[redacted] card [redacted]", date: "2026-11-20", at: "2026-11-20T10:00:00.000Z", amount: 1234.5 });
+    expect(out).toEqual({ card: "Sapphire [redacted]", owner: "User 1", note: "Jane [redacted] card [redacted]", date: "2026-11-20", at: "2026-11-20T10:00:00.000Z", amount: 1234.5 });
   });
 
   it("keeps years in trip text but not long numbers", () => {

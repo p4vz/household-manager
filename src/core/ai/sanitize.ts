@@ -66,20 +66,45 @@ export function scrubIdentifiers(input: string): string {
 export function scrubText(input: string, legalNames: readonly string[] = []): string {
   let out = scrubIdentifiers(input.replace(ENDING_IN, REDACTED));
   for (const p of NUMBER_PATTERNS) out = out.replace(p, REDACTED);
-  for (const name of legalNames) {
-    for (const part of nameParts(name)) {
-      out = out.replace(new RegExp(`\\b${escapeRegExp(part)}\\b`, "gi"), REDACTED);
-    }
-  }
+  out = scrubNames(out, legalNames);
   return out.replace(/\s{2,}/g, " ").trim();
 }
 
-function nameParts(full: string): string[] {
-  const trimmed = full.trim();
-  if (!trimmed) return [];
-  // The full name and each part of 3+ letters (so "Al" alone does not wipe "Alaska Air").
-  const parts = trimmed.split(/\s+/).filter((p) => p.length >= 3);
-  return [trimmed, ...parts];
+/**
+ * A household name entry: "Daniel Smith" or "Daniel Smith=Danya" (legal
+ * name, then the nickname people use). Pavel, 2026-11-25: first names and
+ * nicknames are fine to share (Danya and Daniel, Raya and Raisa); surnames,
+ * and so full legal names, are not.
+ */
+export function parseNameEntry(entry: string): { legal: string; given: string | null; nickname: string | null; surnames: string[] } {
+  const [legalRaw, nickRaw] = entry.split("=");
+  const legal = legalRaw.trim();
+  const tokens = legal.split(/\s+/).filter(Boolean);
+  const nickname = nickRaw?.trim() || null;
+  // Single-word entries are treated as given names (nothing to hide); the rest of the name is surname(s).
+  return { legal, given: tokens[0] ?? null, nickname, surnames: tokens.slice(1) };
+}
+
+/** Removes surnames (so full legal names) of the given entries; first names and nicknames stay. */
+function scrubNames(input: string, entries: readonly string[]): string {
+  const parsed = entries.map(parseNameEntry);
+  const keep = new Set(parsed.flatMap((p) => [p.given, p.nickname]).filter((x): x is string => Boolean(x)).map((x) => x.toLowerCase()));
+  let out = input;
+  for (const p of parsed) {
+    // 3+ letters, so "Al" alone does not wipe "Alaska Air"; a surname that is also someone's first name stays.
+    for (const part of p.surnames.filter((x) => x.length >= 3 && !keep.has(x.toLowerCase()))) {
+      out = out.replace(new RegExp(`\\b${escapeRegExp(part)}\\b`, "gi"), REDACTED);
+    }
+  }
+  return out;
+}
+
+/** "Danya (Daniel)" for each entry with a nickname: for prompts, so the AI knows who is who. */
+export function householdNicknames(entries: readonly string[] = legalNamesFromEnv()): string[] {
+  return entries
+    .map(parseNameEntry)
+    .filter((p) => p.nickname && p.given)
+    .map((p) => (p.nickname!.toLowerCase() === p.given!.toLowerCase() ? p.nickname! : `${p.nickname} (${p.given})`));
 }
 
 function escapeRegExp(s: string): string {
@@ -164,11 +189,7 @@ const LONG_NUMBER_PATTERNS: RegExp[] = [/[*xX•#]{2,}[\s-]*\d{2,}/g, /\b\d(?:[\
 export function scrubReferenceText(input: string, legalNames: readonly string[] = []): string {
   let out = scrubIdentifiers(input.replace(ENDING_IN, REDACTED));
   for (const p of LONG_NUMBER_PATTERNS) out = out.replace(p, REDACTED);
-  for (const name of legalNames) {
-    for (const part of nameParts(name)) {
-      out = out.replace(new RegExp(`\\b${escapeRegExp(part)}\\b`, "gi"), REDACTED);
-    }
-  }
+  out = scrubNames(out, legalNames);
   return out.replace(/\s{2,}/g, " ").trim();
 }
 

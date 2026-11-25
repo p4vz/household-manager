@@ -1,6 +1,7 @@
 import "server-only";
 import { z } from "zod";
 import type { OwnerLabel } from "@/core/auth/allowlist";
+import { householdNicknames } from "@/core/ai/sanitize";
 import { THE_RULE, type PermissionKey } from "@/core/oauth/permissions";
 import * as calendar from "@/modules/calendar/api";
 import * as finance from "@/modules/finance/api";
@@ -545,6 +546,7 @@ export function serverInstructions(owner: OwnerLabel, tools: readonly AssistantT
     "For card questions call list_my_cards first. For where to put a purchase or booking call best_card_for_purchases (or trip_card_plan for a whole trip). A sign-up bonus close to its deadline usually beats a better multiplier.",
     "Card terms come from a stored catalog checked against issuers; mention the verified date when it matters and suggest confirming time-limited offers with the issuer.",
     "Someone in the family has coeliac disease. Treat gluten as a medical restriction, never a preference.",
+    householdNicknames().length ? `People in the household go by: ${householdNicknames().join(", ")}. Use these first names; never surnames.` : "",
   ]
     .filter(Boolean)
     .join("\n");

@@ -58,7 +58,7 @@ describe("rewards + advisor", () => {
     const call = runStructured.mock.calls[0][0];
     expect(call.tier).toBe("flagship");
     const sent = JSON.stringify(call.payload);
-    expect(sent).not.toMatch(/Alexandra/i);
+    expect(sent).not.toMatch(/Smith/i);
     expect(sent).not.toMatch(/1234/);
     expect(sent).not.toMatch(/user1|@/);
     expect(sent).toMatch(/"owner":"User 1"/);

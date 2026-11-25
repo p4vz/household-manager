@@ -222,7 +222,7 @@ describe("assistant tools", () => {
     const { tokens } = await connect();
     const cards = await callTool(tokens.access_token, "list_my_cards");
     const text = JSON.stringify(cards);
-    expect(text).not.toMatch(/1007|Pat|Example/);
+    expect(text).not.toMatch(/1007|Example/);
     expect(cards.map((c: { owner: string }) => c.owner).sort()).toEqual(["Joint", "User 1"]);
     expect(cards.find((c: { owner: string }) => c.owner === "Joint").signupBonus).toMatchObject({ minSpend: 4000, remaining: 4000 });
   });
@@ -238,7 +238,7 @@ describe("assistant tools", () => {
     expect(out.purchases[0].reason).toBe("completes an open sign-up bonus");
     expect(out.purchases[1].useCard).toMatch(/^Gold/);
     expect(out.purchases[1].rewardValue).toBeCloseTo(7.2);
-    expect(JSON.stringify(out)).not.toMatch(/1007|Pat/);
+    expect(JSON.stringify(out)).not.toMatch(/1007|Example/);
   });
 
   it("looks up trips by slug", async () => {

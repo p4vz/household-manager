@@ -11,6 +11,7 @@ let script: ((opts: Turn) => Promise<void>) | null = null;
 vi.mock("@/assistant/agent", async () => {
   const { DraftBook } = await import("@/assistant/changesets");
   return {
+    peopleLine: () => "",
     runAssistantTurn: vi.fn(async (opts: Turn) => {
       sent.push(opts);
       const drafts = new DraftBook();
