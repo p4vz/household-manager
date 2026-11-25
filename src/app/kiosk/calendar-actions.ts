@@ -58,14 +58,14 @@ async function calendarWrite(fn: () => Promise<void>): Promise<Result> {
   return { error: null };
 }
 
-export const createEventAction = kioskAction(eventInput, async (input) => calendarWrite(() => createGoogleEvent(input)));
+export const createEventAction = kioskAction("calendar.add", eventInput, async (input) => calendarWrite(() => createGoogleEvent(input)));
 
-export const updateEventAction = kioskAction(eventInput.extend({ id }), async ({ id: eventId, ...input }) =>
+export const updateEventAction = kioskAction("calendar.edit", eventInput.extend({ id }), async ({ id: eventId, ...input }) =>
   calendarWrite(() => updateGoogleEvent(eventId, input)),
 );
 
 /** The pictures on one family calendar event (loaded when the event is opened). */
-export const eventPhotosAction = kioskAction(z.object({ id }), async ({ id: eventId }): Promise<{ photos: EventPhoto[]; error: string | null }> => {
+export const eventPhotosAction = kioskAction("hub.view", z.object({ id }), async ({ id: eventId }): Promise<{ photos: EventPhoto[]; error: string | null }> => {
   try {
     return { photos: await eventPhotos(eventId), error: null };
   } catch (err) {
@@ -80,6 +80,6 @@ const photoInput = z.object({
 });
 
 /** Adds a picture (already shrunk and re-encoded in the browser) to a family calendar event. */
-export const addEventPhotoAction = kioskAction(photoInput, async ({ id: eventId, file }, actor) =>
+export const addEventPhotoAction = kioskAction("calendar.photo.add", photoInput, async ({ id: eventId, file }, actor) =>
   calendarWrite(async () => addEventPhoto(eventId, Buffer.from(await file.arrayBuffer()), actor.kind === "member" ? actor.user.owner : "Kiosk")),
 );

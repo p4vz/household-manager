@@ -20,7 +20,8 @@ export type ReturnView = {
 export type ReturnFields = { itemName: string; store: string; returnDeadline?: string; notes?: string; orderRef?: string };
 
 type Actions = {
-  setStatus: (input: { id: string; status: ReturnView["status"] }) => Promise<void>;
+  /** Left out on the kitchen screen: moving a return along needs an adult. */
+  setStatus?: (input: { id: string; status: ReturnView["status"] }) => Promise<void>;
   add: (input: ReturnFields) => Promise<{ error: string | null }>;
 };
 
@@ -91,20 +92,24 @@ export function ReturnsPanel({
               </div>
               {r.notes ? <div className="truncate text-sm opacity-70">{r.notes}</div> : null}
             </div>
-            <button
-              type="button"
-              disabled={r.status === "returned"}
-              onClick={() =>
-                startTransition(async () => {
-                  const status = next(r.status);
-                  setOptimistic({ id: r.id, status });
-                  await actions.setStatus({ id: r.id, status });
-                })
-              }
-              className={`${tap} shrink-0 ${STATUS[r.status].cls}`}
-            >
-              {STATUS[r.status].label}
-            </button>
+            {actions.setStatus ? (
+              <button
+                type="button"
+                disabled={r.status === "returned"}
+                onClick={() =>
+                  startTransition(async () => {
+                    const status = next(r.status);
+                    setOptimistic({ id: r.id, status });
+                    await actions.setStatus!({ id: r.id, status });
+                  })
+                }
+                className={`${tap} shrink-0 ${STATUS[r.status].cls}`}
+              >
+                {STATUS[r.status].label}
+              </button>
+            ) : (
+              <span className={`shrink-0 rounded-xl px-3 py-2 text-sm font-medium ${STATUS[r.status].cls}`}>{STATUS[r.status].label}</span>
+            )}
             {manage?.(r)}
           </li>
         ))}

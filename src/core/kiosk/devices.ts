@@ -20,7 +20,8 @@ import {
  * kiosk actions (`kioskAction`); every other page and action still needs an
  * allowlisted Google session. See docs/SECURITY.md ("Kitchen kiosk").
  */
-export type KioskDevice = { id: string; name: string };
+/** `adultUntil`: adult mode on this screen ends then (core/kiosk/adult.ts); null when locked. */
+export type KioskDevice = { id: string; name: string; adultUntil: Date | null };
 
 const MAX_OPEN_CODES = 3;
 
@@ -84,14 +85,14 @@ export async function pairDeviceForMember(createdBy: string, deviceName: string)
 export async function verifyDeviceToken(token: string | undefined, now = new Date()): Promise<KioskDevice | null> {
   if (!isTokenShaped(token)) return null;
   const [device] = await db()
-    .select({ id: coreKioskDevices.id, name: coreKioskDevices.name, lastSeenAt: coreKioskDevices.lastSeenAt })
+    .select({ id: coreKioskDevices.id, name: coreKioskDevices.name, lastSeenAt: coreKioskDevices.lastSeenAt, adultUntil: coreKioskDevices.adultUntil })
     .from(coreKioskDevices)
     .where(and(eq(coreKioskDevices.tokenHash, sha256(token)), isNull(coreKioskDevices.revokedAt)));
   if (!device) return null;
   if (!device.lastSeenAt || now.getTime() - device.lastSeenAt.getTime() > 5 * 60 * 1000) {
     await db().update(coreKioskDevices).set({ lastSeenAt: now }).where(eq(coreKioskDevices.id, device.id));
   }
-  return { id: device.id, name: device.name };
+  return { id: device.id, name: device.name, adultUntil: device.adultUntil };
 }
 
 /** The paired device making this request, from its cookie, or null. */
@@ -115,5 +116,5 @@ export async function listKioskDevices() {
 }
 
 export async function revokeKioskDevice(id: string, now = new Date()): Promise<void> {
-  await db().update(coreKioskDevices).set({ revokedAt: now }).where(eq(coreKioskDevices.id, id));
+  await db().update(coreKioskDevices).set({ revokedAt: now, adultUntil: null }).where(eq(coreKioskDevices.id, id));
 }

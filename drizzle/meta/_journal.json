@@ -141,6 +141,13 @@
       "when": 1795636377870,
       "tag": "0019_vehicles",
       "breakpoints": true
+    },
+    {
+      "idx": 20,
+      "version": "7",
+      "when": 1795639249165,
+      "tag": "0020_kiosk_adult_mode",
+      "breakpoints": true
     }
   ]
 }

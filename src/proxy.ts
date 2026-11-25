@@ -1,8 +1,8 @@
 import { NextResponse, type NextFetchEvent, type NextRequest } from "next/server";
 import { auth } from "@/core/auth/config";
 import { isAllowedEmail, parseAllowlist } from "@/core/auth/allowlist";
-import { CONSENT_PATH, KIOSK_PAIR_PATH, isAssistantPath, isCronPath, isKioskPath, isPublicPath } from "@/core/auth/public-paths";
-import { KIOSK_COOKIE, isTokenShaped } from "@/core/kiosk/pairing";
+import { CONSENT_PATH, KIOSK_PAIR_PATH, KIOSK_PATH, PWA_FILES, isAssistantPath, isCronPath, isKioskPath, isPublicPath } from "@/core/auth/public-paths";
+import { KIOSK_COOKIE, KIOSK_COOKIE_MAX_AGE, KIOSK_LOCK_COOKIE, isTokenShaped } from "@/core/kiosk/pairing";
 import { OCR_ASSET_PREFIX, contentSecurityPolicy, createNonce, ocrAssetPolicy } from "@/core/security/csp";
 
 const CSP = "Content-Security-Policy";
@@ -17,6 +17,33 @@ function pass(req: NextRequest, policy: string): NextResponse {
   return NextResponse.next({ request: { headers } });
 }
 
+/** Auth.js session cookies (plain, __Secure- and chunked). */
+const SESSION_COOKIE = /^(__Secure-)?authjs\.session-token(\.\d+)?$/;
+
+/**
+ * A browser in kitchen mode (lock cookie set when it was paired). Kids use
+ * it, so it stays on /kiosk (and /kiosk/pair, which sends a working screen
+ * straight back to /kiosk): every other page goes back there, the API and
+ * sign-in are refused, and any Google session left in it is dropped. Only
+ * leaving kitchen mode with the adult PIN removes the lock.
+ */
+function kioskLocked(req: NextRequest, policy: string): NextResponse {
+  const { pathname } = req.nextUrl;
+  let res: NextResponse;
+  if (pathname === KIOSK_PATH || pathname === KIOSK_PAIR_PATH || (PWA_FILES as readonly string[]).includes(pathname) || pathname.startsWith("/icons/")) {
+    res = pass(req, policy);
+  } else if (pathname.startsWith("/api/")) {
+    res = new NextResponse(null, { status: 403 });
+  } else {
+    const url = req.nextUrl.clone();
+    url.pathname = KIOSK_PATH;
+    url.search = "";
+    res = NextResponse.redirect(url);
+  }
+  for (const c of req.cookies.getAll()) if (SESSION_COOKIE.test(c.name)) res.cookies.delete(c.name);
+  return res;
+}
+
 /**
  * First gate for every request. Allowlisted Google session, or nothing.
  * Cron paths pass through only with a bearer header and are verified in
@@ -25,6 +52,20 @@ function pass(req: NextRequest, policy: string): NextResponse {
 const gate = (policy: string) =>
   auth((req) => {
     const { pathname } = req.nextUrl;
+
+    if (req.cookies.has(KIOSK_LOCK_COOKIE)) return kioskLocked(req, policy);
+    // A screen paired before the lock existed gets it on its next visit.
+    if (isKioskPath(pathname) && isTokenShaped(req.cookies.get(KIOSK_COOKIE)?.value)) {
+      const res = kioskLocked(req, policy);
+      res.cookies.set(KIOSK_LOCK_COOKIE, "1", {
+        httpOnly: true,
+        secure: process.env.NODE_ENV === "production",
+        sameSite: "lax",
+        path: "/",
+        maxAge: KIOSK_COOKIE_MAX_AGE,
+      });
+      return res;
+    }
 
     if (isPublicPath(pathname)) return pass(req, policy);
 
