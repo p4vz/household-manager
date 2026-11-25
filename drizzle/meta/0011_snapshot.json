@@ -1,5 +1,5 @@
 {
-  "id": "dbc1b29a-abeb-45b2-85dd-3fed4a98a3be",
+  "id": "0ec9541a-be3f-439b-9b87-a52d9184d8c6",
   "prevId": "988a0173-5f32-486a-9332-e2c8bacacf4a",
   "version": "7",
   "dialect": "postgresql",
@@ -4185,12 +4185,6 @@
           "notNull": true,
           "default": "gen_random_uuid()"
         },
-        "section_id": {
-          "name": "section_id",
-          "type": "uuid",
-          "primaryKey": false,
-          "notNull": false
-        },
         "name": {
           "name": "name",
           "type": "text",
@@ -4201,6 +4195,12 @@
           "name": "store",
           "type": "text",
           "primaryKey": false,
+          "notNull": true
+        },
+        "quantity": {
+          "name": "quantity",
+          "type": "text",
+          "primaryKey": false,
           "notNull": false
         },
         "is_staple": {
@@ -4209,19 +4209,6 @@
           "primaryKey": false,
           "notNull": true,
           "default": false
-        },
-        "quantity": {
-          "name": "quantity",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": false
-        },
-        "sort_order": {
-          "name": "sort_order",
-          "type": "integer",
-          "primaryKey": false,
-          "notNull": true,
-          "default": 0
         },
         "checked": {
           "name": "checked",
@@ -4245,21 +4232,6 @@
         }
       },
       "indexes": {
-        "family_shopping_items_section_idx": {
-          "name": "family_shopping_items_section_idx",
-          "columns": [
-            {
-              "expression": "section_id",
-              "isExpression": false,
-              "asc": true,
-              "nulls": "last"
-            }
-          ],
-          "isUnique": false,
-          "concurrently": false,
-          "method": "btree",
-          "with": {}
-        },
         "family_shopping_items_store_idx": {
           "name": "family_shopping_items_store_idx",
           "columns": [
@@ -4276,29 +4248,15 @@
           "with": {}
         }
       },
-      "foreignKeys": {
-        "family_shopping_items_section_id_family_shopping_sections_id_fk": {
-          "name": "family_shopping_items_section_id_family_shopping_sections_id_fk",
-          "tableFrom": "family_shopping_items",
-          "tableTo": "family_shopping_sections",
-          "columnsFrom": [
-            "section_id"
-          ],
-          "columnsTo": [
-            "id"
-          ],
-          "onDelete": "cascade",
-          "onUpdate": "no action"
-        }
-      },
+      "foreignKeys": {},
       "compositePrimaryKeys": {},
       "uniqueConstraints": {},
       "policies": {},
       "checkConstraints": {},
       "isRLSEnabled": false
     },
-    "public.family_shopping_lists": {
-      "name": "family_shopping_lists",
+    "public.assistant_changes": {
+      "name": "assistant_changes",
       "schema": "",
       "columns": {
         "id": {
@@ -4308,198 +4266,92 @@
           "notNull": true,
           "default": "gen_random_uuid()"
         },
-        "name": {
-          "name": "name",
+        "changeset_id": {
+          "name": "changeset_id",
+          "type": "uuid",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "seq": {
+          "name": "seq",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "entity": {
+          "name": "entity",
           "type": "text",
           "primaryKey": false,
           "notNull": true
         },
-        "sort_order": {
-          "name": "sort_order",
-          "type": "integer",
+        "op": {
+          "name": "op",
+          "type": "text",
           "primaryKey": false,
-          "notNull": true,
-          "default": 0
+          "notNull": true
         },
-        "deferred_until": {
-          "name": "deferred_until",
-          "type": "date",
+        "target_key": {
+          "name": "target_key",
+          "type": "text",
           "primaryKey": false,
           "notNull": false
         },
-        "created_at": {
-          "name": "created_at",
-          "type": "timestamp with time zone",
-          "primaryKey": false,
-          "notNull": true,
-          "default": "now()"
-        }
-      },
-      "indexes": {},
-      "foreignKeys": {},
-      "compositePrimaryKeys": {},
-      "uniqueConstraints": {},
-      "policies": {},
-      "checkConstraints": {},
-      "isRLSEnabled": false
-    },
-    "public.family_shopping_revision": {
-      "name": "family_shopping_revision",
-      "schema": "",
-      "columns": {
-        "id": {
-          "name": "id",
-          "type": "integer",
-          "primaryKey": true,
-          "notNull": true
-        },
-        "revision": {
-          "name": "revision",
-          "type": "integer",
-          "primaryKey": false,
-          "notNull": true,
-          "default": 0
-        }
-      },
-      "indexes": {},
-      "foreignKeys": {},
-      "compositePrimaryKeys": {},
-      "uniqueConstraints": {},
-      "policies": {},
-      "checkConstraints": {},
-      "isRLSEnabled": false
-    },
-    "public.family_shopping_sections": {
-      "name": "family_shopping_sections",
-      "schema": "",
-      "columns": {
-        "id": {
-          "name": "id",
-          "type": "uuid",
-          "primaryKey": true,
-          "notNull": true,
-          "default": "gen_random_uuid()"
-        },
-        "list_id": {
-          "name": "list_id",
-          "type": "uuid",
-          "primaryKey": false,
-          "notNull": true
-        },
-        "store": {
-          "name": "store",
+        "label": {
+          "name": "label",
           "type": "text",
           "primaryKey": false,
           "notNull": true
         },
-        "sort_order": {
-          "name": "sort_order",
-          "type": "integer",
+        "before": {
+          "name": "before",
+          "type": "jsonb",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "after": {
+          "name": "after",
+          "type": "jsonb",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "status": {
+          "name": "status",
+          "type": "text",
           "primaryKey": false,
           "notNull": true,
-          "default": 0
+          "default": "'proposed'"
+        },
+        "error": {
+          "name": "error",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "applied_at": {
+          "name": "applied_at",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "undone_at": {
+          "name": "undone_at",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": false
         }
       },
       "indexes": {
-        "family_shopping_sections_uq": {
-          "name": "family_shopping_sections_uq",
+        "assistant_changes_set_idx": {
+          "name": "assistant_changes_set_idx",
           "columns": [
             {
-              "expression": "list_id",
+              "expression": "changeset_id",
               "isExpression": false,
               "asc": true,
               "nulls": "last"
             },
             {
-              "expression": "store",
-              "isExpression": false,
-              "asc": true,
-              "nulls": "last"
-            }
-          ],
-          "isUnique": true,
-          "concurrently": false,
-          "method": "btree",
-          "with": {}
-        }
-      },
-      "foreignKeys": {
-        "family_shopping_sections_list_id_family_shopping_lists_id_fk": {
-          "name": "family_shopping_sections_list_id_family_shopping_lists_id_fk",
-          "tableFrom": "family_shopping_sections",
-          "tableTo": "family_shopping_lists",
-          "columnsFrom": [
-            "list_id"
-          ],
-          "columnsTo": [
-            "id"
-          ],
-          "onDelete": "cascade",
-          "onUpdate": "no action"
-        }
-      },
-      "compositePrimaryKeys": {},
-      "uniqueConstraints": {},
-      "policies": {},
-      "checkConstraints": {},
-      "isRLSEnabled": false
-    },
-    "public.family_shopping_template_items": {
-      "name": "family_shopping_template_items",
-      "schema": "",
-      "columns": {
-        "id": {
-          "name": "id",
-          "type": "uuid",
-          "primaryKey": true,
-          "notNull": true,
-          "default": "gen_random_uuid()"
-        },
-        "template_id": {
-          "name": "template_id",
-          "type": "uuid",
-          "primaryKey": false,
-          "notNull": true
-        },
-        "store": {
-          "name": "store",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": true
-        },
-        "store_order": {
-          "name": "store_order",
-          "type": "integer",
-          "primaryKey": false,
-          "notNull": true,
-          "default": 0
-        },
-        "name": {
-          "name": "name",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": true
-        },
-        "quantity": {
-          "name": "quantity",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": false
-        },
-        "sort_order": {
-          "name": "sort_order",
-          "type": "integer",
-          "primaryKey": false,
-          "notNull": true,
-          "default": 0
-        }
-      },
-      "indexes": {
-        "family_shopping_template_items_tpl_idx": {
-          "name": "family_shopping_template_items_tpl_idx",
-          "columns": [
-            {
-              "expression": "template_id",
+              "expression": "seq",
               "isExpression": false,
               "asc": true,
               "nulls": "last"
@@ -4512,12 +4364,12 @@
         }
       },
       "foreignKeys": {
-        "family_shopping_template_items_template_id_family_shopping_templates_id_fk": {
-          "name": "family_shopping_template_items_template_id_family_shopping_templates_id_fk",
-          "tableFrom": "family_shopping_template_items",
-          "tableTo": "family_shopping_templates",
+        "assistant_changes_changeset_id_assistant_changesets_id_fk": {
+          "name": "assistant_changes_changeset_id_assistant_changesets_id_fk",
+          "tableFrom": "assistant_changes",
+          "tableTo": "assistant_changesets",
           "columnsFrom": [
-            "template_id"
+            "changeset_id"
           ],
           "columnsTo": [
             "id"
@@ -4532,8 +4384,8 @@
       "checkConstraints": {},
       "isRLSEnabled": false
     },
-    "public.family_shopping_templates": {
-      "name": "family_shopping_templates",
+    "public.assistant_changesets": {
+      "name": "assistant_changesets",
       "schema": "",
       "columns": {
         "id": {
@@ -4543,11 +4395,37 @@
           "notNull": true,
           "default": "gen_random_uuid()"
         },
-        "name": {
-          "name": "name",
+        "conversation_id": {
+          "name": "conversation_id",
+          "type": "uuid",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "owner_email": {
+          "name": "owner_email",
           "type": "text",
           "primaryKey": false,
           "notNull": true
+        },
+        "summary": {
+          "name": "summary",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "status": {
+          "name": "status",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "'proposed'"
+        },
+        "auto_applied": {
+          "name": "auto_applied",
+          "type": "boolean",
+          "primaryKey": false,
+          "notNull": true,
+          "default": false
         },
         "created_at": {
           "name": "created_at",
@@ -4555,20 +4433,135 @@
           "primaryKey": false,
           "notNull": true,
           "default": "now()"
+        },
+        "decided_at": {
+          "name": "decided_at",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": false
         }
       },
       "indexes": {
-        "family_shopping_templates_name_uq": {
-          "name": "family_shopping_templates_name_uq",
+        "assistant_changesets_owner_idx": {
+          "name": "assistant_changesets_owner_idx",
           "columns": [
             {
-              "expression": "name",
+              "expression": "owner_email",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            },
+            {
+              "expression": "created_at",
               "isExpression": false,
               "asc": true,
               "nulls": "last"
             }
           ],
-          "isUnique": true,
+          "isUnique": false,
+          "concurrently": false,
+          "method": "btree",
+          "with": {}
+        }
+      },
+      "foreignKeys": {
+        "assistant_changesets_conversation_id_assistant_conversations_id_fk": {
+          "name": "assistant_changesets_conversation_id_assistant_conversations_id_fk",
+          "tableFrom": "assistant_changesets",
+          "tableTo": "assistant_conversations",
+          "columnsFrom": [
+            "conversation_id"
+          ],
+          "columnsTo": [
+            "id"
+          ],
+          "onDelete": "set null",
+          "onUpdate": "no action"
+        }
+      },
+      "compositePrimaryKeys": {},
+      "uniqueConstraints": {},
+      "policies": {},
+      "checkConstraints": {},
+      "isRLSEnabled": false
+    },
+    "public.assistant_conversations": {
+      "name": "assistant_conversations",
+      "schema": "",
+      "columns": {
+        "id": {
+          "name": "id",
+          "type": "uuid",
+          "primaryKey": true,
+          "notNull": true,
+          "default": "gen_random_uuid()"
+        },
+        "owner_email": {
+          "name": "owner_email",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "title": {
+          "name": "title",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "messages": {
+          "name": "messages",
+          "type": "jsonb",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "'[]'::jsonb"
+        },
+        "refs": {
+          "name": "refs",
+          "type": "jsonb",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "'{}'::jsonb"
+        },
+        "next_ref": {
+          "name": "next_ref",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true,
+          "default": 1
+        },
+        "created_at": {
+          "name": "created_at",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "now()"
+        },
+        "updated_at": {
+          "name": "updated_at",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "now()"
+        }
+      },
+      "indexes": {
+        "assistant_conversations_owner_idx": {
+          "name": "assistant_conversations_owner_idx",
+          "columns": [
+            {
+              "expression": "owner_email",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            },
+            {
+              "expression": "updated_at",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": false,
           "concurrently": false,
           "method": "btree",
           "with": {}

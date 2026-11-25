@@ -242,18 +242,30 @@ async function defaultListId(now: Date): Promise<string> {
   return list.id;
 }
 
+async function listIdByName(name: string): Promise<string | null> {
+  const [row] = await db()
+    .select({ id: familyShoppingLists.id })
+    .from(familyShoppingLists)
+    .where(sql`lower(${familyShoppingLists.name}) = lower(${clean(name, 60)})`)
+    .orderBy(asc(familyShoppingLists.sortOrder))
+    .limit(1);
+  return row?.id ?? null;
+}
+
 /**
- * Adds an item to a store on a list (the first active list when none is
- * given). The store section is created if needed. Adding something already on
- * that store's list un-ticks it instead of adding it twice. Returns the item id.
+ * Adds an item to a store on a list (by id, or by name via `list`; the
+ * first active list when neither matches). The store section is created if
+ * needed. Adding something already on that store's list un-ticks it instead
+ * of adding it twice. Returns the item id.
  */
 export async function addShoppingItem(
-  input: { name: string; store: string; quantity?: string | null; listId?: string },
+  input: { name: string; store: string; quantity?: string | null; listId?: string; list?: string | null },
   now = new Date(),
 ): Promise<string> {
   const name = clean(input.name, 80);
   if (!name) throw new Error("Item name is required");
-  const listId = input.listId ?? (await defaultListId(now));
+  const byName = !input.listId && input.list ? await listIdByName(input.list) : null;
+  const listId = input.listId ?? byName ?? (await defaultListId(now));
   const sectionId = await sectionFor(listId, input.store);
   const existing = (await db().select().from(familyShoppingItems).where(eq(familyShoppingItems.sectionId, sectionId))).find(
     (i) => itemKey(i.name) === itemKey(name),
@@ -276,13 +288,80 @@ export async function addShoppingItem(
   return item.id;
 }
 
-export async function updateShoppingItem(id: string, input: { name?: string; quantity?: string | null }) {
-  const name = input.name !== undefined ? clean(input.name, 80) : undefined;
-  await db()
-    .update(familyShoppingItems)
-    .set({ ...(name && { name }), ...(input.quantity !== undefined && { quantity: cleanQty(input.quantity) }) })
-    .where(eq(familyShoppingItems.id, id));
-  await bump();
+/** One item with its store and list, flattened (for the assistant and other single-item callers). */
+export type ShoppingItemRow = {
+  id: string;
+  name: string;
+  quantity: string | null;
+  checked: boolean;
+  store: string;
+  sectionId: string;
+  listId: string;
+  list: string;
+  /** Set while the list is put off until that date. */
+  deferredUntil: string | null;
+};
+
+function rowsQuery() {
+  return db()
+    .select({
+      id: familyShoppingItems.id,
+      name: familyShoppingItems.name,
+      quantity: familyShoppingItems.quantity,
+      checked: familyShoppingItems.checked,
+      store: familyShoppingSections.store,
+      sectionId: familyShoppingSections.id,
+      listId: familyShoppingLists.id,
+      list: familyShoppingLists.name,
+      deferredUntil: familyShoppingLists.deferredUntil,
+    })
+    .from(familyShoppingItems)
+    .innerJoin(familyShoppingSections, eq(familyShoppingSections.id, familyShoppingItems.sectionId))
+    .innerJoin(familyShoppingLists, eq(familyShoppingLists.id, familyShoppingSections.listId));
+}
+
+/** Every item on every list, in display order (lists, then stores, then items). */
+export async function listShoppingItems(): Promise<ShoppingItemRow[]> {
+  return rowsQuery().orderBy(
+    asc(familyShoppingLists.sortOrder),
+    asc(familyShoppingLists.createdAt),
+    asc(familyShoppingSections.sortOrder),
+    asc(familyShoppingItems.sortOrder),
+    asc(familyShoppingItems.createdAt),
+  );
+}
+
+export async function getShoppingItem(id: string): Promise<ShoppingItemRow | null> {
+  const [row] = await rowsQuery().where(eq(familyShoppingItems.id, id));
+  return row ?? null;
+}
+
+/**
+ * Edits one item. A new store moves it to that store on the same list (the
+ * section is created if needed); `checked` goes through setShoppingChecked,
+ * so it ticks the same item on the other active lists too.
+ */
+export async function updateShoppingItem(
+  id: string,
+  patch: { name?: string; quantity?: string | null; store?: string; checked?: boolean },
+  now = new Date(),
+) {
+  const item = await getShoppingItem(id);
+  if (!item) throw new ShoppingNotFoundError("Item");
+  const name = patch.name !== undefined ? clean(patch.name, 80) : undefined;
+  let sectionId: string | undefined;
+  if (patch.store !== undefined && clean(patch.store, 40).toLowerCase() !== item.store.toLowerCase()) {
+    sectionId = await sectionFor(item.listId, patch.store);
+    const [row] = await db().select({ m: max(familyShoppingItems.sortOrder) }).from(familyShoppingItems).where(eq(familyShoppingItems.sectionId, sectionId));
+    await db().update(familyShoppingItems).set({ sectionId, sortOrder: (row?.m ?? -1) + 1 }).where(eq(familyShoppingItems.id, id));
+  }
+  if (name || patch.quantity !== undefined)
+    await db()
+      .update(familyShoppingItems)
+      .set({ ...(name && { name }), ...(patch.quantity !== undefined && { quantity: cleanQty(patch.quantity) }) })
+      .where(eq(familyShoppingItems.id, id));
+  if (patch.checked !== undefined && patch.checked !== item.checked) await setShoppingChecked(id, patch.checked, now);
+  else await bump();
 }
 
 /** Ids of every item on an active list (not deferred). */

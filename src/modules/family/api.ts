@@ -227,6 +227,8 @@ export {
   deleteList,
   deleteShoppingItem,
   deleteTemplate,
+  getShoppingItem,
+  listShoppingItems,
   listTemplates,
   moveShoppingItem,
   openItemCount,
@@ -243,6 +245,7 @@ export {
   ShoppingNotFoundError,
   type ShoppingBoard,
   type ShoppingItem,
+  type ShoppingItemRow,
   type ShoppingList,
   type ShoppingSection,
   type ShoppingTemplate,
@@ -313,6 +316,88 @@ export async function deleteReturn(id: string) {
 /** Next status when a return card is tapped: pending → packed in car → returned. */
 export function nextReturnStatus(s: ReturnStatus): ReturnStatus {
   return s === "pending" ? "packed_in_car" : "returned";
+}
+
+// ------------------------------------------- single items (assistant) ----
+
+export async function getReturn(id: string): Promise<PurchaseReturn | null> {
+  const [row] = await db()
+    .select({
+      id: familyPurchaseReturns.id,
+      itemName: familyPurchaseReturns.itemName,
+      store: familyPurchaseReturns.store,
+      returnDeadline: familyPurchaseReturns.returnDeadline,
+      status: familyPurchaseReturns.status,
+      notes: familyPurchaseReturns.notes,
+      orderRef: familyPurchaseReturns.orderRef,
+    })
+    .from(familyPurchaseReturns)
+    .where(eq(familyPurchaseReturns.id, id));
+  return row ?? null;
+}
+
+export async function updateReturn(
+  id: string,
+  patch: { itemName?: string; store?: string; returnDeadline?: string | null; notes?: string | null; status?: ReturnStatus },
+  now = new Date(),
+) {
+  assertNoCardNumber(patch.itemName, patch.notes);
+  if (patch.status !== undefined) await setReturnStatus(id, patch.status, now);
+  await db()
+    .update(familyPurchaseReturns)
+    .set({
+      ...(patch.itemName !== undefined && { itemName: patch.itemName.trim().slice(0, 80) }),
+      ...(patch.store !== undefined && { store: patch.store.trim().slice(0, 40) }),
+      ...(patch.returnDeadline !== undefined && { returnDeadline: patch.returnDeadline || null }),
+      ...(patch.notes !== undefined && { notes: patch.notes?.trim().slice(0, 300) || null }),
+      updatedAt: now,
+    })
+    .where(eq(familyPurchaseReturns.id, id));
+}
+
+export type ChoreSnapshot = {
+  id: string;
+  kidId: string;
+  kidName: string;
+  title: string;
+  icon: string;
+  recurrence: Recurrence;
+  stars: number;
+  archived: boolean;
+  /** Done for its current period (today, this week, or ever for one-off chores). */
+  done: boolean;
+};
+
+export async function getChore(id: string, now = new Date()): Promise<ChoreSnapshot | null> {
+  const [row] = await db()
+    .select({ chore: familyChores, kidName: familyKids.name })
+    .from(familyChores)
+    .innerJoin(familyKids, eq(familyChores.kidId, familyKids.id))
+    .where(eq(familyChores.id, id));
+  if (!row) return null;
+  const c = row.chore;
+  const bucket = c.recurrence === "once" ? null : bucketFor(c.recurrence, now, tz());
+  const [done] = await db()
+    .select({ id: familyChoreCompletions.id })
+    .from(familyChoreCompletions)
+    .where(and(eq(familyChoreCompletions.choreId, id), bucket ? eq(familyChoreCompletions.dateBucket, bucket) : undefined))
+    .limit(1);
+  return {
+    id: c.id,
+    kidId: c.kidId,
+    kidName: row.kidName,
+    title: c.title,
+    icon: c.icon,
+    recurrence: c.recurrence,
+    stars: c.stars,
+    archived: c.archivedAt != null,
+    done: Boolean(done),
+  };
+}
+
+/** Puts an archived chore back on the board. */
+export async function unarchiveChore(id: string) {
+  await db().update(familyChores).set({ archivedAt: null }).where(eq(familyChores.id, id));
 }
 
 // -------------------------------------------------------- housekeeping ----

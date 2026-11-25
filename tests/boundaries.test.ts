@@ -106,7 +106,7 @@ describe("external surface", () => {
 
   it("the assistant layer reaches modules only through api.ts", () => {
     const violations = files
-      .filter((f) => rel(f).startsWith("mcp/"))
+      .filter((f) => rel(f).startsWith("mcp/") || rel(f).startsWith("assistant/"))
       .flatMap((f) => imports(f).map((s) => [rel(f), resolveImport(f, s)?.replace(/\.(ts|tsx)$/, "")] as const))
       .filter(([, t]) => t?.startsWith("modules/") && !/^modules\/[^/]+\/api$/.test(t));
     expect(violations).toEqual([]);

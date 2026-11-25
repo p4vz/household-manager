@@ -82,15 +82,22 @@
     {
       "idx": 11,
       "version": "7",
-      "when": 1795624034218,
-      "tag": "0011_shopping_lists",
+      "when": 1795623845426,
+      "tag": "0011_assistant_changesets",
       "breakpoints": true
     },
     {
       "idx": 12,
       "version": "7",
-      "when": 1795624034994,
-      "tag": "0012_shopping_lists_finish",
+      "when": 1795624178627,
+      "tag": "0012_shopping_lists",
+      "breakpoints": true
+    },
+    {
+      "idx": 13,
+      "version": "7",
+      "when": 1795624179477,
+      "tag": "0013_shopping_lists_finish",
       "breakpoints": true
     }
   ]

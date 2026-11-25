@@ -394,6 +394,23 @@ are checked weekly, others monthly, rotating-category cards every 2 days
 until the quarter's categories are on file, and a failed check is not
 retried for a day.
 
+## Ask Claude (in-app assistant)
+
+- No new HTTP surface: the page uses Server Actions (`authedAction`), and the
+  tools run inside the server process (Agent SDK in-process MCP server or AI
+  SDK tools).
+- Tool answers go through the same scrub as MCP answers (`forAssistant` in
+  src/mcp/sanitize.ts): no ids, account, card or routing numbers, legal
+  names, wallets, emails or booking codes. Database ids are replaced by
+  per-conversation refs kept on the server. The member's own messages are
+  scrubbed of long numbers and legal names before they go to the provider.
+- The assistant sees only joint accounts and the signed-in member's own.
+  Conversations and change history are visible only to that member.
+- Every change is logged with before and after values and can be undone.
+  Deletes and batches over 10 changes need the member's Apply.
+- No tool moves money, edits amounts or accounts, or touches bank
+  connections, keys, settings or assistant permissions.
+
 ## What the AI providers see
 
 Before anything goes to Gemini or Claude:

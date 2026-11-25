@@ -549,3 +549,21 @@ export async function listExpectedExpenses(fromDate: string) {
 /** On-screen owner labels (names only on screen; AI and MCP keep User 1 / User 2). */
 export const OWNER_LABELS: Record<Owner, string> = { user1: "Pavel", user2: "Raisa", joint: "Joint" };
 export { OWNERS, ACCOUNT_KINDS, ACCOUNT_KIND_LABELS, CARD_KINDS, type Owner, type AccountKind } from "./schema";
+
+// ---------- in-app assistant (src/assistant) ----------
+
+export {
+  assistantAccounts,
+  searchTransactions,
+  categoryCounts,
+  monthlySpendByCategory,
+  transactionsForEdit,
+  updateTransactionFields,
+  getMerchantRule,
+  setMerchantRule,
+  deleteMerchantRule,
+  MAX_SEARCH_ROWS,
+  type TransactionSearch,
+  type TransactionEditable,
+  type MerchantRule,
+} from "./assistant";
