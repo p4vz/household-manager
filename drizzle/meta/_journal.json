@@ -162,6 +162,13 @@
       "when": 1795640477811,
       "tag": "0022_chore_goals",
       "breakpoints": true
+    },
+    {
+      "idx": 23,
+      "version": "7",
+      "when": 1795641686738,
+      "tag": "0023_push_notifications",
+      "breakpoints": true
     }
   ]
 }
