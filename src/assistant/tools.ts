@@ -461,7 +461,7 @@ export const TOOLS: AssistantTool[] = [
   {
     name: "reading_log",
     description:
-      "Kids' reading log: per kid, today's reading toward the day's goal (a day counts with 20 minutes in English or 15 in Russian), days in a row, reading days in all, milestone stars (10 for every 5 days in a row, 50 for every 30 days), and entries from the last 30 days (ref, date, book, en/ru, minutes, pages). Refs work with edit_reading_log.",
+      "Kids' reading log: per kid, today's reading toward the day's goal (a day counts with 20 minutes in English or 15 in Russian), days in a row, reading days in all, milestone stars (10 for every 5 days in a row, 50 for every 30 days), entries from the last 30 days (ref, date, book, en/ru, minutes, pages), and the kid's book shelf (books being read; a new title logged goes on it by itself). Refs work with edit_reading_log.",
     input: {},
     kind: "read",
     scrub: "reference",
@@ -479,6 +479,7 @@ export const TOOLS: AssistantTool[] = [
           milestoneStars: r?.stats.stars ?? 0,
           milestones: (r?.stats.milestones ?? []).slice(-5).map((m) => `${m.label} (${m.day}, +${m.stars} stars)`),
           entries: (r?.recent ?? []).map((e) => ({ ref: refs.ref("reading_entry", e.id), date: e.day, book: e.book, language: e.language, minutes: e.minutes, pages: e.pages })),
+          bookShelf: (r?.books ?? []).filter((b) => !b.finished).map((b) => ({ title: b.title, author: b.author, language: b.language })),
         };
       });
     },

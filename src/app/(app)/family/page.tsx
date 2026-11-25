@@ -1,5 +1,5 @@
 import { KitchenModeButton } from "@/components/kitchen-mode-button";
-import { deleteReadingAction, logReadingAction } from "../../kiosk/reading-actions";
+import { addBookAction, deleteBookAction, deleteReadingAction, logReadingAction, readBookCoverAction, setBookFinishedAction } from "../../kiosk/reading-actions";
 import { enterKitchenModeAction } from "../../kiosk/pair/actions";
 import { after } from "next/server";
 import { syncGoogleCalendarsIfStale } from "@/modules/calendar/api";
@@ -78,7 +78,14 @@ export default async function FamilyPage() {
         actions={{
           setChoreDone: setChoreDoneAction,
           addOneTimeChore: addOneTimeChoreAction,
-          reading: { log: logReadingAction, remove: deleteReadingAction },
+          reading: {
+            log: logReadingAction,
+            remove: deleteReadingAction,
+            addBook: addBookAction,
+            setFinished: setBookFinishedAction,
+            removeBook: deleteBookAction,
+            readCover: readBookCoverAction,
+          },
           shopping: shoppingActions,
           shoppingMember: {
             deleteItem: deleteShoppingItemAction,

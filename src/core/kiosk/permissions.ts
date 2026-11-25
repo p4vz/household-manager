@@ -32,7 +32,8 @@ export const CHILD_SAFE_ABILITIES = [
 ] as const;
 
 /** Needs an adult on the kitchen screen. */
-export const ADULT_ABILITIES = ["returns.status", "upkeep.complete", "calendar.delete", "calendar.photo.remove", "kiosk.exit", "assistant.kitchen"] as const;
+// "reading.cover": a photo of a book cover goes to the AI provider to read its title.
+export const ADULT_ABILITIES = ["reading.cover", "returns.status", "upkeep.complete", "calendar.delete", "calendar.photo.remove", "kiosk.exit", "assistant.kitchen"] as const;
 
 export type KioskAbility = (typeof CHILD_SAFE_ABILITIES)[number] | (typeof ADULT_ABILITIES)[number];
 

@@ -6,13 +6,13 @@ import type { ReactNode } from "react";
 export const tap = "min-h-12 min-w-12 rounded-xl px-4 font-medium active:scale-95 transition-transform select-none";
 export const field = "min-h-12 rounded-xl border border-slate-300 bg-white px-3 text-base text-slate-900 dark:border-slate-600 dark:bg-slate-800 dark:text-slate-100";
 
-export function Modal({ title, onClose, children }: { title: string; onClose: () => void; children: ReactNode }) {
+export function Modal({ title, onClose, children, wide }: { title: string; onClose: () => void; children: ReactNode; /** Room for a side list (max-w-3xl). */ wide?: boolean }) {
   return (
     <div className="fixed inset-0 z-40 flex items-center justify-center bg-black/60 p-4" onClick={onClose}>
       <div
         role="dialog"
         aria-label={title}
-        className="max-h-full w-full max-w-lg overflow-auto rounded-2xl bg-white p-5 text-slate-900 shadow-2xl dark:bg-slate-900 dark:text-slate-100"
+        className={`max-h-full w-full ${wide ? "max-w-3xl" : "max-w-lg"} overflow-auto rounded-2xl bg-white p-5 text-slate-900 shadow-2xl dark:bg-slate-900 dark:text-slate-100`}
         onClick={(e) => e.stopPropagation()}
       >
         <div className="mb-4 flex items-center justify-between gap-4">

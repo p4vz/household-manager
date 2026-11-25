@@ -36,6 +36,9 @@ const CHILD_SAFE_ACTIONS: Record<string, string> = {
   addOneTimeChoreAction: "chores.add",
   logReadingAction: "reading.log",
   deleteReadingAction: "reading.log",
+  addBookAction: "reading.log",
+  setBookFinishedAction: "reading.log",
+  deleteBookAction: "reading.log",
   addReturnAction: "returns.add",
   syncCalendarAction: "calendar.sync",
   syncShoppingAction: "hub.view",
@@ -58,6 +61,7 @@ const CHILD_SAFE_ACTIONS: Record<string, string> = {
 };
 /** Kiosk actions that need adult mode (adult PIN) on the screen. */
 const ADULT_ACTIONS: Record<string, string> = {
+  readBookCoverAction: "reading.cover",
   setReturnStatusAction: "returns.status",
   completeUpkeepAction: "upkeep.complete",
   deleteEventAdultAction: "calendar.delete",
@@ -148,7 +152,7 @@ describe("kid-proof kitchen screen", () => {
   });
 
   it("adult mode lets the screen past the adult check, and only until it runs out", async () => {
-    const mod = { ...(await import("@/app/kiosk/actions")), ...(await import("@/app/kiosk/adult-actions")) } as Record<string, (i: unknown) => Promise<unknown>>;
+    const mod = { ...(await import("@/app/kiosk/actions")), ...(await import("@/app/kiosk/adult-actions")), ...(await import("@/app/kiosk/reading-actions")) } as Record<string, (i: unknown) => Promise<unknown>>;
     device.adultUntil = new Date(Date.now() + 60_000);
     for (const name of Object.keys(ADULT_ACTIONS).filter((n) => n !== "exitKitchenModeAction")) {
       // Bad input: refused by the input check, which runs only after the permission check passed.
