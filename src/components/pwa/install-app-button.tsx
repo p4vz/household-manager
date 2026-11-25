@@ -34,7 +34,7 @@ export function InstallAppButton({ className = "" }: { className?: string }) {
   if (installed) {
     return (
       <p className={`rounded-lg bg-teal-600/10 p-3 text-sm text-teal-900 ${className}`}>
-        Household is installed on this phone. Open it from your home screen or app drawer.
+        Aprelev Household is installed on this phone. Open it from your home screen or app drawer.
       </p>
     );
   }

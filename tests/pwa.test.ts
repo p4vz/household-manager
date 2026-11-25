@@ -59,3 +59,17 @@ describe("update check", () => {
     expect(isNewer("def5678")).toBe(false);
   });
 });
+
+describe("Aprelev Household branding", () => {
+  it("names both apps and ships maskable icons", () => {
+    const m = json("public/manifest.webmanifest");
+    const k = json("public/kiosk.webmanifest");
+    expect(m.name).toBe("Aprelev Household");
+    expect(k.name).toBe("Aprelev Kitchen");
+    for (const man of [m, k]) {
+      const purposes = man.icons.map((i: { purpose: string }) => i.purpose);
+      expect(purposes).toContain("maskable");
+      expect(purposes).toContain("any");
+    }
+  });
+});
