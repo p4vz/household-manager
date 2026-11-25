@@ -56,7 +56,7 @@ export function ChoreBoard({ kids, actions, icons, layout = "kiosk" }: { kids: B
 
   return (
     <div className="flex h-full min-h-0 flex-col gap-2">
-      <div className={`grid min-h-0 flex-1 gap-3 ${layout === "phone" ? "grid-cols-1" : ""}`} style={layout === "kiosk" ? { gridTemplateColumns: `repeat(${board.length}, minmax(0, 1fr))` } : undefined}>
+      <div className={`grid min-h-0 flex-1 gap-3 ${layout === "phone" ? "grid-cols-1" : ""}`} style={layout === "kiosk" ? { gridTemplateColumns: `repeat(auto-fit, minmax(min(100%, 15rem), 1fr))`, overflowY: "auto" } : undefined}>
         {board.map((kid) => (
           <section key={kid.id} className="flex min-h-0 flex-col rounded-2xl border-4 bg-white p-3 dark:bg-slate-900" style={{ borderColor: kid.color }}>
             <header className="mb-2 space-y-1">

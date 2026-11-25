@@ -1,7 +1,7 @@
 import "server-only";
 import { homeWeather } from "@/core/weather/home-weather";
 import { householdTimeZone } from "@/core/time/zoned";
-import { kioskCalendar } from "@/modules/calendar/api";
+import { KIOSK_DAYS_AHEAD, kioskCalendar, monthGridStart } from "@/modules/calendar/api";
 import { choreBoard, deadlineUrgency, listReturns, shoppingBoard } from "@/modules/family/api";
 import type { ReturnView } from "@/modules/family/ui/returns-panel";
 import type { UpkeepView } from "@/modules/family/ui/upkeep-panel";
@@ -16,7 +16,7 @@ export async function loadHub(now = new Date()) {
   twoWeeks.setUTCDate(twoWeeks.getUTCDate() + 14);
 
   const [calendar, kids, shopping, returns, tasks, weather] = await Promise.all([
-    kioskCalendar(7, now),
+    kioskCalendar(KIOSK_DAYS_AHEAD, now, { from: monthGridStart(today) }),
     choreBoard(now),
     shoppingBoard(now),
     listReturns(),
@@ -46,6 +46,8 @@ export async function loadHub(now = new Date()) {
 
   return {
     tz,
+    /** Bluetooth slip printing is parked until there is a printer; KIOSK_PRINTING=on brings the buttons back. */
+    printing: process.env.KIOSK_PRINTING === "on",
     /** Changes on every server render; the kiosk watchdog uses it as a heartbeat. */
     renderedAt: now.getTime(),
     weather,

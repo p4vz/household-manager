@@ -156,3 +156,74 @@ export const familyPurchaseReturns = pgTable("family_purchase_returns", {
   updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
   returnedAt: timestamp("returned_at", { withTimezone: true }),
 });
+
+/**
+ * Gmail mailboxes a member connected so the app can find return emails
+ * (labels, drop-off deadlines, refunds). Read-only access (gmail.readonly).
+ * The address and refresh token are sealed (AES-256-GCM, src/core/secrets/
+ * secret-box.ts). A mailbox belongs to the member who connected it: only
+ * they see it and what was found in it, until they add a found return to the
+ * shared list.
+ */
+export const familyMailboxes = pgTable(
+  "family_mailboxes",
+  {
+    id: uuid("id").primaryKey().defaultRandom(),
+    /** user1 | user2 (ALLOWED_EMAILS order). */
+    member: text("member").$type<"user1" | "user2">().notNull(),
+    /** Sealed email address. */
+    addressSealed: text("address_sealed").notNull(),
+    /** SHA-256 of the lowercased address, so reconnecting updates the same row. */
+    addressHash: text("address_hash").notNull(),
+    /** Sealed Google refresh token. */
+    refreshTokenSealed: text("refresh_token_sealed").notNull(),
+    includeSpam: boolean("include_spam").notNull().default(true),
+    lastScanAt: timestamp("last_scan_at", { withTimezone: true }),
+    lastScanOk: boolean("last_scan_ok"),
+    lastScanMessage: text("last_scan_message"),
+    createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+  },
+  (t) => [uniqueIndex("family_mailboxes_member_address_idx").on(t.member, t.addressHash)],
+);
+
+/** One-time state for the Gmail connect redirect (PKCE verifier, 10 minutes). */
+export const familyMailConnectStates = pgTable("family_mail_connect_states", {
+  state: text("state").primaryKey(),
+  member: text("member").$type<"user1" | "user2">().notNull(),
+  verifier: text("verifier").notNull(),
+  expiresAt: timestamp("expires_at", { withTimezone: true }).notNull(),
+});
+
+/**
+ * What a scan found in one email. Only extracted fields and the Gmail
+ * message id are kept, never the email itself. Every scanned message gets a
+ * row (status "ignored" when it was not about a return) so it is read once.
+ */
+export const familyReturnSuggestions = pgTable(
+  "family_return_suggestions",
+  {
+    id: uuid("id").primaryKey().defaultRandom(),
+    mailboxId: uuid("mailbox_id")
+      .notNull()
+      .references(() => familyMailboxes.id, { onDelete: "cascade" }),
+    member: text("member").$type<"user1" | "user2">().notNull(),
+    /** Gmail's message id (opaque; used for "Open email" and to read each email once). */
+    messageId: text("message_id").notNull(),
+    /** new | accepted | dismissed | ignored | duplicate */
+    status: text("status").$type<"new" | "accepted" | "dismissed" | "ignored" | "duplicate">().notNull(),
+    /** return_started | label | refund */
+    kind: text("kind").$type<"return_started" | "label" | "refund">(),
+    itemName: text("item_name"),
+    store: text("store"),
+    returnDeadline: date("return_deadline"),
+    notes: text("notes"),
+    /** The open return this email is about (a refund for something on the list). */
+    matchReturnId: uuid("match_return_id").references(() => familyPurchaseReturns.id, { onDelete: "set null" }),
+    receivedAt: timestamp("received_at", { withTimezone: true }),
+    createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+  },
+  (t) => [
+    uniqueIndex("family_return_suggestions_msg_idx").on(t.mailboxId, t.messageId),
+    index("family_return_suggestions_member_idx").on(t.member, t.status),
+  ],
+);

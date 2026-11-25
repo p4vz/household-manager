@@ -4,7 +4,7 @@ import { startTransition, useState } from "react";
 import { ChoreBoard, type BoardKidView } from "./chore-board";
 import { field, tap } from "./kit";
 import { PrintTodayButtons } from "./print-today";
-import { ReturnsPanel, type ReturnView } from "./returns-panel";
+import { ReturnsPanel, type MemberReturnTools, type ReturnView } from "./returns-panel";
 import { ShoppingPanel, type ShoppingActions, type ShoppingBoard, type ShoppingMemberActions } from "./shopping-panel";
 import { UpkeepPanel, type UpkeepView } from "./upkeep-panel";
 import type { AgendaDayView } from "./calendar-panel";
@@ -26,6 +26,8 @@ export type FamilyPhoneActions = {
   addChore: Fn<{ kidId: string; title: string; icon: string; recurrence: "daily" | "weekly" | "once"; stars: number }>;
   archiveChore: Fn<{ id: string }>;
   deleteReturn: Fn<{ id: string }>;
+  /** Returns found in this member's email, and fill-from-screenshot. */
+  memberReturns: MemberReturnTools;
   calendar: EventActions;
   syncCalendar: () => Promise<{ ok: boolean; message: string | null }>;
 };
@@ -51,6 +53,7 @@ export function FamilyPhone({
   todayIso,
   calendar,
   dateLabel,
+  printing = false,
   icons,
   actions,
 }: {
@@ -64,6 +67,8 @@ export function FamilyPhone({
   todayIso: string;
   calendar: PhoneCalendarView;
   dateLabel: string;
+  /** Slip printing is parked until there is a printer. */
+  printing?: boolean;
   icons: readonly string[];
   actions: FamilyPhoneActions;
 }) {
@@ -79,9 +84,11 @@ export function FamilyPhone({
 
   return (
     <div className="mx-auto flex w-full max-w-md flex-col gap-3 text-slate-900 dark:text-slate-100">
-      <div className="flex gap-2">
-        <PrintTodayButtons className={`${tap} flex-1 border`} dateLabel={dateLabel} kids={kids} today={today} returns={returns} upkeep={upkeep} />
-      </div>
+      {printing ? (
+        <div className="flex gap-2">
+          <PrintTodayButtons className={`${tap} flex-1 border`} dateLabel={dateLabel} kids={kids} today={today} returns={returns} upkeep={upkeep} />
+        </div>
+      ) : null}
       <nav className="sticky top-0 z-10 grid grid-cols-6 gap-1 rounded-xl bg-slate-100 p-1 dark:bg-slate-800">
         {tabs.map(([key, icon, label]) => (
           <button
@@ -99,7 +106,7 @@ export function FamilyPhone({
         {tab === "calendar" ? (
           <PhoneCalendar {...calendar} actions={actions.calendar} sync={actions.syncCalendar} />
         ) : tab === "shopping" ? (
-          <ShoppingPanel board={shopping} today={todayIso} dateLabel={dateLabel} actions={actions.shopping} member={actions.shoppingMember} />
+          <ShoppingPanel board={shopping} today={todayIso} dateLabel={dateLabel} actions={actions.shopping} member={actions.shoppingMember} printing={printing} />
         ) : tab === "chores" ? (
           <ChoreBoard kids={kids} icons={icons} layout="phone" actions={{ setDone: actions.setChoreDone, addOneTime: actions.addOneTimeChore }} />
         ) : tab === "returns" ? (
@@ -107,6 +114,7 @@ export function FamilyPhone({
             returns={returns}
             stores={stores}
             actions={{ setStatus: actions.setReturnStatus, add: actions.addReturn }}
+            member={actions.memberReturns}
             manage={(r) => (
               <button type="button" aria-label="Delete" className={`${tap} px-2 opacity-60`} onClick={() => startTransition(() => actions.deleteReturn({ id: r.id }))}>
                 🗑

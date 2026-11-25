@@ -55,3 +55,16 @@ export function contentSecurityPolicy(nonce: string, isDev = process.env.NODE_EN
     "object-src 'none'",
   ].join("; ");
 }
+
+/** OCR assets (public/ocr/): the in-browser screenshot reader's worker scripts and language data. */
+export const OCR_ASSET_PREFIX = "/ocr/";
+
+/**
+ * Policy for the OCR worker scripts. A dedicated worker runs under the CSP of
+ * its own script response, and Tesseract compiles WebAssembly and loads its
+ * core with importScripts, both from this origin only. Pages never get
+ * 'wasm-unsafe-eval'; only these static files do.
+ */
+export function ocrAssetPolicy(): string {
+  return ["default-src 'none'", "script-src 'self' 'wasm-unsafe-eval'", "connect-src 'self'", "frame-ancestors 'none'", "base-uri 'none'"].join("; ");
+}

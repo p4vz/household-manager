@@ -3,7 +3,7 @@ import { auth } from "@/core/auth/config";
 import { isAllowedEmail, parseAllowlist } from "@/core/auth/allowlist";
 import { CONSENT_PATH, KIOSK_PAIR_PATH, isAssistantPath, isCronPath, isKioskPath, isPublicPath } from "@/core/auth/public-paths";
 import { KIOSK_COOKIE, isTokenShaped } from "@/core/kiosk/pairing";
-import { contentSecurityPolicy, createNonce } from "@/core/security/csp";
+import { OCR_ASSET_PREFIX, contentSecurityPolicy, createNonce, ocrAssetPolicy } from "@/core/security/csp";
 
 const CSP = "Content-Security-Policy";
 
@@ -72,7 +72,7 @@ export async function proxy(req: NextRequest, event: NextFetchEvent): Promise<Re
     ? pass(req, policy)
     : // auth() is overloaded for route handlers too; in the proxy Next passes (request, event).
       await (gate(policy) as unknown as (r: NextRequest, e: NextFetchEvent) => Promise<Response>)(req, event);
-  res.headers.set(CSP, policy);
+  res.headers.set(CSP, req.nextUrl.pathname.startsWith(OCR_ASSET_PREFIX) ? ocrAssetPolicy() : policy);
   return res;
 }
 

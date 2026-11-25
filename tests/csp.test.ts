@@ -102,4 +102,18 @@ describe("proxy sets the CSP", () => {
     expect(mcp.headers.get("set-cookie")).toBeNull();
     vi.unstubAllEnvs();
   });
+
+  it("lets only the OCR worker files run WebAssembly, and still needs a session for them", async () => {
+    vi.stubEnv("ALLOWED_EMAILS", "a@example.com");
+    signedIn = "a@example.com";
+    const ocr = (await proxy(req("/ocr/worker.min.js"), event)).headers.get("content-security-policy")!;
+    expect(directive(ocr, "script-src")).toBe("script-src 'self' 'wasm-unsafe-eval'");
+    expect(directive(ocr, "default-src")).toBe("default-src 'none'");
+    const page = (await proxy(req("/family"), event)).headers.get("content-security-policy")!;
+    expect(page).not.toContain("wasm-unsafe-eval");
+
+    signedIn = undefined;
+    expect((await proxy(req("/ocr/lang/eng.traineddata.gz"), event)).status).toBe(307);
+    vi.unstubAllEnvs();
+  });
 });

@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
-import { buildAgenda, timeRangeLabel } from "@/modules/calendar/agenda";
-import { parseCalendarSources, toStoredEvent } from "@/modules/calendar/google-config";
+import { buildAgenda, dayHeading, timeRangeLabel } from "@/modules/calendar/agenda";
+import { KIOSK_DAYS_AHEAD, mirrorWindow, monthGridStart, parseCalendarSources, toStoredEvent } from "@/modules/calendar/google-config";
 import { containsCardNumber } from "@/modules/family/guard";
 import { computeKidStats } from "@/modules/family/stats";
 import { dayBucket, deadlineUrgency, isNightTime, weekBucket } from "@/modules/family/time";
@@ -166,6 +166,27 @@ describe("Google calendars", () => {
     expect(days[1].items.map((i) => i.title)).toEqual(["Day off"]);
     expect(days[2].items.map((i) => i.title)).toEqual(["Day off"]);
     expect(days[3].items.map((i) => i.title)).toEqual(["Trip: Lisbon"]);
+  });
+
+  it("day headers are always two lines: day, then month and date", () => {
+    expect(dayHeading("2026-11-25", "2026-11-25")).toEqual({ heading: "Today", subheading: "November 25" });
+    expect(dayHeading("2026-11-26", "2026-11-25")).toEqual({ heading: "Tomorrow", subheading: "November 26" });
+    expect(dayHeading("2026-11-27", "2026-11-25")).toEqual({ heading: "Friday", subheading: "November 27" });
+    const days = buildAgenda({ today: "2026-11-25", start: "2026-11-23", days: 3, tz: NY, sources: [], google: [], household: [] });
+    expect(days.map((d) => [d.heading, d.isPast, d.isToday])).toEqual([
+      ["Monday", true, false],
+      ["Tuesday", true, false],
+      ["Today", false, true],
+    ]);
+  });
+
+  it("mirrors this month's grid through ten weeks ahead", () => {
+    expect(monthGridStart("2026-11-25")).toBe("2026-11-01"); // Nov 1 2026 is a Sunday
+    expect(monthGridStart("2026-12-15")).toBe("2026-11-29");
+    expect(mirrorWindow("2026-11-25")).toEqual({ from: "2026-11-01", to: "2027-02-03" });
+    // On a Sunday the 1st, yesterday still comes first.
+    expect(mirrorWindow("2026-11-01").from).toBe("2026-10-31");
+    expect(KIOSK_DAYS_AHEAD).toBe(70);
   });
 
   it("labels time ranges across noon", () => {
