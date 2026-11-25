@@ -11,6 +11,7 @@ import {
   addChore,
   addKid,
   archiveChore,
+  setChoreStars,
   deleteReturn,
   deleteList,
   deleteShoppingItem,
@@ -78,6 +79,11 @@ export const addChoreAction = authedAction(
     refresh();
   },
 );
+
+export const setChoreStarsAction = authedAction(z.object({ id, stars: z.number().int().min(1).max(5) }), async (input) => {
+  await setChoreStars(input.id, input.stars);
+  refresh();
+});
 
 export const archiveChoreAction = authedAction(z.object({ id }), async (input) => {
   await archiveChore(input.id);

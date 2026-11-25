@@ -68,6 +68,8 @@ export async function removeKid(id: string) {
 
 // -------------------------------------------------------------- chores ----
 
+export const MAX_CHORE_STARS = 5;
+
 export async function addChore(input: { kidId: string; title: string; icon?: string; recurrence: Recurrence; stars?: number }, now = new Date()) {
   const [kid] = await db().select({ id: familyKids.id }).from(familyKids).where(and(eq(familyKids.id, input.kidId), eq(familyKids.active, true)));
   if (!kid) throw new Error("Kid not found");
@@ -109,6 +111,12 @@ export async function addStarterChores(kidId: string, now = new Date()): Promise
     added += 1;
   }
   return added;
+}
+
+/** Changes a chore's star value. Stars already earned keep their old value. */
+export async function setChoreStars(id: string, stars: number) {
+  if (!Number.isInteger(stars) || stars < 1 || stars > MAX_CHORE_STARS) throw new Error(`Stars must be 1 to ${MAX_CHORE_STARS}.`);
+  await db().update(familyChores).set({ stars }).where(eq(familyChores.id, id));
 }
 
 export async function archiveChore(id: string, now = new Date()) {

@@ -28,6 +28,7 @@ export type FamilyPhoneActions = {
   addStarterChores: Fn<{ kidId: string }>;
   addChore: Fn<{ kidId: string; title: string; icon: string; recurrence: "daily" | "weekly" | "once"; stars: number }>;
   archiveChore: Fn<{ id: string }>;
+  setChoreStars: Fn<{ id: string; stars: number }>;
   deleteReturn: Fn<{ id: string }>;
   /** Returns found in this member's email, and fill-from-screenshot. */
   memberReturns: MemberReturnTools;
@@ -205,7 +206,20 @@ function Setup({ kids, icons, actions }: { kids: BoardKidView[]; icons: readonly
                 <div key={c.id} className="flex items-center gap-2 rounded-lg border px-2">
                   <span className="text-2xl">{c.icon}</span>
                   <span className="flex-1">{c.title}</span>
-                  <span className="text-xs uppercase opacity-60">{c.recurrence} · {c.stars}★</span>
+                  <span className="text-xs uppercase opacity-60">{c.recurrence}</span>
+                  <select
+                    className={`${field} w-16 px-1`}
+                    aria-label={`Stars for ${c.title}`}
+                    value={c.stars}
+                    onChange={(e) => {
+                      const stars = Number(e.target.value);
+                      startTransition(() => actions.setChoreStars({ id: c.id, stars }));
+                    }}
+                  >
+                    {[1, 2, 3, 4, 5].map((n) => (
+                      <option key={n} value={n}>{n} ★</option>
+                    ))}
+                  </select>
                   <button type="button" className={`${tap} px-2 opacity-60`} aria-label="Remove chore" onClick={() => startTransition(() => actions.archiveChore({ id: c.id }))}>
                     🗑
                   </button>
