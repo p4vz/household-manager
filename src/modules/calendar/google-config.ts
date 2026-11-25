@@ -1,4 +1,5 @@
 import { addDays, zonedParts } from "@/core/time/zoned";
+import { SCHOOL_COLOR, SCHOOL_KEY, TOWNSHIP_COLOR, TOWNSHIP_KEY } from "./layers";
 
 /**
  * Which Google calendars the kiosk shows, and how events travel to and from
@@ -30,6 +31,12 @@ export type CalendarSource = {
   writable: boolean;
   /** Drop Google's descriptions (the holiday calendar's are boilerplate). */
   hideNotes?: boolean;
+  /**
+   * Where the events come from: Google (default), built into the app
+   * ("static", the school calendar) or a public iCalendar feed ("ics", the
+   * township). See layers.ts.
+   */
+  kind?: "google" | "static" | "ics";
 };
 
 export const DEFAULT_CALENDAR_NAME = "Pavel + Raisa";
@@ -53,7 +60,7 @@ function keyOf(label: string) {
 /** The extra, read-only calendars from GOOGLE_CALENDARS. */
 export function parseCalendarSources(raw: string | undefined): CalendarSource[] {
   const out: CalendarSource[] = [];
-  const seen = new Set<string>([FAMILY_KEY, HOLIDAYS_KEY]);
+  const seen = new Set<string>([FAMILY_KEY, HOLIDAYS_KEY, SCHOOL_KEY, TOWNSHIP_KEY]);
   for (const entry of (raw ?? "").split(/[;\n]/)) {
     const parts = entry.split("|").map((p) => p.trim());
     if (parts.length < 2) continue;
@@ -72,6 +79,8 @@ export function parseCalendarSources(raw: string | undefined): CalendarSource[] 
 
 type Env = Record<string, string | undefined>;
 
+const isOff = (v: string | undefined) => /^(off|false|0|no)$/i.test(v?.trim() ?? "");
+
 /** The shared family calendar the app writes to. */
 export function familyCalendarSource(env: Env): CalendarSource {
   const id = env.GOOGLE_CALENDAR_ID?.trim() || null;
@@ -85,18 +94,30 @@ export function familyCalendarSource(env: Env): CalendarSource {
 
 /** The read-only US holidays calendar, unless US_HOLIDAYS is off. */
 export function holidaysSource(env: Env): CalendarSource | null {
-  if (/^(off|false|0|no)$/i.test(env.US_HOLIDAYS?.trim() ?? "")) return null;
+  if (isOff(env.US_HOLIDAYS)) return null;
   return { key: HOLIDAYS_KEY, label: "US holidays", color: HOLIDAYS_COLOR, calendarId: US_HOLIDAYS_CALENDAR_ID, writable: false, hideNotes: true };
 }
 
-/** Family calendar first, then the extras (an extra that repeats the family or holiday calendar id is dropped), then US holidays. */
+/** Read-only layers that aren't Google calendars (see layers.ts), each on unless turned off. */
+export function layerSources(env: Env): CalendarSource[] {
+  const out: CalendarSource[] = [];
+  if (!isOff(env.RHES_CALENDAR)) {
+    out.push({ key: SCHOOL_KEY, label: "School (RHES)", color: SCHOOL_COLOR, calendarId: null, writable: false, hideNotes: true, kind: "static" });
+  }
+  if (!isOff(env.ABINGTON_TOWNSHIP)) {
+    out.push({ key: TOWNSHIP_KEY, label: "Abington Township", color: TOWNSHIP_COLOR, calendarId: null, writable: false, hideNotes: true, kind: "ics" });
+  }
+  return out;
+}
+
+/** Family calendar first, then the extras (an extra that repeats the family or holiday calendar id is dropped), then US holidays, school and township. */
 export function allCalendarSources(env: Env): CalendarSource[] {
   const family = familyCalendarSource(env);
   const holidays = holidaysSource(env);
   const extras = parseCalendarSources(env.GOOGLE_CALENDARS).filter(
     (s) => (!family.calendarId || s.calendarId !== family.calendarId) && (!holidays || s.calendarId !== holidays.calendarId),
   );
-  return holidays ? [family, ...extras, holidays] : [family, ...extras];
+  return [family, ...extras, ...(holidays ? [holidays] : []), ...layerSources(env)];
 }
 
 /** How far ahead the kiosk's week view can scroll (and the sync mirrors). */

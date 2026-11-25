@@ -26,6 +26,10 @@ export const STATIC_OUTBOUND_HOSTS = [
   "www.saferproducts.gov",
   // Car upkeep: NHTSA vehicle recalls (keyless; only make, model and year are sent)
   "api.nhtsa.gov",
+  // Calendar: public iCalendar feeds of Abington Township and the Abington School District
+  // (keyless GETs of fixed URLs; nothing about the household is sent)
+  "www.abingtonpa.gov",
+  "thrillshare-cmsv2.services.thrillshare.com",
   // Phone notifications (Web Push): the push services of Chrome/Android, Safari/iPhone and Firefox.
   // Only end-to-end encrypted payloads are sent (RFC 8291); see core/push.
   "fcm.googleapis.com",

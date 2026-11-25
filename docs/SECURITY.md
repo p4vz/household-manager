@@ -370,6 +370,7 @@ fails if `fetch(` is used anywhere else.
 | `www.saferproducts.gov` | house upkeep: U.S. CPSC product-recall search for listed home equipment (keyless; only a product phrase such as "GE refrigerator" is sent, digit runs of 5+ removed) |
 | `fcm.googleapis.com`, `web.push.apple.com`, `updates.push.services.mozilla.com` | phone notifications (Web Push to Chrome/Android, Safari/iPhone, Firefox); payloads are end-to-end encrypted for the device, see "Phone notifications" |
 | `api.nhtsa.gov` | car upkeep: NHTSA vehicle safety-recall search (keyless; only make, model and model year are sent, never a VIN or plate, which the app doesn't store) |
+| `www.abingtonpa.gov`, `thrillshare-cmsv2.services.thrillshare.com` | calendar: public iCalendar feeds of Abington Township and the Abington School District for the read-only township layer (keyless GETs of fixed URLs; nothing is sent) |
 
 The trips hosts receive only a place name or coordinates. No household
 data, names or credentials are sent to them.
@@ -456,6 +457,18 @@ unreadable; calls then fall back to the environment until they are re-entered.
 Two-way with the shared family calendar ("Pavel + Raisa"); read-only for
 any extra calendars in `GOOGLE_CALENDARS` and for Google's public US holiday
 calendar (on unless `US_HOLIDAYS=off`; its descriptions are not stored).
+
+Two more read-only layers are not Google calendars (`modules/calendar/layers.ts`):
+"School (RHES)", the school year typed into the code (no network;
+`RHES_CALENDAR=off` hides it), and "Abington Township": weekly trash and
+recycling days computed in code (moved for township holidays), plus events
+filtered from the public iCalendar feeds of the township (`www.abingtonpa.gov`)
+and the school district (`thrillshare-cmsv2.services.thrillshare.com`), both
+allowlisted. The feeds are plain GETs of fixed URLs with no credentials,
+cookies or household data, at most every 6 hours; descriptions are dropped.
+The household's zone is configured as a leaf-area letter
+(`ABINGTON_LEAF_AREA`) and a weekday (`ABINGTON_TRASH_DAY`); the street
+address is never stored. `ABINGTON_TOWNSHIP=off` hides the layer.
 
 - **Mirror.** `calendar_google_events` keeps title, time range, location,
   all-day, Google's `etag` and update time, from yesterday through the next

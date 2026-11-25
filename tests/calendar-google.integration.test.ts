@@ -38,6 +38,13 @@ vi.mock("@/core/net/outbound", () => ({
     const headers = new Headers(init.headers);
     calls.push({ method, path: url.pathname, ifMatch: headers.get("if-match") });
     if (url.hostname === "oauth2.googleapis.com") return json({ access_token: "tok", expires_in: 3600 });
+    if (url.hostname === "www.abingtonpa.gov" || url.hostname === "thrillshare-cmsv2.services.thrillshare.com") {
+      const ymd = day(3).replace(/-/g, "");
+      const ics = url.searchParams.get("catID") === "25"
+        ? `BEGIN:VCALENDAR\r\nBEGIN:VEVENT\r\nDTSTART;VALUE=DATE:${ymd}\r\nDTEND;VALUE=DATE:${ymd}\r\nSUMMARY:Leaf Collection - Areas C\\, D\\, F\\, J\r\nUID:1\r\nEND:VEVENT\r\nBEGIN:VEVENT\r\nDTSTART;VALUE=DATE:${ymd}\r\nSUMMARY:Leaf Collection - Areas K\\, L\r\nUID:2\r\nEND:VEVENT\r\nEND:VCALENDAR\r\n`
+        : "BEGIN:VCALENDAR\r\nEND:VCALENDAR\r\n";
+      return new Response(ics, { status: 200, headers: { "content-type": "text/calendar" } });
+    }
     if (url.pathname.endsWith("/users/me/calendarList")) {
       return json({
         items: [
@@ -120,7 +127,12 @@ describe("two-way family calendar", () => {
     expect(state).toMatchObject({ ok: true });
     const cal = await api.kioskCalendar(7);
     expect(cal.writableLabel).toBe("Pavel + Raisa");
-    expect(cal.legend.map((l) => l.label)).toEqual(["Pavel + Raisa", "Kids", "US holidays"]);
+    expect(cal.legend.map((l) => l.label)).toEqual(["Pavel + Raisa", "Kids", "US holidays", "School (RHES)", "Abington Township"]);
+    // Township layer: our leaf area only, plus a weekly trash day.
+    const township = (await agendaItems()).filter((i) => i.who === "Abington Township").map((i) => i.title);
+    expect(township).toContain("Leaf Collection - Areas C, D, F, J");
+    expect(township.some((t) => t.includes("Areas K, L"))).toBe(false);
+    expect(township.some((t) => t.startsWith("Trash & recycling"))).toBe(true);
     const soccer = (await agendaItems()).find((i) => i.title === "Soccer");
     expect(soccer?.edit).toBeUndefined();
     // US holidays: read-only, in their own colour, without Google's boilerplate notes.
