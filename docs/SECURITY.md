@@ -434,7 +434,8 @@ unreadable; calls then fall back to the environment until they are re-entered.
 ## Google Calendar sync
 
 Two-way with the shared family calendar ("Pavel + Raisa"); read-only for
-any extra calendars in `GOOGLE_CALENDARS`.
+any extra calendars in `GOOGLE_CALENDARS` and for Google's public US holiday
+calendar (on unless `US_HOLIDAYS=off`; its descriptions are not stored).
 
 - **Mirror.** `calendar_google_events` keeps title, time range, location,
   all-day, Google's `etag` and update time, from yesterday through the next

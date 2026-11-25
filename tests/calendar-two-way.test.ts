@@ -30,7 +30,17 @@ describe("family calendar config", () => {
     expect(s.map((x) => [x.key, x.writable])).toEqual([
       ["family", true],
       ["kids", false],
+      ["us-holidays", false],
     ]);
+  });
+
+  it("adds US holidays read-only, without notes, unless turned off", () => {
+    const h = allCalendarSources({ GOOGLE_CALENDAR_ID: "fam@x" }).at(-1)!;
+    expect(h).toMatchObject({ key: "us-holidays", label: "US holidays", writable: false, hideNotes: true, calendarId: "en.usa#holiday@group.v.calendar.google.com" });
+    expect(allCalendarSources({ GOOGLE_CALENDAR_ID: "fam@x", US_HOLIDAYS: "off" }).map((x) => x.key)).toEqual(["family"]);
+    // A hand-made "US holidays" extra doesn't clash with the built-in one.
+    const dup = allCalendarSources({ GOOGLE_CALENDAR_ID: "fam@x", GOOGLE_CALENDARS: "Holidays|en.usa#holiday@group.v.calendar.google.com" });
+    expect(dup.map((x) => x.key)).toEqual(["family", "us-holidays"]);
   });
 
   it("matches calendar names loosely and reports write access", () => {

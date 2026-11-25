@@ -28,10 +28,20 @@ export type CalendarSource = {
   findByName?: string;
   /** Events can be added, edited and deleted from the kiosk and phones. */
   writable: boolean;
+  /** Drop Google's descriptions (the holiday calendar's are boilerplate). */
+  hideNotes?: boolean;
 };
 
 export const DEFAULT_CALENDAR_NAME = "Pavel + Raisa";
 export const FAMILY_KEY = "family";
+/**
+ * US holidays from Google's public holiday calendar, shown read-only on the
+ * kitchen screen and in the app (Pavel, 2026-11-25). On unless
+ * US_HOLIDAYS=off. Any Google credential can read a public calendar.
+ */
+export const HOLIDAYS_KEY = "us-holidays";
+export const US_HOLIDAYS_CALENDAR_ID = "en.usa#holiday@group.v.calendar.google.com";
+const HOLIDAYS_COLOR = "#dc2626";
 const FAMILY_COLOR = "#0d9488";
 const FALLBACK_COLORS = ["#2563eb", "#db2777", "#16a34a", "#ea580c", "#7c3aed", "#0891b2"];
 const isHex = (v: string | undefined) => Boolean(v && /^#[0-9a-fA-F]{6}$/.test(v));
@@ -43,7 +53,7 @@ function keyOf(label: string) {
 /** The extra, read-only calendars from GOOGLE_CALENDARS. */
 export function parseCalendarSources(raw: string | undefined): CalendarSource[] {
   const out: CalendarSource[] = [];
-  const seen = new Set<string>([FAMILY_KEY]);
+  const seen = new Set<string>([FAMILY_KEY, HOLIDAYS_KEY]);
   for (const entry of (raw ?? "").split(/[;\n]/)) {
     const parts = entry.split("|").map((p) => p.trim());
     if (parts.length < 2) continue;
@@ -73,11 +83,20 @@ export function familyCalendarSource(env: Env): CalendarSource {
     : { key: FAMILY_KEY, label, color, calendarId: null, findByName: name, writable: true };
 }
 
-/** Family calendar first, then the extras (an extra that repeats the family calendar id is dropped). */
+/** The read-only US holidays calendar, unless US_HOLIDAYS is off. */
+export function holidaysSource(env: Env): CalendarSource | null {
+  if (/^(off|false|0|no)$/i.test(env.US_HOLIDAYS?.trim() ?? "")) return null;
+  return { key: HOLIDAYS_KEY, label: "US holidays", color: HOLIDAYS_COLOR, calendarId: US_HOLIDAYS_CALENDAR_ID, writable: false, hideNotes: true };
+}
+
+/** Family calendar first, then the extras (an extra that repeats the family or holiday calendar id is dropped), then US holidays. */
 export function allCalendarSources(env: Env): CalendarSource[] {
   const family = familyCalendarSource(env);
-  const extras = parseCalendarSources(env.GOOGLE_CALENDARS).filter((s) => !family.calendarId || s.calendarId !== family.calendarId);
-  return [family, ...extras];
+  const holidays = holidaysSource(env);
+  const extras = parseCalendarSources(env.GOOGLE_CALENDARS).filter(
+    (s) => (!family.calendarId || s.calendarId !== family.calendarId) && (!holidays || s.calendarId !== holidays.calendarId),
+  );
+  return holidays ? [family, ...extras, holidays] : [family, ...extras];
 }
 
 /** How far ahead the kiosk's week view can scroll (and the sync mirrors). */
