@@ -444,6 +444,24 @@ two-person household app.
   anything is saved. `/ocr/*` gets its own CSP (`ocrAssetPolicy()`) so the
   OCR worker may run WebAssembly; nothing else gets `'wasm-unsafe-eval'`.
 
+## Home page upload and "Needs attention"
+
+- **Upload ("Drop anything here").** Photos are read on the member's device
+  with the same Tesseract OCR; the picture is never uploaded. PDFs are not
+  read at all: only the file name and the member's note go to the AI. The
+  text goes through `scrubMailText()` (numeric dates rewritten with slashes
+  first so they survive) and `sanitizeReferencePayload()`; car nicknames are
+  the only stored data sent. Claude's answer is re-checked (real dates, no
+  5+ digit runs) and nothing is saved until the member taps Add on a
+  suggestion. Receipt matching and transaction notes use the finance access
+  rules, so a member only sees and notes joint and own transactions.
+  Code: `src/assistant/inbox.ts`, `src/app/(app)/home-actions.ts`.
+- **Needs attention.** Built on the server from module `api.ts` calls and
+  rendered only on the signed-in member's own page; nothing goes to an AI.
+  Money items (large purchases, questionable transactions, budgets, sign-up
+  bonuses) are counted per member; finance calendar reminders are left out
+  of "Coming up". Code: `src/assistant/attention.ts`.
+
 ## Bank sync limits
 
 Scheduled syncs contact SimpleFIN at most twice a day. Railway cron calls

@@ -445,6 +445,9 @@ export {
   type ScanResult,
 } from "./mail";
 export { extractReturn, type ExtractedReturn } from "./return-extract";
+/** Scrub for pasted or photographed text before it goes to an AI (also used by the home page upload). */
+export { scrubMailText, isoDateInWords } from "./mail-text";
+export { assertNoCardNumber } from "./guard";
 
 /** "User 1" / "User 2" (the sign-in's owner label) to the member key used by return emails. */
 export function memberFromLabel(label: "User 1" | "User 2"): "user1" | "user2" {
