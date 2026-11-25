@@ -4,6 +4,7 @@ import type { OwnerLabel } from "@/core/auth/allowlist";
 import * as family from "@/modules/family/api";
 import * as finance from "@/modules/finance/api";
 import * as maintenance from "@/modules/maintenance/api";
+import * as trips from "@/modules/trips/api";
 
 /**
  * Everything the assistant can change, one adapter per kind of row. Each
@@ -243,8 +244,47 @@ const chore: EntityAdapter = {
   },
 };
 
+// ------------------------------------------------------------- trips ----
+
+/**
+ * Which trip a bank charge belongs to. Keyed by the transaction; `trip` is
+ * the trip's slug, `step` the itinerary step's title on that trip, and
+ * `link` is "linked", "dismissed" (not this trip) or null (not reviewed).
+ */
+export const TripChargeFields = z
+  .object({
+    trip: z.string().trim().min(1).max(120).nullable(),
+    step: optText(200),
+    link: z.enum(["linked", "dismissed"]).nullable(),
+  })
+  .strict();
+
+const tripCharge: EntityAdapter = {
+  entity: "trip_charge",
+  title: "Trip charge",
+  async get(ctx, key) {
+    const row = await trips.tripChargeLink(ctx.viewer, key);
+    if (!row) return null;
+    const link = row.link;
+    if (!link) return { fields: { trip: null, step: null, link: null }, label: row.label };
+    const info = await trips.tripLinkInfo(link.targetId, link.detailId);
+    return { fields: { trip: info.slug, step: info.step, link: link.status }, label: row.label };
+  },
+  async update(ctx, key, patch) {
+    const current = (await this.get(ctx, key))?.fields ?? {};
+    const f = TripChargeFields.parse({ ...current, ...patch });
+    if (!f.link || !f.trip) {
+      await trips.unlinkTripCharges(ctx.viewer, [key]);
+      return;
+    }
+    const target = await trips.resolveTripStep(f.trip, f.link === "linked" ? f.step : null);
+    if (f.link === "dismissed") await trips.dismissTripCharges(ctx.viewer, target.tripId, [key], "assistant");
+    else await trips.linkTripCharges(ctx.viewer, target.tripId, [key], { stepId: target.stepId, source: "assistant" });
+  },
+};
+
 export const ADAPTERS: Record<string, EntityAdapter> = Object.fromEntries(
-  [transaction, merchantRule, upkeepTask, shoppingItem, purchaseReturn, chore].map((a) => [a.entity, a]),
+  [transaction, merchantRule, upkeepTask, shoppingItem, purchaseReturn, chore, tripCharge].map((a) => [a.entity, a]),
 );
 
 export function adapterFor(entity: string): EntityAdapter {

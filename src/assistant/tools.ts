@@ -6,6 +6,7 @@ import * as calendar from "@/modules/calendar/api";
 import * as family from "@/modules/family/api";
 import * as finance from "@/modules/finance/api";
 import * as maintenance from "@/modules/maintenance/api";
+import * as trips from "@/modules/trips/api";
 import { DraftBook } from "./changesets";
 import type { RefBook } from "./conversations";
 import {
@@ -15,6 +16,7 @@ import {
   sameFields,
   ShoppingFields,
   TransactionPatch,
+  TripChargeFields,
   UpkeepFields,
   type AssistantCtx,
   type Fields,
@@ -55,6 +57,22 @@ function mcpContext(ctx: AssistantCtx): ToolContext {
   // Trips through the reviewed MCP tools: itinerary and booking status, but
   // never booking codes (not needed in the app, where the page shows them).
   return { owner: ctx.owner, now: ctx.now, permissions: new Set(["travel.trips", "travel.itinerary", "travel.bookings"]), appUrl: null };
+}
+
+function cardContext(ctx: AssistantCtx): ToolContext {
+  // Card advice on the member's own cards (joint and theirs), as in Finance.
+  return {
+    owner: ctx.owner,
+    now: ctx.now,
+    permissions: new Set(["travel.trips", "travel.bookings", "finance.card_advice", "finance.signup_bonuses"]),
+    appUrl: null,
+  };
+}
+
+async function tripBySlug(slug: string) {
+  const trip = await trips.getTrip(slug);
+  if (!trip) throw new Error(`No trip "${slug}". Call list_trips for the trip values.`);
+  return trip;
 }
 
 function mcpTool(name: string) {
@@ -308,7 +326,102 @@ export const TOOLS: AssistantTool[] = [
     run: (args, { ctx }) => mcpTool("get_trip").run(args, mcpContext(ctx)),
   },
 
+  {
+    name: "trip_spending",
+    description:
+      "A trip's real spending from the bank: planned vs spent (only charges on accounts this member can see), spend by category, each itinerary step's planned cost vs its charges, flags (booked but no charge, charged but not marked booked, cost differs, travel charge with no itinerary step, over plan), the linked charges (transaction refs), suggested charges not linked yet (strong or possible, with the reason), and rewards earned on the charges vs the best household card.",
+    input: { trip: z.string().min(1).max(120).describe("The trip value from list_trips") },
+    kind: "read",
+    scrub: "finance",
+    async run(args, { ctx, refs }) {
+      const trip = await tripBySlug(String(args.trip));
+      const s = await trips.tripSpend(ctx.viewer, trip.id, ctx.now);
+      const missed = s.rewards.rows.filter((r) => r.missedCents > 0);
+      return {
+        trip: { trip: s.trip.slug, name: s.trip.name, startDate: s.trip.startDate, endDate: s.trip.endDate, status: s.trip.status },
+        planned: s.planned,
+        spent: s.spent,
+        remaining: s.remaining,
+        spentBeforeTrip: s.spentBeforeTrip,
+        byCategory: s.byCategory,
+        steps: s.steps.map((x) => ({ step: x.title, kind: x.kind, provider: x.provider, planned: x.planned, actual: x.actual, bookingStatus: x.bookingStatus })),
+        flags: s.flags.map((f) => f.message),
+        charges: s.charges.map((c) => ({
+          ref: refs.ref("transaction", c.id),
+          date: c.date,
+          merchant: c.merchant,
+          amount: c.amount,
+          category: c.category,
+          account: c.account,
+          owner: ownerLabel(c.owner),
+          step: c.step ?? undefined,
+          linkedBy: c.source ?? undefined,
+        })),
+        suggestions: s.suggestions.map((x) => ({
+          ref: refs.ref("transaction", x.transactionId),
+          date: x.date,
+          merchant: x.merchant,
+          amount: x.amount,
+          category: x.category,
+          account: x.account,
+          confidence: x.confidence,
+          reason: x.reason,
+          step: s.steps.find((st) => st.id === x.stepId)?.title,
+        })),
+        rewards: {
+          earned: s.rewards.earned,
+          leftOnTheTable: s.rewards.missed,
+          betterCard: missed.slice(0, 10).map((r) => ({ date: r.date, merchant: r.merchant, amount: r.amount, used: r.actualCard, best: r.bestCard, missed: r.missedCents / 100 })),
+        },
+      };
+    },
+  },
+  {
+    name: "trip_card_plan",
+    description:
+      "For a trip's bookings not yet paid: which of this member's cards to book each one with (open sign-up bonuses first, then the best multiplier), and bonus progress with the trip's spend. Steps with a bank charge linked count as paid.",
+    input: mcpTool("trip_card_plan").input,
+    kind: "read",
+    scrub: "finance",
+    run: (args, { ctx }) => mcpTool("trip_card_plan").run(args, cardContext(ctx)),
+  },
+  {
+    name: "best_card_for_purchases",
+    description: mcpTool("best_card_for_purchases").description,
+    input: mcpTool("best_card_for_purchases").input,
+    kind: "read",
+    scrub: "finance",
+    run: (args, { ctx }) => mcpTool("best_card_for_purchases").run(args, cardContext(ctx)),
+  },
+
   // -------------------------------------------------------------------- edits
+  {
+    name: "link_trip_charges",
+    description:
+      "Tie bank charges (transaction refs from trip_spending or search_transactions) to a trip, optionally to one itinerary step by its title; or mark them 'not this trip' (dismiss: never suggested for it again); or unlink them from any trip. A charge belongs to one trip at a time.",
+    input: {
+      action: z.enum(["link", "dismiss", "unlink"]),
+      refs: refList,
+      trip: z.string().min(1).max(120).optional().describe("The trip value from list_trips; needed for link and dismiss"),
+      step: z.string().max(200).optional().describe("Itinerary step title on that trip (link only)"),
+    },
+    kind: "edit",
+    scrub: "finance",
+    async run(args, env) {
+      const action = String(args.action);
+      const trip = args.trip ? (await tripBySlug(String(args.trip))).slug : null;
+      if (action !== "unlink" && !trip) throw new Error("Give the trip to link to or dismiss from.");
+      if (trip && args.step) await trips.resolveTripStep(trip, String(args.step));
+      const patch = TripChargeFields.parse(
+        action === "unlink"
+          ? { trip: null, step: null, link: null }
+          : { trip, step: action === "link" ? ((args.step as string | undefined) ?? null) : null, link: action === "link" ? "linked" : "dismissed" },
+      );
+      let n = 0;
+      for (const r of args.refs as string[]) if (await draftUpdate(env, "trip_charge", env.refs.resolve(r, "transaction"), patch)) n++;
+      return queued(env, n);
+    },
+  },
   {
     name: "edit_transactions",
     description:

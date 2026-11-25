@@ -120,6 +120,13 @@
       "when": 1795635348069,
       "tag": "0016_account_last4",
       "breakpoints": true
+    },
+    {
+      "idx": 17,
+      "version": "7",
+      "when": 1795635842005,
+      "tag": "0017_trip_transaction_links",
+      "breakpoints": true
     }
   ]
 }
