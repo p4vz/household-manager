@@ -11,7 +11,7 @@ export type ReturnView = {
   status: "pending" | "packed_in_car" | "returned";
   notes: string | null;
   orderRef: string | null;
-  urgency: "overdue" | "urgent" | "soon" | "ok";
+  urgency: "overdue" | "soon" | "ok";
   deadlineLabel: string | null;
 };
 
@@ -28,7 +28,6 @@ const STATUS: Record<ReturnView["status"], { label: string; cls: string }> = {
 
 const URGENCY: Record<ReturnView["urgency"], string> = {
   overdue: "border-red-600 bg-red-50 dark:bg-red-950",
-  urgent: "border-red-500 bg-red-50 dark:bg-red-950",
   soon: "border-amber-500 bg-amber-50 dark:bg-amber-950",
   ok: "border-slate-200 dark:border-slate-700",
 };

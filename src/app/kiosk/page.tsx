@@ -22,9 +22,12 @@ import {
   setShoppingCheckedAction,
   syncCalendarAction,
 } from "./actions";
+import { createEventAction, deleteEventAction, updateEventAction } from "./calendar-actions";
 import { loadHub } from "./load";
 
 export const metadata = { title: "Kitchen" };
+
+const CALENDAR_MAX_AGE_MS = 90_000;
 
 /**
  * The kitchen wall screen (1920x1080 landscape, touch). Open to a paired
@@ -39,10 +42,11 @@ export default async function KioskPage() {
     redirect("/kiosk/pair");
   }
   const hub = await loadHub();
-  // Keep the Google copy fresh while the screen is on (the page refreshes every 30 s).
-  after(() => syncGoogleCalendarsIfStale(15 * 60_000).then(() => undefined, () => undefined));
+  // Keep the Google mirror fresh while the screen is on: the page refreshes
+  // every 30 s, and pulls from Google when the copy is over 90 s old.
+  after(() => syncGoogleCalendarsIfStale(CALENDAR_MAX_AGE_MS).then(() => undefined, () => undefined));
 
-  const urgentReturns = hub.returns.filter((r) => r.urgency === "overdue" || r.urgency === "urgent").length;
+  const urgentReturns = hub.returns.filter((r) => r.urgency !== "ok" && r.status !== "returned").length;
   const overdueUpkeep = hub.upkeep.filter((t) => t.overdue).length;
   const printBtn = "min-h-12 rounded-xl border px-4 text-lg font-medium";
 
@@ -69,6 +73,9 @@ export default async function KioskPage() {
             syncedLabel={hub.calendar.syncedLabel}
             syncError={hub.calendar.syncError}
             sync={syncCalendarAction.bind(null, {})}
+            today={hub.today}
+            writableLabel={hub.calendar.writableLabel}
+            eventActions={{ create: createEventAction, update: updateEventAction, remove: deleteEventAction }}
           />
         </section>
         <div className="grid min-h-0 grid-rows-[56fr_44fr] gap-4">

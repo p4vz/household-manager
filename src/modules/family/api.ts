@@ -68,7 +68,7 @@ export async function removeKid(id: string) {
 
 // -------------------------------------------------------------- chores ----
 
-export async function addChore(input: { kidId: string; title: string; icon?: string; recurrence: Recurrence; stars?: number }) {
+export async function addChore(input: { kidId: string; title: string; icon?: string; recurrence: Recurrence; stars?: number }, now = new Date()) {
   const [kid] = await db().select({ id: familyKids.id }).from(familyKids).where(and(eq(familyKids.id, input.kidId), eq(familyKids.active, true)));
   if (!kid) throw new Error("Kid not found");
   const [{ n }] = await db().select({ n: sql<number>`count(*)::int` }).from(familyChores).where(eq(familyChores.kidId, input.kidId));
@@ -81,6 +81,7 @@ export async function addChore(input: { kidId: string; title: string; icon?: str
       recurrence: input.recurrence,
       stars: Math.min(5, Math.max(1, input.stars ?? 1)),
       sortOrder: n,
+      createdAt: now,
     })
     .returning({ id: familyChores.id });
   return chore.id;

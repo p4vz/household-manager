@@ -151,6 +151,15 @@ describe("external surface", () => {
     expect(src).not.toMatch(/delete|remove|archive|finance|trips/i);
   });
 
+  it("kiosk calendar actions delete nothing but family calendar events", () => {
+    const src = readFileSync(join(SRC, "app/kiosk/calendar-actions.ts"), "utf8");
+    expect(src).not.toMatch(/authedAction\(|finance|trips/i);
+    const imports = [...src.matchAll(/from "([^"]+)"/g)].map((m) => m[1]);
+    expect(imports).toEqual(["next/cache", "zod", "@/core/actions/kiosk-action", "@/modules/calendar/api"]);
+    const deletes = [...src.matchAll(/\b(delete\w*|remove\w*)\(/gi)].map((m) => m[1]);
+    expect(new Set(deletes)).toEqual(new Set(["deleteGoogleEvent"]));
+  });
+
   it("the kiosk device cookie is honoured only on /kiosk", () => {
     const proxy = readFileSync(join(SRC, "proxy.ts"), "utf8");
     expect(proxy).toMatch(/if \(isKioskPath\(pathname\)\)/);

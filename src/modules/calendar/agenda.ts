@@ -1,4 +1,5 @@
 import { addDays, zonedMidnight } from "@/core/time/zoned";
+import { toEventInput, type EventInput } from "./google-config";
 
 /**
  * Builds the kiosk's day-by-day agenda from stored Google events and the
@@ -15,7 +16,11 @@ export type AgendaItem = {
   color: string;
   who: string;
   sortKey: number;
+  /** Set for events on the family calendar: the values the edit form starts from. */
+  edit?: EditableEvent;
 };
+
+export type EditableEvent = EventInput & { id: string; recurring: boolean };
 
 export type AgendaDay = { date: string; label: string; isToday: boolean; items: AgendaItem[] };
 
@@ -29,6 +34,7 @@ export type GoogleRow = {
   endsAt: Date | null;
   startDate: string | null;
   endDate: string | null;
+  recurring?: boolean;
 };
 
 export type HouseholdRow = {
@@ -39,7 +45,7 @@ export type HouseholdRow = {
   sourceModule: string | null;
 };
 
-export type SourceStyle = { key: string; label: string; color: string };
+export type SourceStyle = { key: string; label: string; color: string; writable?: boolean };
 
 export const HOUSEHOLD_STYLE = { label: "Household", color: "#7c3aed" };
 
@@ -88,9 +94,10 @@ export function buildAgenda(input: {
     for (const e of input.google) {
       const s = style.get(e.calendarKey);
       if (!s) continue;
+      const edit = s.writable ? { id: e.id, recurring: Boolean(e.recurring), ...toEventInput(e, tz) } : undefined;
       if (e.allDay) {
         if (!e.startDate || e.startDate > date || (e.endDate ?? addDays(e.startDate, 1)) <= date) continue;
-        items.push({ key: `g:${e.id}:${date}`, title: e.title, location: e.location, timeLabel: "All day", allDay: true, color: s.color, who: s.label, sortKey: 0 });
+        items.push({ key: `g:${e.id}:${date}`, title: e.title, location: e.location, timeLabel: "All day", allDay: true, color: s.color, who: s.label, sortKey: 0, edit });
         continue;
       }
       if (!e.startsAt) continue;
@@ -115,6 +122,7 @@ export function buildAgenda(input: {
         color: s.color,
         who: s.label,
         sortKey: startsToday ? e.startsAt.getTime() : 1,
+        edit,
       });
     }
 

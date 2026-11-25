@@ -64,6 +64,13 @@
       "when": 1795459500719,
       "tag": "0008_kitchen_kiosk",
       "breakpoints": true
+    },
+    {
+      "idx": 9,
+      "version": "7",
+      "when": 1795617547527,
+      "tag": "0009_kiosk_two_way_calendar",
+      "breakpoints": true
     }
   ]
 }

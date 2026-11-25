@@ -34,9 +34,9 @@ const TUE_1AM = new Date("2026-11-25T06:00:00Z"); // still Tuesday's chore day
 describe("chore board", () => {
   it("ticks, resets by day, keeps one-time chores for the day they were done", async () => {
     const kid = await addKid({ name: "Ava" });
-    const bed = await addChore({ kidId: kid, title: "Make bed", icon: "🛏️", recurrence: "daily", stars: 2 });
-    const room = await addChore({ kidId: kid, title: "Tidy room", recurrence: "weekly" });
-    const once = await addChore({ kidId: kid, title: "Return library book", recurrence: "once" });
+    const bed = await addChore({ kidId: kid, title: "Make bed", icon: "🛏️", recurrence: "daily", stars: 2 }, MON);
+    const room = await addChore({ kidId: kid, title: "Tidy room", recurrence: "weekly" }, MON);
+    const once = await addChore({ kidId: kid, title: "Return library book", recurrence: "once" }, MON);
 
     await completeChore(bed, MON);
     await completeChore(bed, MON); // idempotent

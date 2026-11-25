@@ -32,6 +32,7 @@ update here and in the tests that enforce it.
 | `/kiosk/pair` | anyone | a code box; its one action trades a one-time pairing code for a kiosk cookie (see "Kitchen kiosk") |
 | `/kiosk` | allowlisted users or a paired kiosk device | session, or a device token checked against the database by the page and every kiosk action |
 | `/api/auth/*` | anyone | Auth.js OAuth flow; allowlist enforced in callbacks |
+| `/manifest.webmanifest`, `/sw.js`, `/offline.html`, `/icons/*` | anyone | static PWA files with no household data; the service worker caches only these and Next.js build files, never pages or data |
 | `/api/cron/simplefin-sync`, `/api/cron/monthly-advisor`, `/api/cron/card-catalog`, `/api/cron/family-hub` | Railway cron only | `Authorization: Bearer $CRON_SECRET`, constant-time compare, fails closed if the secret is missing or short |
 | `/api/mcp` | assistants a member approved | OAuth bearer token (see "Assistant access"); 404 unless `MCP_ENABLED=true` |
 | `/api/oauth/register`, `/api/oauth/token`, `/api/oauth/revoke` | assistant apps | registration grants nothing; token needs a PKCE proof or refresh token; rate limited; 404 unless enabled |
@@ -74,8 +75,10 @@ account. Pavel chose a paired device token (2026-11-23):
   calendar entries other than finance reminders, chores, shopping, returns,
   upkeep due in two weeks. Write: tick or un-tick a chore, add a one-time
   chore, add or tick a shopping item, restock staples, add a return or move
-  its status, mark an upkeep task done, refresh the calendar. Deleting
-  anything, adding kids or recurring chores, and every finance, trips and
+  its status, mark an upkeep task done, refresh the calendar, and add,
+  edit or delete events on the family Google calendar (the spec asks for
+  this on the wall screen; Google keeps deleted events for 30 days).
+  Deleting anything else, adding kids or recurring chores, and every finance, trips and
   settings page stay member-only. `tests/boundaries.test.ts` checks this.
 - **Risk accepted.** Anyone standing at the screen can use those kiosk
   actions, and someone who takes the device can keep using the kiosk until
@@ -209,7 +212,7 @@ fails if `fetch(` is used anywhere else.
 
 | Host | Why |
 | --- | --- |
-| `accounts.google.com`, `oauth2.googleapis.com`, `openidconnect.googleapis.com`, `www.googleapis.com` | Google sign-in; Google Calendar (read-only kiosk sync, `calendar.readonly`) |
+| `accounts.google.com`, `oauth2.googleapis.com`, `openidconnect.googleapis.com`, `www.googleapis.com` | Google sign-in; Google Calendar (two-way family calendar sync, `calendar.events`) |
 | `bridge.simplefin.org`, `beta-bridge.simplefin.org` | bank sync |
 | `generativelanguage.googleapis.com` | Gemini |
 | `api.anthropic.com` | Claude |
@@ -251,7 +254,8 @@ needs a review here.
 
 `DATABASE_URL`, `AUTH_SECRET`, `AUTH_GOOGLE_SECRET`, `CRON_SECRET`,
 `SIMPLEFIN_ACCESS_URL`, `GEMINI_API_KEY`, `ANTHROPIC_API_KEY`, `DOC_VAULT_KEY`,
-`GOOGLE_CALENDAR_SERVICE_ACCOUNT`, `GOOGLE_CALENDAR_REFRESH_TOKEN` and `GOOGLE_CALENDARS` are read
+`GOOGLE_CALENDAR_SERVICE_ACCOUNT`, `GOOGLE_REFRESH_TOKEN` (or `GOOGLE_CALENDAR_REFRESH_TOKEN`),
+`GOOGLE_CLIENT_SECRET`, `GOOGLE_CALENDAR_ID` and `GOOGLE_CALENDARS` are read
 only by server code. Files that read them import `server-only`, so a Client
 Component importing them breaks the build. No variable uses the
 `NEXT_PUBLIC_` prefix (CI checks this). Secrets live in Railway variables,
@@ -265,15 +269,32 @@ browser. Rotating `AUTH_SECRET` means reconnecting SimpleFIN.
 
 ## Google Calendar sync
 
-The kiosk shows a copy of the family's Google calendars stored in
-`calendar_google_events`: title, time range, location and all-day only,
-from yesterday through the next 9 days. Calendar ids (often email
-addresses) stay in `GOOGLE_CALENDARS` and are never stored or sent to a
-browser; rows carry the label ("Pavel", "Kids") instead. Credentials are
-either a service account the calendars are shared with (preferred, it can
-only read what was shared) or a member's refresh token with the
-`calendar.readonly` scope. Sync runs at most once a minute, every 15
-minutes while the kiosk is on, and hourly from cron.
+Two-way with the shared family calendar ("Pavel + Raisa"); read-only for
+any extra calendars in `GOOGLE_CALENDARS`.
+
+- **Mirror.** `calendar_google_events` keeps title, time range, location,
+  all-day, Google's `etag` and update time, from yesterday through the next
+  9 days. Sync upserts by Google event id and drops rows Google no longer
+  returns. It runs at most once a minute: when the kiosk or phone page
+  renders and the copy is over 90 s old (the kiosk re-renders every 30 s),
+  on the Sync button, and hourly from cron.
+- **Ids stay on the server.** Calendar ids (often email addresses) live in
+  `GOOGLE_CALENDAR_ID` / `GOOGLE_CALENDARS`, or are found by name with
+  `calendarList.list` (`GOOGLE_CALENDAR_NAME`) and kept in process memory
+  only. They are never stored or sent to a browser; rows carry a key
+  ("family", "kids") and the browser gets only our own row ids.
+- **Writes.** Add / edit / delete go to Google first (`events.insert`,
+  `events.patch`, `events.delete`), then update the mirror. Edits and
+  deletes send the stored etag as `If-Match`, so a change made elsewhere is
+  never overwritten; on a mismatch the mirror is refreshed and the user
+  tries again. Only rows of the family calendar can be changed. Google
+  keeps deleted events in its bin for 30 days.
+- **Credentials.** A member's refresh token (`GOOGLE_REFRESH_TOKEN`, for
+  `GOOGLE_CLIENT_ID` or the sign-in client) with the `calendar.events` and
+  `calendar.calendarlist.readonly` scopes, or a service account the family
+  calendar is shared with ("Make changes to events") plus
+  `GOOGLE_CALENDAR_ID`. `calendar.events` cannot change calendar sharing or
+  settings, only events.
 
 ## Bank sync limits
 
