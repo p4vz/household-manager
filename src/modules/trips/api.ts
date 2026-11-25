@@ -2,7 +2,7 @@ import "server-only";
 import { and, asc, count, desc, eq, inArray, lte, or, sql } from "drizzle-orm";
 import { bus } from "@/core/bus";
 import { db } from "@/core/db/client";
-import { listCreditCards, planCardsForPurchases } from "@/modules/finance/api";
+import { listCreditCards, planCardsForPurchases, type Viewer } from "@/modules/finance/api";
 import {
   aiConfigured,
   generateAllergyCards,
@@ -391,12 +391,14 @@ export async function outstandingBookings(on = today()) {
 /**
  * Card advice for a trip's unpaid bookings, from finance's reward profiles:
  * the best card per booking, and open sign-up bonuses that the trip's spend
- * could meet before their deadlines.
+ * could meet before their deadlines. Advice uses only the cards `viewer` can
+ * see in Finance (joint and their own), so the other member's spending and
+ * bonus progress never show up here.
  */
-export async function tripCardPlan(tripId: string, now = new Date()) {
+export async function tripCardPlan(viewer: Viewer, tripId: string, now = new Date()) {
   const items = await listItinerary(tripId);
   const purchases = toPlannedPurchases(items, now.toISOString().slice(0, 10));
-  const [plan, cards] = await Promise.all([planCardsForPurchases(purchases, now), listCreditCards()]);
+  const [plan, cards] = await Promise.all([planCardsForPurchases(viewer, purchases, now), listCreditCards()]);
   const byRef = new Map(plan.purchases.map((p) => [p.ref, p]));
   const cardName = new Map(cards.map((c) => [c.accountId, c.name]));
   return {

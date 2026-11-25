@@ -4,7 +4,7 @@ import { PGlite } from "@electric-sql/pglite";
 import { describe, expect, it } from "vitest";
 
 /**
- * Migration 0010/0011 moves existing shopping items (one flat list by store,
+ * Migration 0011/0012 moves existing shopping items (one flat list by store,
  * some marked "staple") into a "Shopping" list with a section per store, and
  * turns the staples into a "Staples" template.
  */
@@ -20,14 +20,14 @@ async function apply(pg: PGlite, from: number, to: number) {
 describe("shopping migration", () => {
   it("keeps existing items and turns staples into a template", async () => {
     const pg = new PGlite();
-    await apply(pg, 0, 9);
+    await apply(pg, 0, 10);
     await pg.exec(`
       INSERT INTO family_shopping_items (name, store, is_staple, checked, created_at) VALUES
         ('Milk', 'Costco', true, false, '2026-11-01T10:00:00Z'),
         ('Cake', 'Costco', false, true, '2026-11-02T10:00:00Z'),
         ('Eggs', 'Giant', true, false, '2026-11-03T10:00:00Z');
     `);
-    await apply(pg, 10, 11);
+    await apply(pg, 11, 12);
 
     const lists = await pg.query<{ name: string }>(`SELECT name FROM family_shopping_lists`);
     expect(lists.rows.map((r) => r.name)).toEqual(["Shopping"]);
@@ -49,7 +49,7 @@ describe("shopping migration", () => {
 
   it("creates nothing but the starter templates on an empty database", async () => {
     const pg = new PGlite();
-    await apply(pg, 0, 11);
+    await apply(pg, 0, 12);
     expect((await pg.query(`SELECT 1 FROM family_shopping_lists`)).rows).toHaveLength(0);
     expect((await pg.query<{ name: string }>(`SELECT name FROM family_shopping_templates ORDER BY created_at`)).rows.map((r) => r.name)).toEqual(["Weekly Sam's", "Weekly Russian"]);
   });

@@ -1,10 +1,13 @@
 import Link from "next/link";
-import { dashboardData, syncStatus } from "@/modules/finance/api";
+import { requireUserOrRedirect } from "@/core/auth/guard";
+import { dashboardData, syncStatus, viewerFromLabel } from "@/modules/finance/api";
 import { FinanceDashboard } from "@/modules/finance/ui/dashboard";
 import { drillDownAction } from "./actions";
 
 export default async function FinancePage() {
-  const [{ connection, runs, totals }, data] = await Promise.all([syncStatus(), dashboardData()]);
+  const user = await requireUserOrRedirect();
+  const viewer = viewerFromLabel(user.owner);
+  const [{ connection, runs }, data] = await Promise.all([syncStatus(), dashboardData(viewer)]);
   const last = runs[0];
   return (
     <section className="space-y-6">
@@ -13,7 +16,6 @@ export default async function FinancePage() {
         <span className="text-sm text-muted-foreground">
           {connection.connected ? "Bank sync on" : "Bank sync not connected"}
           {last ? ` · last ${last.status} ${last.startedAt.toLocaleString()}` : ""}
-          {` · ${totals?.n ?? 0} transactions`}
         </span>
         {!connection.connected ? (
           <Link href="/settings#bank-sync" className="text-sm underline">Connect SimpleFIN</Link>
@@ -24,7 +26,7 @@ export default async function FinancePage() {
           {last.messages.map((m, i) => <li key={i}>{m}</li>)}
         </ul>
       ) : null}
-      <FinanceDashboard {...data} drillDown={drillDownAction} />
+      <FinanceDashboard {...data} viewer={viewer} drillDown={drillDownAction} />
     </section>
   );
 }

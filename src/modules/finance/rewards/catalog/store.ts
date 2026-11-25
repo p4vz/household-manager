@@ -241,7 +241,7 @@ export type CardDrift = {
  * Household cards whose catalog terms changed since they were last applied.
  * Nothing is changed on the card until a person chooses apply or keep.
  */
-export async function catalogDriftForCards(): Promise<CardDrift[]> {
+export async function catalogDriftForCards(accountIds: ReadonlySet<string>): Promise<CardDrift[]> {
   const rows = await db()
     .select({
       accountId: financeCardProfiles.accountId,
@@ -256,6 +256,7 @@ export async function catalogDriftForCards(): Promise<CardDrift[]> {
     .where(sql`${financeCardProfiles.catalogAppliedVersion} is distinct from ${financeCardCatalog.version}`);
   const out: CardDrift[] = [];
   for (const r of rows) {
+    if (!accountIds.has(r.accountId)) continue;
     const changes = await db()
       .select({ changes: financeCardCatalogChanges.changes })
       .from(financeCardCatalogChanges)

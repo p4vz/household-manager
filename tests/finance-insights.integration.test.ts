@@ -51,35 +51,35 @@ const today = new Date("2026-11-20T12:00:00Z");
 
 describe("dashboard data", () => {
   it("excludes transfers and splits income from spending", async () => {
-    const data = await dashboardData(today);
+    const data = await dashboardData("user1", today);
     const nov = data.categoryFacts.filter((f) => f.month === "2026-11");
     expect(nov.reduce((s, f) => s + f.spend, 0)).toBe(320);
     expect(nov.reduce((s, f) => s + f.income, 0)).toBe(6000);
   });
 
   it("drills down into the transactions behind a slice", async () => {
-    const rows = await drillDownTransactions({ range: "3M", owner: "user1", accountIds: null, category: "Groceries" }, today);
+    const rows = await drillDownTransactions("user1", { range: "3M", owner: "user1", accountIds: null, category: "Groceries" }, today);
     expect(rows.map((r) => r.date)).toEqual(["2026-11-03", "2026-10-03", "2026-09-03"]);
-    const none = await drillDownTransactions({ range: "3M", owner: "joint", accountIds: null, category: "Groceries" }, today);
+    const none = await drillDownTransactions("user1", { range: "3M", owner: "joint", accountIds: null, category: "Groceries" }, today);
     expect(none).toEqual([]);
   });
 });
 
 describe("budget", () => {
   it("suggests from complete months and tracks the current month", async () => {
-    const o = await budgetOverview(today);
+    const o = await budgetOverview("user1", today);
     const groceries = o.rows.find((r) => r.category === "Groceries")!;
     expect(groceries.suggestion).toMatchObject({ suggested: 310 });
     expect(groceries.spent).toBe(260);
     expect(groceries.budget).toBeNull();
 
-    await acceptAllSuggestions(today);
-    const after = (await budgetOverview(today)).rows.find((r) => r.category === "Groceries")!;
+    await acceptAllSuggestions("user1", today);
+    const after = (await budgetOverview("user1", today)).rows.find((r) => r.category === "Groceries")!;
     expect(after).toMatchObject({ budget: { limit: 310, source: "auto" }, status: "warning" });
 
-    await setBudget("Groceries", 250, "manual");
-    await acceptAllSuggestions(today); // manual overrides survive
-    const manual = (await budgetOverview(today)).rows.find((r) => r.category === "Groceries")!;
+    await setBudget("user1", "Groceries", 250, "manual");
+    await acceptAllSuggestions("user1", today); // manual overrides survive
+    const manual = (await budgetOverview("user1", today)).rows.find((r) => r.category === "Groceries")!;
     expect(manual).toMatchObject({ budget: { limit: 250, source: "manual" }, status: "over" });
   });
 });

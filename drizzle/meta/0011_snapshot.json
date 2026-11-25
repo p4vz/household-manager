@@ -1,6 +1,6 @@
 {
-  "id": "d9dc5cf8-9cb9-4bcd-a695-0fb77e92ee31",
-  "prevId": "fe5cf100-a64b-4bd6-8597-aa27be8f8a29",
+  "id": "dbc1b29a-abeb-45b2-85dd-3fed4a98a3be",
+  "prevId": "988a0173-5f32-486a-9332-e2c8bacacf4a",
   "version": "7",
   "dialect": "postgresql",
   "tables": {
@@ -448,6 +448,82 @@
       "checkConstraints": {},
       "isRLSEnabled": false
     },
+    "public.finance_account_images": {
+      "name": "finance_account_images",
+      "schema": "",
+      "columns": {
+        "account_id": {
+          "name": "account_id",
+          "type": "uuid",
+          "primaryKey": true,
+          "notNull": true
+        },
+        "mime_type": {
+          "name": "mime_type",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "cipher_text": {
+          "name": "cipher_text",
+          "type": "bytea",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "iv": {
+          "name": "iv",
+          "type": "bytea",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "auth_tag": {
+          "name": "auth_tag",
+          "type": "bytea",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "bytes": {
+          "name": "bytes",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "uploaded_by": {
+          "name": "uploaded_by",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "updated_at": {
+          "name": "updated_at",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "now()"
+        }
+      },
+      "indexes": {},
+      "foreignKeys": {
+        "finance_account_images_account_id_finance_accounts_id_fk": {
+          "name": "finance_account_images_account_id_finance_accounts_id_fk",
+          "tableFrom": "finance_account_images",
+          "tableTo": "finance_accounts",
+          "columnsFrom": [
+            "account_id"
+          ],
+          "columnsTo": [
+            "id"
+          ],
+          "onDelete": "cascade",
+          "onUpdate": "no action"
+        }
+      },
+      "compositePrimaryKeys": {},
+      "uniqueConstraints": {},
+      "policies": {},
+      "checkConstraints": {},
+      "isRLSEnabled": false
+    },
     "public.finance_accounts": {
       "name": "finance_accounts",
       "schema": "",
@@ -479,6 +555,12 @@
         },
         "display_name": {
           "name": "display_name",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "official_name": {
+          "name": "official_name",
           "type": "text",
           "primaryKey": false,
           "notNull": false
@@ -572,6 +654,12 @@
           "notNull": true,
           "default": "gen_random_uuid()"
         },
+        "viewer": {
+          "name": "viewer",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        },
         "created_at": {
           "name": "created_at",
           "type": "timestamp with time zone",
@@ -610,10 +698,16 @@
       "name": "finance_budgets",
       "schema": "",
       "columns": {
+        "viewer": {
+          "name": "viewer",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
         "category": {
           "name": "category",
           "type": "text",
-          "primaryKey": true,
+          "primaryKey": false,
           "notNull": true
         },
         "monthly_limit": {
@@ -638,7 +732,15 @@
       },
       "indexes": {},
       "foreignKeys": {},
-      "compositePrimaryKeys": {},
+      "compositePrimaryKeys": {
+        "finance_budgets_viewer_category_pk": {
+          "name": "finance_budgets_viewer_category_pk",
+          "columns": [
+            "viewer",
+            "category"
+          ]
+        }
+      },
       "uniqueConstraints": {},
       "policies": {},
       "checkConstraints": {},
@@ -4087,13 +4189,26 @@
           "name": "section_id",
           "type": "uuid",
           "primaryKey": false,
-          "notNull": true
+          "notNull": false
         },
         "name": {
           "name": "name",
           "type": "text",
           "primaryKey": false,
           "notNull": true
+        },
+        "store": {
+          "name": "store",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "is_staple": {
+          "name": "is_staple",
+          "type": "boolean",
+          "primaryKey": false,
+          "notNull": true,
+          "default": false
         },
         "quantity": {
           "name": "quantity",
@@ -4135,6 +4250,21 @@
           "columns": [
             {
               "expression": "section_id",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": false,
+          "concurrently": false,
+          "method": "btree",
+          "with": {}
+        },
+        "family_shopping_items_store_idx": {
+          "name": "family_shopping_items_store_idx",
+          "columns": [
+            {
+              "expression": "store",
               "isExpression": false,
               "asc": true,
               "nulls": "last"

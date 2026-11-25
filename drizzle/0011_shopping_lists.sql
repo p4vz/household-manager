@@ -43,7 +43,8 @@ CREATE UNIQUE INDEX "family_shopping_sections_uq" ON "family_shopping_sections" 
 CREATE INDEX "family_shopping_template_items_tpl_idx" ON "family_shopping_template_items" USING btree ("template_id");--> statement-breakpoint
 CREATE UNIQUE INDEX "family_shopping_templates_name_uq" ON "family_shopping_templates" USING btree ("name");--> statement-breakpoint
 ALTER TABLE "family_shopping_items" ADD CONSTRAINT "family_shopping_items_section_id_family_shopping_sections_id_fk" FOREIGN KEY ("section_id") REFERENCES "public"."family_shopping_sections"("id") ON DELETE cascade ON UPDATE no action;--> statement-breakpoint
-CREATE INDEX "family_shopping_items_section_idx" ON "family_shopping_items" USING btree ("section_id");--> statement-breakpoint
+CREATE INDEX "family_shopping_items_section_idx" ON "family_shopping_items" USING btree ("section_id");
+--> statement-breakpoint
 INSERT INTO "family_shopping_revision" ("id", "revision") VALUES (1, 0);--> statement-breakpoint
 -- Existing items move to one list ("Shopping"), one section per store they used.
 INSERT INTO "family_shopping_lists" ("name", "sort_order")
