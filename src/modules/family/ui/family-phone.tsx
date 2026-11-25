@@ -2,6 +2,7 @@
 
 import { startTransition, useState } from "react";
 import { ChoreBoard, type BoardKidView } from "./chore-board";
+import type { KidProgressView } from "./goal-strip";
 import { field, tap } from "./kit";
 import { PrintTodayButtons } from "./print-today";
 import { ReturnsPanel, type MemberReturnTools, type ReturnView } from "./returns-panel";
@@ -56,7 +57,9 @@ export function FamilyPhone({
   printing = false,
   icons,
   actions,
+  progress,
 }: {
+  progress?: Record<string, KidProgressView>;
   kids: BoardKidView[];
   shopping: ShoppingBoard;
   stores: string[];
@@ -108,7 +111,14 @@ export function FamilyPhone({
         ) : tab === "shopping" ? (
           <ShoppingPanel board={shopping} today={todayIso} dateLabel={dateLabel} actions={actions.shopping} member={actions.shoppingMember} printing={printing} />
         ) : tab === "chores" ? (
-          <ChoreBoard kids={kids} icons={icons} layout="phone" actions={{ setDone: actions.setChoreDone, addOneTime: actions.addOneTimeChore }} />
+          <div className="flex h-full flex-col gap-2">
+            <a href="/family/progress" className={`${tap} flex items-center justify-center border text-sm`}>
+              📈 Progress, goals and rewards
+            </a>
+            <div className="min-h-0 flex-1">
+              <ChoreBoard kids={kids} progress={progress} icons={icons} layout="phone" actions={{ setDone: actions.setChoreDone, addOneTime: actions.addOneTimeChore }} />
+            </div>
+          </div>
         ) : tab === "returns" ? (
           <ReturnsPanel
             returns={returns}

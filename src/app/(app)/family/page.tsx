@@ -1,4 +1,5 @@
 import { KitchenModeButton } from "@/components/kitchen-mode-button";
+import { enterKitchenModeAction } from "../../kiosk/pair/actions";
 import { after } from "next/server";
 import { syncGoogleCalendarsIfStale } from "@/modules/calendar/api";
 import { LiveRefresh } from "@/modules/family/ui/live-refresh";
@@ -50,10 +51,11 @@ export default async function FamilyPage() {
     <section className="-m-6 space-y-3 p-3 sm:m-0 sm:p-0">
       <div className="mx-auto flex max-w-md items-center justify-between">
         <h1 className="text-xl font-semibold">Family hub</h1>
-        <KitchenModeButton className="min-h-12 rounded-xl border px-4 text-sm font-medium" />
+        <KitchenModeButton className="min-h-12 rounded-xl border px-4 text-sm font-medium" enter={enterKitchenModeAction} />
       </div>
       <FamilyPhone
         kids={hub.kids}
+        progress={hub.progress}
         shopping={hub.shopping}
         stores={hub.stores}
         returns={hub.returns}

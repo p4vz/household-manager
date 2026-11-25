@@ -2,6 +2,7 @@ import Link from "next/link";
 import { signOut } from "@/core/auth/config";
 import { requireUserOrRedirect } from "@/core/auth/guard";
 import { KitchenModeButton } from "@/components/kitchen-mode-button";
+import { enterKitchenModeAction } from "../kiosk/pair/actions";
 import { MODULE_DEFINITIONS } from "@/modules/registry";
 
 export default async function AppLayout({ children }: LayoutProps<"/">) {
@@ -26,7 +27,7 @@ export default async function AppLayout({ children }: LayoutProps<"/">) {
           <Link href="/settings" className="opacity-80 hover:opacity-100">Settings</Link>
         </nav>
         <form action={doSignOut} className="ml-auto flex items-center gap-3">
-          <KitchenModeButton className="rounded-lg border px-3 py-1.5 font-medium" />
+          <KitchenModeButton className="rounded-lg border px-3 py-1.5 font-medium" enter={enterKitchenModeAction} />
           <span className="opacity-60">{user.owner}</span>
           <button type="submit" className="underline">Sign out</button>
         </form>

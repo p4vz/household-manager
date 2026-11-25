@@ -140,7 +140,7 @@ describe("external surface", () => {
         expect(src, rel(file)).toMatch(/rateLimit\(/);
         expect(src, rel(file)).toMatch(/redeemPairingCode\(/);
         // One-tap pairing needs a member session; only the code exchange is public.
-        expect(src, rel(file)).toMatch(/export const pairThisScreenAction = authedAction\(/);
+        expect(src, rel(file)).toMatch(/export const enterKitchenModeAction = authedAction\(/);
         expect(src.match(/pairDeviceForMember\(/g)?.length, rel(file)).toBe(1);
         continue;
       }
@@ -163,17 +163,37 @@ describe("external surface", () => {
     expect(imports).toEqual(["next/cache", "zod", "@/core/actions/kiosk-action", "@/modules/calendar/api"]);
     expect(src).not.toMatch(/\b(delete\w*|remove\w*)\(/i);
     expect(src).not.toMatch(/deleteGoogleEvent/);
-    // The one place an event is deleted is the member-only family actions file.
+    // Events are deleted only by a member, or on the kitchen screen in adult mode (adult PIN).
     const users = files.filter((f) => /deleteGoogleEvent\b/.test(readFileSync(f, "utf8"))).map(rel).sort();
-    expect(users).toEqual(["app/(app)/family/actions.ts", "modules/calendar/api.ts", "modules/calendar/google.ts"]);
+    expect(users).toEqual(["app/(app)/family/actions.ts", "app/kiosk/adult-actions.ts", "modules/calendar/api.ts", "modules/calendar/google.ts"]);
     expect(readFileSync(join(SRC, "app/(app)/family/actions.ts"), "utf8")).toMatch(/export const deleteEventAction = authedAction\(/);
+  });
+
+  it("the kitchen screen's adult actions all need adult mode, except trying the PIN and locking", () => {
+    const src = readFileSync(join(SRC, "app/kiosk/adult-actions.ts"), "utf8");
+    expect(src).not.toMatch(/authedAction\(/);
+    const imports = [...src.matchAll(/from "([^"]+)"/g)].map((m) => m[1]);
+    expect(imports.filter((i) => /modules\/(finance|trips|assistant)|core\/(mcp|ai)/.test(i))).toEqual([]);
+    const declared = [...src.matchAll(/export const (\w+) = kioskAction\(\s*"([\w.]+)"/g)].map((m) => `${m[1]}:${m[2]}`);
+    expect(declared).toEqual([
+      "unlockAdultAction:adult.unlock",
+      "lockAdultAction:adult.lock",
+      "deleteEventAdultAction:calendar.delete",
+      "removeEventPhotoAdultAction:calendar.photo.remove",
+      "askKitchenAction:assistant.kitchen",
+      "exitKitchenModeAction:kiosk.exit",
+    ]);
+    // Ask Claude on the screen is the kitchen-only one: a snapshot and no tools.
+    expect(imports.filter((i) => i.startsWith("@/assistant/"))).toEqual(["@/assistant/kitchen"]);
+    expect(src.match(/^export /gm)?.length).toBe(declared.length + 1); // + the UnlockResult type
   });
 
   it("the kiosk device cookie is honoured only on /kiosk", () => {
     const proxy = readFileSync(join(SRC, "proxy.ts"), "utf8");
     expect(proxy).toMatch(/if \(isKioskPath\(pathname\)\)/);
     const users = files.filter((f) => /KIOSK_COOKIE/.test(readFileSync(f, "utf8"))).map(rel).sort();
-    expect(users).toEqual(["app/kiosk/pair/actions.ts", "core/kiosk/devices.ts", "core/kiosk/pairing.ts", "proxy.ts"]);
+    // adult-actions.ts only deletes it, when an adult leaves kitchen mode.
+    expect(users).toEqual(["app/kiosk/adult-actions.ts", "app/kiosk/pair/actions.ts", "core/kiosk/devices.ts", "core/kiosk/pairing.ts", "proxy.ts"]);
   });
 
   it("only core/net/outbound.ts calls fetch (plus two same-origin client reads)", () => {

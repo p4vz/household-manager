@@ -1,10 +1,15 @@
+import { cookies } from "next/headers";
 import { redirect } from "next/navigation";
 import { after } from "next/server";
-import { requireKioskOrMember } from "@/core/actions/kiosk-action";
+import { currentUser } from "@/core/auth/guard";
 import { currentKioskDevice } from "@/core/kiosk/devices";
+import { KIOSK_LOCK_COOKIE } from "@/core/kiosk/pairing";
+import { isAdult } from "@/core/kiosk/permissions";
+import { KitchenModeButton } from "@/components/kitchen-mode-button";
 import { WeatherWidget } from "@/components/weather-widget";
 import { KioskControls } from "@/modules/family/ui/kiosk-controls";
-import { pairThisScreenAction } from "./pair/actions";
+import { clearUnpairedScreenAction, enterKitchenModeAction } from "./pair/actions";
+import { askKitchenAction, deleteEventAdultAction, exitKitchenModeAction, lockAdultAction, removeEventPhotoAdultAction, unlockAdultAction } from "./adult-actions";
 import { syncGoogleCalendarsIfStale } from "@/modules/calendar/api";
 import { CHORE_ICONS, openStoreCount } from "@/modules/family/api";
 import { CalendarPanel } from "@/modules/family/ui/calendar-panel";
@@ -28,20 +33,17 @@ const CALENDAR_MAX_AGE_MS = 90_000;
 
 /**
  * The kitchen wall screen (1920x1080 landscape, touch). Open to a paired
- * kiosk device or a signed-in member; see docs/SECURITY.md ("Kitchen kiosk").
- * Left: calendar (55% to start; the divider drags). Right: chores, shopping,
- * returns and upkeep as tabs. Kids use this screen, so it cannot delete
- * calendar events or leave for the rest of the app.
+ * kiosk device only; see docs/SECURITY.md ("Kitchen kiosk"). Left: calendar
+ * (55% to start; the divider drags). Right: chores, shopping, returns and
+ * upkeep as tabs. Kids use this screen, so it is locked to /kiosk and
+ * deleting, finishing upkeep, moving returns along and leaving need adult
+ * mode (adult PIN, five minutes).
  */
 export default async function KioskPage() {
-  let actor: Awaited<ReturnType<typeof requireKioskOrMember>>;
-  try {
-    actor = await requireKioskOrMember();
-  } catch {
-    redirect("/kiosk/pair");
-  }
-  // A parent opened Kitchen mode: offer one-tap pairing until this device has its own kiosk cookie.
-  const paired = actor.kind === "kiosk" || (await currentKioskDevice()) !== null;
+  const device = await currentKioskDevice();
+  if (!device) return <NotKitchenScreen />;
+  const actor = { kind: "kiosk" as const, adultUntil: device.adultUntil };
+  const adult = isAdult(actor);
   const hub = await loadHub();
   // Keep the Google mirror fresh while the screen is on: the page refreshes
   // every 30 s, and pulls from Google when the copy is over 90 s old.
@@ -64,7 +66,15 @@ export default async function KioskPage() {
       weather={<WeatherWidget weather={hub.weather} size="kiosk" />}
       header={
         <>
-          <KioskControls member={actor.kind === "member"} paired={paired} pair={pairThisScreenAction} />
+          <KioskControls
+            adult={{
+              until: adult && device.adultUntil ? device.adultUntil.toISOString() : null,
+              unlock: unlockAdultAction,
+              lock: lockAdultAction,
+              exit: exitKitchenModeAction,
+              ask: askKitchenAction,
+            }}
+          />
           {hub.printing ? (
             <PrintTodayButtons
               className={printBtn}
@@ -94,7 +104,8 @@ export default async function KioskPage() {
               eventActions={{
                 create: createEventAction,
                 update: updateEventAction,
-                photos: { list: eventPhotosAction, add: addEventPhotoAction },
+                remove: adult ? deleteEventAdultAction : undefined,
+                photos: { list: eventPhotosAction, add: addEventPhotoAction, remove: adult ? removeEventPhotoAdultAction : undefined },
               }}
             />
           </section>
@@ -110,6 +121,7 @@ export default async function KioskPage() {
                   content: (
                     <ChoreBoard
                       kids={hub.kids}
+                      progress={hub.progress}
                       icons={CHORE_ICONS}
                       actions={{
                         setDone: setChoreDoneAction,
@@ -143,7 +155,7 @@ export default async function KioskPage() {
                       returns={hub.returns}
                       stores={hub.stores}
                       actions={{
-                        setStatus: setReturnStatusAction,
+                        setStatus: adult ? setReturnStatusAction : undefined,
                         add: addReturnAction,
                       }}
                     />
@@ -154,7 +166,7 @@ export default async function KioskPage() {
                   label: "🔧 Upkeep",
                   badge: hub.upkeep.length,
                   alert: overdueUpkeep > 0,
-                  content: <UpkeepPanel tasks={hub.upkeep} complete={completeUpkeepAction} />,
+                  content: <UpkeepPanel tasks={hub.upkeep} complete={adult ? completeUpkeepAction : undefined} />,
                 },
               ]}
             />
@@ -162,5 +174,47 @@ export default async function KioskPage() {
         }
       />
     </KioskShell>
+  );
+}
+
+/**
+ * /kiosk without a working pairing. A signed-in member can turn this device
+ * into the kitchen screen; a screen whose pairing was removed in Settings
+ * can be cleared; anyone else goes to the pairing page.
+ */
+async function NotKitchenScreen() {
+  const locked = (await cookies()).has(KIOSK_LOCK_COOKIE);
+  const member = locked ? null : await currentUser();
+  if (!locked && !member) redirect("/kiosk/pair");
+  return (
+    <main className="flex min-h-screen items-center justify-center p-6">
+      <div className="w-full max-w-md space-y-5 rounded-2xl border p-8">
+        {locked ? (
+          <>
+            <h1 className="text-2xl font-semibold">This screen was unpaired</h1>
+            <p className="opacity-80">Someone removed it in Settings. Pair it again with a code from Settings, or turn it back into an ordinary browser.</p>
+            <div className="flex flex-wrap gap-2">
+              <a href="/kiosk/pair" className="min-h-12 rounded-xl bg-sky-600 px-4 py-3 font-medium text-white">
+                Pair again
+              </a>
+              <form action={clearUnpairedScreenAction}>
+                <button type="submit" className="min-h-12 rounded-xl border px-4 font-medium">
+                  Use as a normal browser
+                </button>
+              </form>
+            </div>
+          </>
+        ) : (
+          <>
+            <h1 className="text-2xl font-semibold">This isn&apos;t the kitchen screen</h1>
+            <p className="opacity-80">
+              The kitchen screen runs on its own pairing, without your Google sign-in, so kids can&apos;t get into the app. Make this device the kitchen
+              screen, or pair the wall screen with a code from Settings.
+            </p>
+            <KitchenModeButton className="min-h-12 rounded-xl bg-sky-600 px-4 font-medium text-white" label="Make this the kitchen screen" enter={enterKitchenModeAction} />
+          </>
+        )}
+      </div>
+    </main>
   );
 }
