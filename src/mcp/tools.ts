@@ -26,6 +26,12 @@ export type ToolContext = {
   appUrl: string | null;
 };
 
+/**
+ * Finance answers cover what the member this assistant acts for can see in
+ * the app: joint accounts and their own, never the other member's.
+ */
+const viewerOf = (ctx: ToolContext) => finance.viewerFromLabel(ctx.owner);
+
 export type AssistantTool = {
   name: string;
   title: string;
@@ -57,8 +63,8 @@ function quarterOf(day: string) {
 }
 
 /** Terms of held cards by account id, for FX fees, credits and perks. */
-async function termsByAccount() {
-  return new Map((await finance.heldCardTerms()).map((t) => [t.accountId, t]));
+async function termsByAccount(viewer: finance.Viewer) {
+  return new Map((await finance.heldCardTerms(viewer)).map((t) => [t.accountId, t]));
 }
 
 /**
@@ -96,9 +102,10 @@ export const TOOLS: AssistantTool[] = [
     },
     requires: ["finance.cards"],
     scrub: "finance",
-    async run(args, { now, permissions }) {
+    async run(args, ctx) {
+      const { now, permissions } = ctx;
       const today = isoDay(now);
-      const [cards, terms, bonuses] = await Promise.all([finance.listCardsWithProfiles(), termsByAccount(), finance.signupBonusOverview(now)]);
+      const [cards, terms, bonuses] = await Promise.all([finance.listCardsWithProfiles(viewerOf(ctx)), termsByAccount(viewerOf(ctx)), finance.signupBonusOverview(viewerOf(ctx), now)]);
       const quarter = quarterOf(today);
       const bonusBy = new Map(bonuses.map((b) => [b.accountId, b]));
       return cards
@@ -157,7 +164,8 @@ export const TOOLS: AssistantTool[] = [
     input: { purchases: z.array(purchaseInput).min(1).max(20) },
     requires: ["finance.card_advice"],
     scrub: "finance",
-    async run(args, { now, permissions }) {
+    async run(args, ctx) {
+      const { now, permissions } = ctx;
       const items = z.array(purchaseInput).parse(args.purchases);
       const today = isoDay(now);
       const planned = items.map((p, i) => ({
@@ -167,7 +175,7 @@ export const TOOLS: AssistantTool[] = [
         merchant: p.merchant ?? p.description,
         ...finance.PURCHASE_CATEGORY[p.kind],
       }));
-      const [plan, terms] = await Promise.all([finance.planCardsForPurchases(planned, now), termsByAccount()]);
+      const [plan, terms] = await Promise.all([finance.planCardsForPurchases(viewerOf(ctx), planned, now), termsByAccount(viewerOf(ctx))]);
       if (plan.cards.length === 0) {
         return { note: "No card has a rewards profile yet. Set them up under Finance > Rewards in the app first." };
       }
@@ -203,8 +211,9 @@ export const TOOLS: AssistantTool[] = [
     input: {},
     requires: ["finance.signup_bonuses"],
     scrub: "finance",
-    async run(_args, { now }) {
-      return (await finance.signupBonusOverview(now)).map((b) => without(b, "accountId", "planned", "metWithPlan"));
+    async run(_args, ctx) {
+      const { now } = ctx;
+      return (await finance.signupBonusOverview(viewerOf(ctx), now)).map((b) => without(b, "accountId", "planned", "metWithPlan"));
     },
   },
   {
@@ -215,8 +224,9 @@ export const TOOLS: AssistantTool[] = [
     input: { range: z.enum(["3M", "6M", "12M", "YTD"]).optional().describe("Period to audit (default 12M)") },
     requires: ["finance.rewards_audit"],
     scrub: "finance",
-    async run(args, { now, permissions }) {
-      const { cards, audit } = await finance.rewardsAudit((args.range as "3M" | "6M" | "12M" | "YTD" | undefined) ?? "12M", now);
+    async run(args, ctx) {
+      const { now, permissions } = ctx;
+      const { cards, audit } = await finance.rewardsAudit(viewerOf(ctx), (args.range as "3M" | "6M" | "12M" | "YTD" | undefined) ?? "12M", now);
       if (!audit) return { note: "No card has a rewards profile yet.", cards: cards.length };
       return {
         totalEarned: audit.totalEarned,
@@ -244,8 +254,9 @@ export const TOOLS: AssistantTool[] = [
     input: { limit: z.number().int().min(1).max(15).optional().describe("How many to return (default 5)") },
     requires: ["finance.card_catalog"],
     scrub: "finance",
-    async run(args, { now }) {
-      const rows = await finance.catalogComparison("12M", now);
+    async run(args, ctx) {
+      const { now } = ctx;
+      const rows = await finance.catalogComparison(viewerOf(ctx), "12M", now);
       return rows.slice(0, (args.limit as number | undefined) ?? 5).map((r) => ({
         ...without(r, "id", "verifiedAt"),
         termsVerifiedDate: dayOf(r.verifiedAt),
@@ -355,9 +366,10 @@ export const TOOLS: AssistantTool[] = [
     input: { trip: z.string().min(1).max(120).describe("Trip id from list_trips") },
     requires: ["travel.trips", "travel.bookings", "finance.card_advice"],
     scrub: "finance",
-    async run(args, { now, permissions, appUrl }) {
+    async run(args, ctx) {
+      const { now, permissions, appUrl } = ctx;
       const trip = await findTrip(String(args.trip));
-      const plan = await trips.tripCardPlan(trip.id, now);
+      const plan = await trips.tripCardPlan(viewerOf(ctx), trip.id, now);
       if (!plan.hasProfiles) return { note: "No card has a rewards profile yet." };
       return {
         trip: trip.name,
@@ -403,8 +415,9 @@ export const TOOLS: AssistantTool[] = [
     },
     requires: ["finance.spending"],
     scrub: "finance",
-    async run(args, { now }) {
-      return finance.spendingSummary((args.range as finance.RangeKey | undefined) ?? "3M", ownerFilter(args.owner), now);
+    async run(args, ctx) {
+      const { now } = ctx;
+      return finance.spendingSummary(viewerOf(ctx), (args.range as finance.RangeKey | undefined) ?? "3M", ownerFilter(args.owner), now);
     },
   },
   {
@@ -417,8 +430,9 @@ export const TOOLS: AssistantTool[] = [
     },
     requires: ["finance.income"],
     scrub: "finance",
-    async run(args, { now }) {
-      return finance.cashFlowSummary((args.range as finance.RangeKey | undefined) ?? "12M", ownerFilter(args.owner), now);
+    async run(args, ctx) {
+      const { now } = ctx;
+      return finance.cashFlowSummary(viewerOf(ctx), (args.range as finance.RangeKey | undefined) ?? "12M", ownerFilter(args.owner), now);
     },
   },
   {
@@ -433,11 +447,11 @@ export const TOOLS: AssistantTool[] = [
     },
     requires: ["finance.transactions"],
     scrub: "finance",
-    async run(args) {
+    async run(args, ctx) {
       const cat = typeof args.category === "string" ? args.category.toLowerCase() : null;
       const merch = typeof args.merchant === "string" ? args.merchant.toLowerCase() : null;
       const since = typeof args.since === "string" ? args.since : null;
-      return (await finance.listRecentTransactions(500))
+      return (await finance.listRecentTransactions(viewerOf(ctx), 500))
         .filter((t) => !since || t.date >= since)
         .filter((t) => !cat || t.category?.toLowerCase() === cat || t.subcategory?.toLowerCase() === cat)
         .filter((t) => !merch || t.merchant.toLowerCase().includes(merch))
@@ -461,8 +475,9 @@ export const TOOLS: AssistantTool[] = [
     input: {},
     requires: ["finance.assets"],
     scrub: "finance",
-    async run() {
-      const rows = (await finance.listAccounts()).filter((a) => a.active);
+    async run(_args, ctx) {
+      // Only accounts this member can see in Finance (never the other's balances).
+      const rows = (await finance.listAccounts(viewerOf(ctx))).filter((a) => a.active && a.visible);
       return rows.map((a) => ({
         account: a.displayName ?? `${a.kind} account`,
         owner: ownerLabel(a.owner),

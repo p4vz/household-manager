@@ -3,6 +3,7 @@ import { sql } from "drizzle-orm";
 import { bus } from "@/core/bus";
 import { db } from "@/core/db/client";
 import { financeAccounts, financeTransactions } from "../schema";
+import { canSeeOwner, type Viewer } from "../access";
 import { learnRules } from "./categorize";
 import {
   assignExternalIds,
@@ -14,6 +15,7 @@ import {
   type SkipSummary,
 } from "./csv";
 import { guessAccountKind } from "./merchant";
+import { stripAccountNumbers } from "./redact";
 
 /** "new" creates a CSV-only account named after the CSV account. */
 export type AccountMapping = Record<string, string | "new" | "skip">;
@@ -29,8 +31,9 @@ export type ImportPreview = {
   existingAccounts: { id: string; name: string; simplefinStartDate: string | null }[];
 };
 
-async function existingAccounts() {
-  const rows = await db().select().from(financeAccounts);
+/** Accounts this member may import into: joint ones and their own. */
+async function existingAccounts(viewer: Viewer) {
+  const rows = (await db().select().from(financeAccounts)).filter((a) => canSeeOwner(viewer, a.owner));
   return rows.map((a) => ({
     id: a.id,
     name: a.displayName ?? a.bankName,
@@ -39,15 +42,20 @@ async function existingAccounts() {
   }));
 }
 
-export async function previewCsvImport(text: string): Promise<ImportPreview> {
+export async function previewCsvImport(viewer: Viewer, text: string): Promise<ImportPreview> {
   const { rows, skipped, columns } = parseSimplifiCsv(text);
-  const accounts = await existingAccounts();
+  const accounts = await existingAccounts(viewer);
   const norm = (s: string) => s.toLowerCase().replace(/[^a-z0-9]/g, "");
   return {
     accounts: summarizeByAccount(rows).map((s) => ({
       ...s,
       suggestedAccountId:
-        accounts.find((a) => norm(a.name) === norm(s.name) || norm(a.bankName) === norm(s.name))?.id ?? null,
+        accounts.find(
+          (a) =>
+            norm(a.name) === norm(s.name) ||
+            norm(a.bankName) === norm(s.name) ||
+            norm(a.bankName) === norm(stripAccountNumbers(s.name)),
+        )?.id ?? null,
     })),
     skippedLines: skipped.length,
     skipReasons: summarizeSkipped(skipped),
@@ -69,9 +77,9 @@ export type ImportResult = {
  * Import history. Rows dated on/after an account's SimpleFIN start date are
  * dropped (SimpleFIN owns that period), and re-imported rows are ignored.
  */
-export async function commitCsvImport(text: string, mapping: AccountMapping): Promise<ImportResult> {
+export async function commitCsvImport(viewer: Viewer, text: string, mapping: AccountMapping): Promise<ImportResult> {
   const { rows, skipped } = parseSimplifiCsv(text);
-  const accounts = await existingAccounts();
+  const accounts = await existingAccounts(viewer);
   const byId = new Map(accounts.map((a) => [a.id, a]));
   const result: ImportResult = {
     inserted: 0,
@@ -93,7 +101,8 @@ export async function commitCsvImport(text: string, mapping: AccountMapping): Pr
     if (target === "new") {
       const [created] = await db()
         .insert(financeAccounts)
-        .values({ bankName: csvName, kind: guessAccountKind(csvName) })
+        // New CSV-only accounts start private to the person importing them.
+        .values({ bankName: stripAccountNumbers(csvName), kind: guessAccountKind(csvName), owner: viewer })
         .returning();
       accountId = created.id;
     } else {

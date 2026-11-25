@@ -4,8 +4,10 @@ import { bus } from "@/core/bus";
 import { db } from "@/core/db/client";
 import { financeAccounts, financeSyncRuns, financeTransactions } from "../schema";
 import { loadRules } from "./categorize";
-import { getAccessUrl } from "./credentials";
+import type { Viewer } from "../access";
+import { getAccessUrl, newAccountOwner } from "./credentials";
 import { guessAccountKind, looksLikeTransfer, normalizeMerchant } from "./merchant";
+import { stripAccountNumbers } from "./redact";
 import { MIN_MANUAL_SYNC_INTERVAL_MS, MIN_SYNC_INTERVAL_MS, STALE_RUN_MS } from "./schedule";
 import { fetchAccounts, type SimplefinAccountSet } from "./simplefin";
 
@@ -74,7 +76,7 @@ export async function syncSimplefin(opts: {
 
   try {
     const data = await (opts.fetcher ?? fetchAccounts)(accessUrl, start, now);
-    const inserted = await applyAccountSet(data);
+    const inserted = await applyAccountSet(data, await newAccountOwner());
     await db()
       .update(financeSyncRuns)
       .set({ status: "ok", finishedAt: new Date(), inserted, messages: data.errors })
@@ -95,14 +97,15 @@ function isoDay(unixSeconds: number): string {
   return new Date(unixSeconds * 1000).toISOString().slice(0, 10);
 }
 
-export async function applyAccountSet(data: SimplefinAccountSet): Promise<number> {
+export async function applyAccountSet(data: SimplefinAccountSet, owner: Viewer | "joint" = "joint"): Promise<number> {
   let inserted = 0;
   for (const acct of data.accounts) {
     const [account] = await db()
       .insert(financeAccounts)
       .values({
         simplefinId: acct.id,
-        bankName: acct.name,
+        bankName: stripAccountNumbers(acct.name),
+        owner,
         institution: acct.org.name ?? acct.org.domain ?? null,
         kind: guessAccountKind(acct.name),
         currency: acct.currency,
@@ -113,7 +116,7 @@ export async function applyAccountSet(data: SimplefinAccountSet): Promise<number
         target: financeAccounts.simplefinId,
         // User-owned fields (display name, owner, kind, active) are left alone.
         set: {
-          bankName: acct.name,
+          bankName: stripAccountNumbers(acct.name),
           institution: acct.org.name ?? acct.org.domain ?? null,
           currency: acct.currency,
           balance: acct.balance,

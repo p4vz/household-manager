@@ -21,7 +21,7 @@ beforeEach(async () => {
     .insert(financeAccounts)
     .values([
       { bankName: "Sapphire Preferred ****1234", displayName: "Alexandra's Sapphire", owner: "user1", kind: "credit" },
-      { bankName: "Amex", owner: "user2", kind: "credit" },
+      { bankName: "Amex", owner: "joint", kind: "credit" },
     ])
     .returning();
   [sapphire, amex] = rows.map((r) => r.id);
@@ -36,11 +36,11 @@ beforeEach(async () => {
 
 describe("rewards + advisor", () => {
   it("audits with saved profiles and puts the annual fee on the calendar", async () => {
-    await saveCardProfile(sapphire, { rewardType: "points", baseRate: 1, centsPerUnit: 1.5, annualFee: 95, annualFeeMonth: 3 }, new Date("2026-11-20T00:00:00Z"));
-    await saveCardProfile(amex, { rewardType: "cashback", baseRate: 1, centsPerUnit: 1, annualFee: 0, annualFeeMonth: null });
-    await addCardRule(sapphire, { matchType: "category", match: "Food & Dining", rate: 3, capAmount: null, capPeriod: null, validFrom: null, validTo: null, label: null });
+    await saveCardProfile("user1", sapphire, { rewardType: "points", baseRate: 1, centsPerUnit: 1.5, annualFee: 95, annualFeeMonth: 3 }, new Date("2026-11-20T00:00:00Z"));
+    await saveCardProfile("user1", amex, { rewardType: "cashback", baseRate: 1, centsPerUnit: 1, annualFee: 0, annualFeeMonth: null });
+    await addCardRule("user1", sapphire, { matchType: "category", match: "Food & Dining", rate: 3, capAmount: null, capPeriod: null, validFrom: null, validTo: null, label: null });
 
-    const { audit } = await rewardsAudit("12M", new Date("2026-11-20T00:00:00Z"));
+    const { audit } = await rewardsAudit("user1", "12M", new Date("2026-11-20T00:00:00Z"));
     // 6 dinners x $200: 1% = $12 earned vs 3x * 1.5c = $54 possible ($42 missed),
     // plus Netflix at 1% instead of 1.5% ($107.94 * 0.5% = $0.54).
     expect(audit!.totalMissed).toBeCloseTo(42.54);
@@ -51,9 +51,9 @@ describe("rewards + advisor", () => {
   });
 
   it("sends the advisor only sanitized aggregates and stores the report", async () => {
-    await saveCardProfile(sapphire, { rewardType: "points", baseRate: 1, centsPerUnit: 1.5, annualFee: 95, annualFeeMonth: null });
+    await saveCardProfile("user1", sapphire, { rewardType: "points", baseRate: 1, centsPerUnit: 1.5, annualFee: 95, annualFeeMonth: null });
     runStructured.mockResolvedValue({ summary: "ok", underperformingCards: [], billIncreases: [], signupBonusIdeas: [] });
-    await runAdvisorNow();
+    await runAdvisorNow("user1");
 
     const call = runStructured.mock.calls[0][0];
     expect(call.tier).toBe("flagship");
@@ -65,6 +65,6 @@ describe("rewards + advisor", () => {
     expect(call.payload.recurringMerchants.map((m: { merchant: string }) => m.merchant)).toEqual(
       expect.arrayContaining(["Netflix", "Sushi Den"]),
     );
-    expect((await latestAdvisorReport())?.report.summary).toBe("ok");
+    expect((await latestAdvisorReport("user1"))?.report.summary).toBe("ok");
   });
 });

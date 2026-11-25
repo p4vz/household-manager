@@ -5,6 +5,7 @@ import { runStructured } from "@/core/ai/run";
 import { sanitizePayload, scrubText, legalNamesFromEnv, type LlmOwnerLabel } from "@/core/ai/sanitize";
 import { getAiSettings } from "@/core/ai/store";
 import { db } from "@/core/db/client";
+import { visibleTo, type Viewer } from "../access";
 import { isIncome } from "../analytics/load";
 import { financeAccounts, financeAdvisorReports, financeTransactions as t } from "../schema";
 import { listCatalog } from "./catalog/store";
@@ -32,10 +33,10 @@ function monthsAgo(today: Date, n: number) {
  * category, recurring merchants' monthly amounts. No individual
  * transactions, account numbers or names leave the server.
  */
-export async function buildAdvisorPayload(today = new Date()) {
+export async function buildAdvisorPayload(viewer: Viewer, today = new Date()) {
   const from = monthsAgo(today, 12);
   const names = legalNamesFromEnv();
-  const [{ cards, audit }, candidates, catalog] = await Promise.all([runRewardsAudit(from), runCatalogComparison(from), listCatalog()]);
+  const [{ cards, audit }, candidates, catalog] = await Promise.all([runRewardsAudit(viewer, from), runCatalogComparison(viewer, from), listCatalog()]);
   const catalogById = new Map(catalog.map((p) => [p.id, p]));
   const quarter = quarterOf(today.toISOString().slice(0, 10));
 
@@ -43,14 +44,15 @@ export async function buildAdvisorPayload(today = new Date()) {
     .select({ category: sql<string>`coalesce(${t.category}, 'Uncategorized')`, spend: sql<number>`sum(-${t.amount})::float8` })
     .from(t)
     .innerJoin(financeAccounts, eq(t.accountId, financeAccounts.id))
-    .where(and(gte(t.postedDate, from), eq(t.isTransfer, false), eq(financeAccounts.active, true), sql`not ${isIncome}`))
+    .where(and(gte(t.postedDate, from), eq(t.isTransfer, false), eq(financeAccounts.active, true), visibleTo(viewer), sql`not ${isIncome}`))
     .groupBy(sql`coalesce(${t.category}, 'Uncategorized')`);
 
   const month = sql<string>`to_char(${t.postedDate}, 'YYYY-MM')`;
   const recurringRows = await db()
     .select({ merchant: t.merchant, month, spend: sql<number>`sum(-${t.amount})::float8` })
     .from(t)
-    .where(and(gte(t.postedDate, monthsAgo(today, 7)), eq(t.isTransfer, false), sql`${t.amount} < 0`, sql`not ${isIncome}`))
+    .innerJoin(financeAccounts, eq(t.accountId, financeAccounts.id))
+    .where(and(gte(t.postedDate, monthsAgo(today, 7)), eq(t.isTransfer, false), visibleTo(viewer), sql`${t.amount} < 0`, sql`not ${isIncome}`))
     .groupBy(t.merchant, month);
   const byMerchant = new Map<string, { month: string; amount: number }[]>();
   for (const r of recurringRows) byMerchant.set(r.merchant, [...(byMerchant.get(r.merchant) ?? []), { month: r.month, amount: Math.round(Number(r.spend) * 100) / 100 }]);
@@ -107,8 +109,9 @@ export async function buildAdvisorPayload(today = new Date()) {
   });
 }
 
-export async function runAdvisor(trigger: "manual" | "monthly", today = new Date()) {
-  const payload = await buildAdvisorPayload(today);
+/** One report per member, over only what that member can see. */
+export async function runAdvisor(viewer: Viewer, trigger: "manual" | "monthly", today = new Date()) {
+  const payload = await buildAdvisorPayload(viewer, today);
   const report = await runStructured({
     tier: "flagship",
     system:
@@ -124,20 +127,25 @@ export async function runAdvisor(trigger: "manual" | "monthly", today = new Date
     schema: AdvisorReport,
   });
   const settings = await getAiSettings();
-  await db().insert(financeAdvisorReports).values({ trigger, provider: settings.provider, report });
+  await db().insert(financeAdvisorReports).values({ viewer, trigger, provider: settings.provider, report });
   return report;
 }
 
-export async function latestAdvisorReport() {
-  const [row] = await db().select().from(financeAdvisorReports).orderBy(desc(financeAdvisorReports.createdAt)).limit(1);
+export async function latestAdvisorReport(viewer: Viewer) {
+  const [row] = await db()
+    .select()
+    .from(financeAdvisorReports)
+    .where(eq(financeAdvisorReports.viewer, viewer))
+    .orderBy(desc(financeAdvisorReports.createdAt))
+    .limit(1);
   return row ? { ...row, report: AdvisorReport.parse(row.report) } : null;
 }
 
-export async function hasReportForMonth(today: Date) {
+export async function hasReportForMonth(viewer: Viewer, today: Date) {
   const [row] = await db()
     .select({ id: financeAdvisorReports.id })
     .from(financeAdvisorReports)
-    .where(and(eq(financeAdvisorReports.trigger, "monthly"), gte(financeAdvisorReports.createdAt, new Date(monthsAgo(today, 0)))))
+    .where(and(eq(financeAdvisorReports.viewer, viewer), eq(financeAdvisorReports.trigger, "monthly"), gte(financeAdvisorReports.createdAt, new Date(monthsAgo(today, 0)))))
     .limit(1);
   return Boolean(row);
 }

@@ -2,8 +2,9 @@ import "server-only";
 import { and, asc, desc, eq, gte, inArray, isNotNull, sql } from "drizzle-orm";
 import { bus } from "@/core/bus";
 import { db } from "@/core/db/client";
+import { visibleTo, type Viewer } from "../access";
 import { isIncome } from "../analytics/load";
-import { financeAccounts, financeCardProfiles, financeCardRules, financeTransactions as t } from "../schema";
+import { CARD_KINDS, financeAccounts, financeCardProfiles, financeCardRules, financeTransactions as t } from "../schema";
 import { planPurchases, type BonusCard, type PlannedPurchase } from "./bonus";
 import { rotatingRules } from "./catalog/categories";
 import { compareCatalog, type CatalogCard } from "./catalog/compare";
@@ -12,13 +13,13 @@ import { auditRewards, nextFeeDate, type Card, type CardRule } from "./engine";
 
 const nameSql = sql<string>`coalesce(${financeAccounts.displayName}, ${financeAccounts.bankName})`;
 
-/** Active credit cards with their reward profile (or null if not set up yet). */
-export async function listCardsWithProfiles() {
+/** Active credit cards this member can see, with their reward profile (or null if not set up yet). */
+export async function listCardsWithProfiles(viewer: Viewer) {
   const cards = await db()
     .select({ accountId: financeAccounts.id, name: nameSql, owner: financeAccounts.owner, profile: financeCardProfiles })
     .from(financeAccounts)
     .leftJoin(financeCardProfiles, eq(financeCardProfiles.accountId, financeAccounts.id))
-    .where(and(eq(financeAccounts.active, true), eq(financeAccounts.kind, "credit")))
+    .where(and(eq(financeAccounts.active, true), inArray(financeAccounts.kind, CARD_KINDS), visibleTo(viewer)))
     .orderBy(asc(financeAccounts.owner), asc(nameSql));
   const rules = cards.length
     ? await db().select().from(financeCardRules).where(inArray(financeCardRules.accountId, cards.map((c) => c.accountId)))
@@ -32,8 +33,8 @@ export async function listCardsWithProfiles() {
  * the household entered by hand (a rule with a date window overlapping it)
  * wins over the catalog.
  */
-export async function loadAuditCards(): Promise<(BonusCard & { owner: string; catalogProductId: string | null })[]> {
-  const [cards, catalog] = await Promise.all([listCardsWithProfiles(), listCatalog()]);
+export async function loadAuditCards(viewer: Viewer): Promise<(BonusCard & { owner: string; catalogProductId: string | null })[]> {
+  const [cards, catalog] = await Promise.all([listCardsWithProfiles(viewer), listCatalog()]);
   const byId = new Map(catalog.map((p) => [p.id, p]));
   return cards
     .filter((c) => c.profile)
@@ -156,8 +157,9 @@ async function loadSpend(accountIds: string[], fromDate: string) {
   return txns.map((x) => ({ ...x, amount: Number(x.amount) }));
 }
 
-export async function runRewardsAudit(fromDate: string) {
-  const cards = await loadAuditCards();
+/** The audit compares only the cards and spending this member can see. */
+export async function runRewardsAudit(viewer: Viewer, fromDate: string) {
+  const cards = await loadAuditCards(viewer);
   if (cards.length === 0) return { cards, audit: null };
   const txns = await loadSpend(cards.map((c) => c.accountId), fromDate);
   return { cards, audit: auditRewards(cards, txns) };
@@ -168,8 +170,8 @@ export async function runRewardsAudit(fromDate: string) {
  * against its spending since `fromDate`. Credit cards without a reward
  * profile count as plain 1% cards, so their spend is not treated as free.
  */
-export async function runCatalogComparison(fromDate: string) {
-  const [all, cards, catalog, held] = await Promise.all([listCardsWithProfiles(), loadAuditCards(), listCatalog(), heldProductIds()]);
+export async function runCatalogComparison(viewer: Viewer, fromDate: string) {
+  const [all, cards, catalog, held] = await Promise.all([listCardsWithProfiles(viewer), loadAuditCards(viewer), listCatalog(), heldProductIds()]);
   const baseline: Card[] = [
     ...cards,
     ...all
@@ -210,9 +212,9 @@ export async function spentTowardBonuses(cards: BonusCard[]): Promise<Map<string
 }
 
 /** Best card for each planned purchase, with open sign-up bonuses routed first. */
-export async function planCardsForPurchases(purchases: PlannedPurchase[], today = new Date()) {
+export async function planCardsForPurchases(viewer: Viewer, purchases: PlannedPurchase[], today = new Date()) {
   const todayIso = today.toISOString().slice(0, 10);
-  const { cards, audit } = await runRewardsAudit(`${todayIso.slice(0, 4)}-01-01`);
+  const { cards, audit } = await runRewardsAudit(viewer, `${todayIso.slice(0, 4)}-01-01`);
   if (cards.length === 0) return { cards: [], purchases: [], bonuses: [] };
   const spentToward = await spentTowardBonuses(cards);
   const plan = planPurchases({ cards, purchases, spentToward, capUsage: audit?.capUsage, today: todayIso });

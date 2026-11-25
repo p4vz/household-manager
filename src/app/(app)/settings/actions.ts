@@ -10,7 +10,7 @@ import { z } from "zod";
 import { createPairingCode, revokeKioskDevice } from "@/core/kiosk/devices";
 import { formatPairingCode } from "@/core/kiosk/pairing";
 import { revokeAllConnections, revokeConnection, setConnectionPermissions } from "@/core/oauth/server";
-import { connectSimplefin, disconnectSimplefin, syncSimplefinNow } from "@/modules/finance/api";
+import { connectSimplefin, disconnectSimplefin, syncSimplefinNow, viewerFromLabel } from "@/modules/finance/api";
 
 const save = authedAction(AiSettingsSchema, async (settings) => {
   await saveAiSettings(settings);
@@ -124,8 +124,8 @@ export async function unpairKioskAction(form: FormData) {
 
 type BankState = null | { ok: true; message: string } | { ok: false; error: string };
 
-const connectBank = authedAction(z.object({ token: z.string().trim().min(20).max(2000) }), ({ token }) =>
-  connectSimplefin(token),
+const connectBank = authedAction(z.object({ token: z.string().trim().min(20).max(2000) }), ({ token }, user) =>
+  connectSimplefin(token, viewerFromLabel(user.owner)),
 );
 
 export async function connectBankAction(_prev: BankState, form: FormData): Promise<BankState> {

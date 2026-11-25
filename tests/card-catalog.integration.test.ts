@@ -71,10 +71,10 @@ describe("card catalog", () => {
 
   it("links a card, applies catalog rules beside the user's own, and feeds rotating quarters into the audit", async () => {
     await api.cardCatalog();
-    await api.linkCardToCatalog(flex, "chase-freedom-flex");
-    await api.addCardRule(flex, { matchType: "merchant", match: "Pizza Place", rate: 10, capAmount: null, capPeriod: null, validFrom: null, validTo: null, label: "my promo" });
+    await api.linkCardToCatalog("user1", flex, "chase-freedom-flex");
+    await api.addCardRule("user1", flex, { matchType: "merchant", match: "Pizza Place", rate: 10, capAmount: null, capPeriod: null, validFrom: null, validTo: null, label: "my promo" });
 
-    let cards = await api.listCardsWithProfiles();
+    let cards = await api.listCardsWithProfiles("user1");
     const card = cards.find((c) => c.accountId === flex)!;
     expect(card.profile).toMatchObject({ annualFee: 0, baseRate: 1, catalogProductId: "chase-freedom-flex" });
     expect(card.rules.filter((r) => r.source === "catalog").length).toBeGreaterThan(0);
@@ -92,20 +92,20 @@ describe("card catalog", () => {
     expect(runWebResearch.mock.calls[0][0].allowedDomains).toEqual(["chase.com"]);
 
     // Audit: $100 gas at the 5% rotating rate, pizza at the user's own 10x.
-    const { audit } = await api.rewardsAudit("12M", NOW);
+    const { audit } = await api.rewardsAudit("user1", "12M", NOW);
     const flexPerf = audit!.perCard.find((c) => c.card === "Alexandra's Flex")!;
     expect(flexPerf.earned).toBeCloseTo(5 + 5);
 
     // The card's stored rules were not touched; a drift notice is shown instead.
-    const drift = await api.catalogDriftForCards();
+    const drift = await api.catalogDriftForCards("user1");
     expect(drift).toEqual([expect.objectContaining({ accountId: flex, version: 2, appliedVersion: 1 })]);
     expect(drift[0].changes.map((c) => c.field)).toEqual(expect.arrayContaining(["rotating", "signupOffer"]));
-    await api.keepCardRules(flex);
-    expect(await api.catalogDriftForCards()).toEqual([]);
+    await api.keepCardRules("user1", flex);
+    expect(await api.catalogDriftForCards("user1")).toEqual([]);
 
     // Re-applying replaces only catalog rules.
-    await api.applyCatalogTermsToCard(flex);
-    cards = await api.listCardsWithProfiles();
+    await api.applyCatalogTermsToCard("user1", flex);
+    cards = await api.listCardsWithProfiles("user1");
     expect(cards.find((c) => c.accountId === flex)!.rules.filter((r) => r.source === "user").map((r) => r.label)).toEqual(["my promo"]);
   });
 
@@ -145,10 +145,10 @@ describe("card catalog", () => {
 
   it("gives the advisor stored terms and priced candidate cards", async () => {
     await api.cardCatalog();
-    await api.linkCardToCatalog(flex, "chase-freedom-flex");
+    await api.linkCardToCatalog("user1", flex, "chase-freedom-flex");
     await db.update(financeCardCatalog).set({ terms: { ...flexSeed.terms, rotating: q4 } }).where(eq(financeCardCatalog.id, "chase-freedom-flex"));
     runStructured.mockResolvedValue({ summary: "ok", underperformingCards: [], billIncreases: [], signupBonusIdeas: [] });
-    await api.runAdvisorNow();
+    await api.runAdvisorNow("user1");
     const payload = runStructured.mock.calls[0][0].payload;
     const flexCard = payload.cards.find((c: { catalogTerms: unknown }) => c.catalogTerms);
     expect(flexCard.catalogTerms).toMatchObject({ product: "Chase Freedom Flex", verifiedDate: "not yet verified" });
@@ -159,11 +159,11 @@ describe("card catalog", () => {
 
   it("removing a catalog card unlinks it without deleting the household card's rules", async () => {
     await api.cardCatalog();
-    await api.linkCardToCatalog(flex, "chase-freedom-flex");
+    await api.linkCardToCatalog("user1", flex, "chase-freedom-flex");
     const before = await db.select().from(financeCardRules).where(eq(financeCardRules.accountId, flex));
     await db.delete(financeCardCatalog).where(eq(financeCardCatalog.id, "chase-freedom-flex"));
     const after = await db.select().from(financeCardRules).where(eq(financeCardRules.accountId, flex));
     expect(after.length).toBe(before.length);
-    expect((await api.listCardsWithProfiles()).find((c) => c.accountId === flex)!.profile!.catalogProductId).toBeNull();
+    expect((await api.listCardsWithProfiles("user1")).find((c) => c.accountId === flex)!.profile!.catalogProductId).toBeNull();
   });
 });
