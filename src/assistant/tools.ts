@@ -980,7 +980,7 @@ export const TOOLS: AssistantTool[] = [
   {
     name: "edit_reading_log",
     description:
-      "Kids' reading log. create (kid's name, book, language en or ru, minutes, optional pages, optional date in the last 14 days, default today); update (ref from reading_log: book, language, minutes, pages, date); delete. A day counts with 20 minutes in English or 15 in Russian; milestone stars follow automatically.",
+      "Kids' reading log. create (kid's name, book, language en or ru, minutes, optional pages, optional date (on the kitchen screen the last 14 days; in the app up to a year back, e.g. copying a paper log), default today); update (ref from reading_log: book, language, minutes, pages, date); delete. A day counts with 20 minutes in English or 15 in Russian; milestone stars follow automatically.",
     input: {
       action: ACTION,
       ref: z.string().max(12).optional(),

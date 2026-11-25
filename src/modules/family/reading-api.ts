@@ -16,8 +16,13 @@ export class ReadingError extends Error {}
 
 export const MAX_READING_MINUTES = 600;
 export const MAX_READING_PAGES = 2000;
-/** How far back an entry may be dated (a forgotten weekend, not last month). */
+/** How far back a kid may date an entry on the kitchen screen (a forgotten weekend, not last month). */
 export const READING_BACKDATE_DAYS = 14;
+/** How far back a parent (phone, adult mode, Ask Claude in the app) may date one: copying an old paper log. */
+export const PARENT_BACKDATE_DAYS = 366;
+
+/** `backdateDays`: READING_BACKDATE_DAYS for kids, PARENT_BACKDATE_DAYS for parents. */
+export type ReadingWriteOpts = { backdateDays?: number };
 
 export type ReadingRow = {
   id: string;
@@ -34,12 +39,14 @@ export type ReadingInput = { kidId: string; day?: string; book: string; language
 
 const tz = () => householdTimeZone();
 
-function check(input: Omit<ReadingInput, "kidId">, now: Date): { day: string; book: string; language: ReadingLanguage; minutes: number; pages: number | null } {
+function check(input: Omit<ReadingInput, "kidId">, now: Date, backdateDays = READING_BACKDATE_DAYS): { day: string; book: string; language: ReadingLanguage; minutes: number; pages: number | null } {
   const today = dayBucket(now, tz());
   const day = input.day ?? today;
   if (!/^\d{4}-\d{2}-\d{2}$/.test(day)) throw new ReadingError("Pick a date.");
   if (day > today) throw new ReadingError("That day hasn't happened yet.");
-  if (day < addDays(today, -READING_BACKDATE_DAYS)) throw new ReadingError(`Only the last ${READING_BACKDATE_DAYS} days can be logged.`);
+  if (day < addDays(today, -backdateDays)) {
+    throw new ReadingError(backdateDays === READING_BACKDATE_DAYS ? `Only the last ${backdateDays} days can be logged here. A parent can add older days on the phone.` : `Only the last ${backdateDays} days can be logged.`);
+  }
   const book = input.book.trim().slice(0, 80);
   if (!book) throw new ReadingError("Which book?");
   assertNoCardNumber(book);
@@ -50,8 +57,8 @@ function check(input: Omit<ReadingInput, "kidId">, now: Date): { day: string; bo
   return { day, book, language: input.language, minutes: input.minutes, pages };
 }
 
-export async function addReading(input: ReadingInput, now = new Date()): Promise<string> {
-  const f = check(input, now);
+export async function addReading(input: ReadingInput, now = new Date(), opts: ReadingWriteOpts = {}): Promise<string> {
+  const f = check(input, now, opts.backdateDays);
   const [kid] = await db().select({ id: familyKids.id }).from(familyKids).where(and(eq(familyKids.id, input.kidId), eq(familyKids.active, true)));
   if (!kid) throw new ReadingError("Kid not found.");
   const [row] = await db()
@@ -66,10 +73,10 @@ export async function getReading(id: string): Promise<ReadingRow | null> {
   return row ? { ...row, language: row.language as ReadingLanguage } : null;
 }
 
-export async function updateReading(id: string, patch: Partial<Omit<ReadingInput, "kidId">>, now = new Date()): Promise<void> {
+export async function updateReading(id: string, patch: Partial<Omit<ReadingInput, "kidId">>, now = new Date(), opts: ReadingWriteOpts = {}): Promise<void> {
   const current = await getReading(id);
   if (!current) throw new ReadingError("That entry is gone.");
-  const f = check({ day: current.day, book: current.book, language: current.language, minutes: current.minutes, pages: current.pages, ...patch }, now);
+  const f = check({ day: current.day, book: current.book, language: current.language, minutes: current.minutes, pages: current.pages, ...patch }, now, opts.backdateDays);
   await db().update(familyReadingLog).set(f).where(eq(familyReadingLog.id, id));
 }
 

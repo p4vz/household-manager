@@ -37,6 +37,10 @@ describe("reading log", () => {
     const now = at("2026-11-10");
     await expect(family.addReading({ kidId, day: "2026-11-11", book: "x", language: "en", minutes: 20 }, now)).rejects.toThrow(/hasn't happened/);
     await expect(family.addReading({ kidId, day: "2026-10-01", book: "x", language: "en", minutes: 20 }, now)).rejects.toThrow(/last 14 days/);
+    // A parent can copy an old paper log; a year is the limit.
+    const paper = await family.addReading({ kidId, day: "2026-10-01", book: "Paper log", language: "ru", minutes: 20 }, now, { backdateDays: family.PARENT_BACKDATE_DAYS });
+    await expect(family.addReading({ kidId, day: "2025-10-01", book: "x", language: "ru", minutes: 20 }, now, { backdateDays: family.PARENT_BACKDATE_DAYS })).rejects.toThrow(/last 366 days/);
+    await family.deleteReading(paper);
     await expect(family.addReading({ kidId, book: " ", language: "en", minutes: 20 }, now)).rejects.toThrow(/Which book/);
     await expect(family.addReading({ kidId, book: "x", language: "en", minutes: 0 }, now)).rejects.toThrow(/minutes/);
   });

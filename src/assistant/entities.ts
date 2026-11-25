@@ -574,6 +574,9 @@ export const ReadingFields = z
   })
   .strict();
 
+/** Members in the app can copy an old paper log; the kitchen screen keeps the kids' two weeks. */
+const readingBackdate = (ctx: AssistantCtx) => (ctx.surface === "kitchen" ? family.READING_BACKDATE_DAYS : family.PARENT_BACKDATE_DAYS);
+
 /** Reading log entries. Milestone stars follow the log, so undo takes them back too. */
 const readingEntry: EntityAdapter = {
   entity: "reading_entry",
@@ -592,11 +595,11 @@ const readingEntry: EntityAdapter = {
     const current = await family.getReading(key);
     if (!current) throw new Error("That reading entry is gone");
     if (kid && (await kidIdByName(kid)) !== current.kidId) throw new Error("An entry can't move to another kid. Add it for that kid and delete this one.");
-    await family.updateReading(key, rest, ctx.now);
+    await family.updateReading(key, rest, ctx.now, { backdateDays: readingBackdate(ctx) });
   },
   async create(ctx, fields) {
     const f = ReadingFields.partial({ day: true, pages: true }).parse(fields);
-    return family.addReading({ kidId: await kidIdByName(f.kid), day: f.day, book: f.book, language: f.language, minutes: f.minutes, pages: f.pages ?? null }, ctx.now);
+    return family.addReading({ kidId: await kidIdByName(f.kid), day: f.day, book: f.book, language: f.language, minutes: f.minutes, pages: f.pages ?? null }, ctx.now, { backdateDays: readingBackdate(ctx) });
   },
   async remove(_ctx, key) {
     await family.deleteReading(key);
