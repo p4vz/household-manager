@@ -21,6 +21,7 @@ export default async function AppLayout({ children }: LayoutProps<"/">) {
               {m.title}
             </Link>
           ))}
+          <Link href="/assistant" className="opacity-80 hover:opacity-100">Ask Claude</Link>
           <Link href="/settings" className="opacity-80 hover:opacity-100">Settings</Link>
         </nav>
         <form action={doSignOut} className="ml-auto flex items-center gap-3">
