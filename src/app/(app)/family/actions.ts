@@ -31,6 +31,12 @@ import {
   MAX_GOAL_TARGET,
   archiveGoal,
   createGoal,
+  addStarterChores,
+  givePrize,
+  undoPrize,
+  saveStarPrize,
+  removeStarPrize,
+  MAX_PRIZE_STARS,
   markRewardGiven,
   repeatGoal,
 } from "@/modules/family/api";
@@ -220,3 +226,23 @@ export const markRewardGivenAction = authedAction(z.object({ id }), async (input
 export const repeatGoalAction = authedAction(z.object({ id }), async (input, user) => goalWrite(() => repeatGoal(input.id, user.owner)));
 
 export const archiveGoalAction = authedAction(z.object({ id }), async (input) => goalWrite(() => archiveGoal(input.id)));
+
+export const addStarterChoresAction = authedAction(z.object({ kidId: id }), async ({ kidId }) => {
+  await addStarterChores(kidId);
+  refresh();
+});
+
+// ---- Star prizes: parents give them (spending stars) and edit the list ----
+
+export const givePrizeAction = authedAction(z.object({ kidId: id, prizeId: id }), async (input, user) =>
+  goalWrite(() => givePrize(input.kidId, input.prizeId, user.owner)),
+);
+
+export const undoPrizeAction = authedAction(z.object({ id }), async (input) => goalWrite(() => undoPrize(input.id)));
+
+export const saveStarPrizeAction = authedAction(
+  z.object({ id: id.optional(), name: z.string().trim().min(1).max(40), emoji: z.string().max(8).optional(), stars: z.number().int().min(1).max(MAX_PRIZE_STARS) }),
+  async (input) => goalWrite(() => saveStarPrize(input)),
+);
+
+export const removeStarPrizeAction = authedAction(z.object({ id }), async (input) => goalWrite(() => removeStarPrize(input.id)));

@@ -169,6 +169,13 @@
       "when": 1795641686738,
       "tag": "0023_push_notifications",
       "breakpoints": true
+    },
+    {
+      "idx": 24,
+      "version": "7",
+      "when": 1795642253836,
+      "tag": "0024_star_prizes",
+      "breakpoints": true
     }
   ]
 }

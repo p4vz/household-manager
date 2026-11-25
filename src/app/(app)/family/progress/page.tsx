@@ -1,8 +1,17 @@
 import Link from "next/link";
 import { requireUserOrRedirect } from "@/core/auth/guard";
-import { choreHistory, kidProgress } from "@/modules/family/api";
+import { choreHistory, kidProgress, listStarPrizes, prizeHistory } from "@/modules/family/api";
 import { ProgressView, type ProgressKid } from "@/modules/family/ui/progress-view";
-import { archiveGoalAction, createGoalAction, markRewardGivenAction, repeatGoalAction } from "../actions";
+import {
+  archiveGoalAction,
+  createGoalAction,
+  givePrizeAction,
+  markRewardGivenAction,
+  removeStarPrizeAction,
+  repeatGoalAction,
+  saveStarPrizeAction,
+  undoPrizeAction,
+} from "../actions";
 
 export const metadata = { title: "Chore progress" };
 
@@ -10,10 +19,16 @@ export const metadata = { title: "Chore progress" };
 export default async function ChoreProgressPage() {
   await requireUserOrRedirect();
   const now = new Date();
-  const [history, progress] = await Promise.all([choreHistory(now), kidProgress(now)]);
+  const [history, progress, prizes, given] = await Promise.all([choreHistory(now), kidProgress(now), listStarPrizes(), prizeHistory(200)]);
   const kids: ProgressKid[] = history.kids.map((k) => {
     const p = progress.find((x) => x.kidId === k.kidId);
-    return { ...k, goals: p?.goals ?? [], badges: p?.badges ?? [] };
+    return {
+      ...k,
+      goals: p?.goals ?? [],
+      badges: p?.badges ?? [],
+      stars: { saved: p?.stars.saved ?? 0, lifetime: p?.stars.lifetime ?? 0 },
+      prizesGiven: given.filter((g) => g.kidId === k.kidId).map((g) => ({ id: g.id, prizeName: g.prizeName, emoji: g.emoji, stars: g.stars, givenAt: g.givenAt.toISOString() })),
+    };
   });
   return (
     <section className="mx-auto max-w-2xl space-y-3">
@@ -26,7 +41,17 @@ export default async function ChoreProgressPage() {
       <ProgressView
         kids={kids}
         days={history.days}
-        actions={{ create: createGoalAction, rewardGiven: markRewardGivenAction, repeat: repeatGoalAction, archive: archiveGoalAction }}
+        prizes={prizes}
+        actions={{
+          create: createGoalAction,
+          rewardGiven: markRewardGivenAction,
+          repeat: repeatGoalAction,
+          archive: archiveGoalAction,
+          givePrize: givePrizeAction,
+          undoPrize: undoPrizeAction,
+          savePrize: saveStarPrizeAction,
+          removePrize: removeStarPrizeAction,
+        }}
       />
     </section>
   );
