@@ -4,7 +4,7 @@ import { revalidatePath } from "next/cache";
 import { z } from "zod";
 import { kioskAction } from "@/core/actions/kiosk-action";
 import { isAdult } from "@/core/kiosk/permissions";
-import { READING_LANGUAGES, ReadingError, SensitiveTextError, addReading, deleteReading } from "@/modules/family/api";
+import { PARENT_BACKDATE_DAYS, READING_BACKDATE_DAYS, READING_LANGUAGES, ReadingError, SensitiveTextError, addReading, deleteReading } from "@/modules/family/api";
 
 /**
  * Reading log from the kitchen screen and the phone (kioskAction: a paired
@@ -40,7 +40,8 @@ export const logReadingAction = kioskAction(
     minutes: z.number().int().min(1).max(600),
     pages: z.number().int().min(0).max(2000).nullable().optional(),
   }),
-  async (input) => attempt(() => addReading(input)),
+  // Kids date entries up to two weeks back; parents can copy an old paper log.
+  async (input, actor) => attempt(() => addReading(input, new Date(), { backdateDays: isAdult(actor) ? PARENT_BACKDATE_DAYS : READING_BACKDATE_DAYS })),
 );
 
 export const deleteReadingAction = kioskAction("reading.log", z.object({ id }), async ({ id: entryId }, actor) =>

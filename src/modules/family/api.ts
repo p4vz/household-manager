@@ -37,6 +37,7 @@ export {
   ReadingError,
   READING_RULE,
   READING_BACKDATE_DAYS,
+  PARENT_BACKDATE_DAYS,
   MAX_READING_MINUTES,
   MAX_READING_PAGES,
   type ReadingInput,
