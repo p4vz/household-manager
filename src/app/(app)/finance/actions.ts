@@ -14,7 +14,6 @@ import {
   runAdvisorNow,
   saveCardProfile,
   commitCsvImport,
-  connectSimplefin,
   drillDownTransactions,
   previewCsvImport,
   removeBudget,
@@ -35,20 +34,6 @@ import {
 } from "@/modules/finance/api";
 
 const MAX_CSV_CHARS = 14 * 1024 * 1024;
-
-const connect = authedAction(z.object({ token: z.string().min(20).max(2000) }), ({ token }) =>
-  connectSimplefin(token),
-);
-
-export async function connectSimplefinAction(_prev: unknown, form: FormData) {
-  try {
-    const result = await connect({ token: form.get("token") });
-    revalidatePath("/finance");
-    return { ok: true as const, result };
-  } catch (err) {
-    return { ok: false as const, error: err instanceof Error ? err.message : "Could not connect" };
-  }
-}
 
 const AccountInput = z.object({
   id: z.uuid(),

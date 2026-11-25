@@ -6,6 +6,10 @@
 export const SYNC_HOURS = [7, 19] as const;
 /** Second line of defence against duplicate cron fires. */
 export const MIN_SYNC_INTERVAL_MS = 4 * 60 * 60 * 1000;
+/** "Sync now" in Settings: SimpleFIN asks clients to stay well under 24 requests a day. */
+export const MIN_MANUAL_SYNC_INTERVAL_MS = 15 * 60 * 1000;
+/** A run still marked "running" after this long is treated as dead. */
+export const STALE_RUN_MS = 15 * 60 * 1000;
 
 export function householdTimeZone(): string {
   return process.env.HOUSEHOLD_TIMEZONE || "America/New_York";

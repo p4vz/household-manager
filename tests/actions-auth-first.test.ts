@@ -16,3 +16,12 @@ describe("saveCatalogTermsAction", () => {
     await expect(saveCatalogTermsAction({ ok: true, message: "" } as never, form)).rejects.toThrow("NOT_SIGNED_IN");
   });
 });
+
+describe("connectBankAction", () => {
+  it("refuses a caller without a session instead of returning a message", async () => {
+    const { connectBankAction } = await import("@/app/(app)/settings/actions");
+    const form = new FormData();
+    form.set("token", "x".repeat(40));
+    await expect(connectBankAction(null, form)).rejects.toThrow("NOT_SIGNED_IN");
+  });
+});
