@@ -40,7 +40,7 @@ update here and in the tests that enforce it.
 | `/oauth/authorize` | allowlisted users | consent screen; session + allowlist like any page |
 | everything else | allowlisted users | session + allowlist (proxy and in-handler) |
 
-Apart from the read-only assistant endpoint below, there is **no public API**. The module API and the event bus are plain
+Apart from the assistant endpoint below (read-only unless a member grants "Make changes"), there is **no public API**. The module API and the event bus are plain
 in-process function calls; no route, queue or socket exposes them.
 `tests/boundaries.test.ts` fails CI if a route handler appears outside
 `/api/auth`, `/api/cron` and the reviewed assistant routes, if a cron route
@@ -303,14 +303,33 @@ transactions, income, balances, house upkeep and calendar off. Crypto is
 listed but unavailable (not tracked yet). Grants made before permissions
 existed get the defaults.
 
-**What assistants can do.** One scope, `household:read`. Every tool is
-read-only (`readOnlyHint`), calls module `api.ts` functions only, and is
-stateless: a fresh MCP server per request, no sessions. Nothing is booked,
-paid or changed. Tools: cards and benefits, best card for purchases or
-bookings, sign-up bonus progress, points left on the table, cards worth
-adding, catalog card terms, trips, itinerary, trip card plan, booking
-checklist, and (off by default) spending summary, income and savings,
-transactions, account balances, house upkeep tasks, upcoming events.
+**What assistants can do.** One scope, `household:read`. The tools in
+`src/mcp/tools.ts` are read-only (`readOnlyHint`), call module `api.ts`
+functions only, and are stateless: a fresh MCP server per request, no
+sessions. Nothing is booked or paid. Tools: cards and benefits, best card
+for purchases or bookings, sign-up bonus progress, points left on the
+table, cards worth adding, catalog card terms, trips, itinerary, trip card
+plan, booking checklist, and (off by default) spending summary, income and
+savings, transactions, account balances, house upkeep tasks, upcoming
+events.
+
+**Make changes (off by default, Pavel 2026-11-25).** Four permissions in
+the "Make changes" section (`manage.family`, `manage.home`,
+`manage.calendar`, `manage.finance`, the last also needing Individual
+transactions) give a connection Ask Claude's own tools for that area
+(`src/assistant/connector.ts`): kids (first names only), chores, goals,
+shopping, returns; upkeep, equipment, projects, binder; family calendar
+events; transaction categories, notes and category rules. They act as the
+member who connected the assistant, with the same changesets as the app:
+every call is logged in that member's Ask Claude history with Undo, up to
+10 changes without deletes apply at once, and deletes or bigger batches
+wait for the member's Apply in the app. They are marked `readOnlyHint:
+false`. They still cannot move money, edit amounts, accounts, bank
+connections, keys, settings or permissions, and answers are scrubbed as
+below. Refs (short handles instead of ids) persist per connection in a
+hidden conversation row. Kids' first names as shown on the chore board
+pass the name scrub (they are how these tools address kids); surnames and
+other traveller names are still removed.
 
 **What assistants see.** The same rules as the AI providers. Answers are
 built field by field from card nicknames, owner labels (`User 1` /
@@ -325,10 +344,12 @@ account with that provider.
 **New attack surface, for review:** open client registration (spam is
 bounded by the caps above); the consent page as a phishing target (a
 member must be signed in and click Approve; it names the redirect host);
-bearer token theft from an assistant provider (read-only, 1-hour access,
-revocable in Settings); and prompt injection through stored text such as
-merchant names or trip notes reaching an assistant (tools cannot write, so
-the worst case is a misleading answer, not a change).
+bearer token theft from an assistant provider (1-hour access, revocable in
+Settings; read-only unless a "Make changes" permission was ticked, and
+then limited to logged, undoable changes with deletes held for Apply); and
+prompt injection through stored text such as merchant names or trip notes
+reaching an assistant (without "Make changes" the worst case is a
+misleading answer; with it, an unwanted change the member can undo).
 
 ## What the server may call
 

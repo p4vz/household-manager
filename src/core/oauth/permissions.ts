@@ -72,7 +72,34 @@ export const PERMISSION_SECTIONS = [
     title: "Calendar",
     items: [{ key: "calendar.events", label: "Upcoming household calendar events", defaultOn: false }],
   },
+  {
+    id: "manage",
+    title: "Make changes (like Ask Claude in the app)",
+    items: [
+      {
+        key: "manage.family",
+        label: "Kids, chores and goals, shopping lists and templates, store returns: see and change",
+        defaultOn: false,
+        note: "kids by first name only",
+      },
+      { key: "manage.home", label: "House and car upkeep, equipment, projects and the home binder: see and change", defaultOn: false },
+      { key: "manage.calendar", label: "Family calendar events: see, add, change and delete", defaultOn: false },
+      {
+        key: "manage.finance",
+        label: "Transaction categories, notes and category rules: change",
+        defaultOn: false,
+        note: "also needs Individual transactions",
+      },
+    ],
+  },
 ] as const satisfies readonly PermissionSection[];
+
+/**
+ * Every change made through these is a changeset in the member's Ask Claude
+ * history, under the app's rules: small batches apply at once with Undo,
+ * deletes and big batches wait for the member's Apply in the app.
+ */
+export const MANAGE_PERMISSIONS = ["manage.family", "manage.home", "manage.calendar", "manage.finance"] as const;
 
 export type PermissionKey = (typeof PERMISSION_SECTIONS)[number]["items"][number]["key"];
 

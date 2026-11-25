@@ -66,6 +66,17 @@ export async function removeKid(id: string) {
   await db().update(familyKids).set({ active: false }).where(eq(familyKids.id, id));
 }
 
+/** Puts a removed kid back on the board with their chores and history. */
+export async function restoreKid(id: string) {
+  await db().update(familyKids).set({ active: true }).where(eq(familyKids.id, id));
+}
+
+/** One kid on the board (active), or null. */
+export async function getKid(id: string) {
+  const [kid] = await db().select().from(familyKids).where(and(eq(familyKids.id, id), eq(familyKids.active, true)));
+  return kid ?? null;
+}
+
 // -------------------------------------------------------------- chores ----
 
 export const MAX_CHORE_STARS = 5;
