@@ -45,6 +45,8 @@ export async function loadHub(now = new Date()) {
 
   return {
     tz,
+    /** Changes on every server render; the kiosk watchdog uses it as a heartbeat. */
+    renderedAt: now.getTime(),
     today,
     todayLabel: longDate(today),
     calendar: { ...calendar, syncedLabel, syncError: calendar.sync.ok ? null : calendar.sync.message },

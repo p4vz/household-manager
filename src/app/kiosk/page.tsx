@@ -25,7 +25,8 @@ import {
 import { createEventAction, deleteEventAction, updateEventAction } from "./calendar-actions";
 import { loadHub } from "./load";
 
-export const metadata = { title: "Kitchen" };
+/** Installs as its own full-screen landscape app (public/kiosk.webmanifest). */
+export const metadata = { title: "Kitchen", manifest: "/kiosk.webmanifest" };
 
 const CALENDAR_MAX_AGE_MS = 90_000;
 
@@ -53,6 +54,7 @@ export default async function KioskPage() {
   return (
     <KioskShell
       tz={hub.tz}
+      renderedAt={hub.renderedAt}
       header={
         <PrintTodayButtons
           className={printBtn}

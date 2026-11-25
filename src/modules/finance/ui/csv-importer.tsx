@@ -2,13 +2,66 @@
 
 import { useState, useTransition } from "react";
 
+type SkipSummary = { reason: string; count: number; lines: number[]; examples: string[] };
 type Preview = {
   accounts: { name: string; rows: number; firstDate: string; lastDate: string; suggestedAccountId: string | null }[];
   skippedLines: number;
+  skipReasons: SkipSummary[];
+  columns: Record<string, string | undefined>;
+  readableRows: number;
   existingAccounts: { id: string; name: string; simplefinStartDate: string | null }[];
 };
 type PreviewResult = { ok: true; preview: Preview } | { ok: false; error: string };
-type ImportResult = { inserted: number; alreadyPresent: number; coveredBySimplefin: number; skippedLines: number };
+type ImportResult = {
+  inserted: number;
+  alreadyPresent: number;
+  coveredBySimplefin: number;
+  skippedLines: number;
+  skipReasons: SkipSummary[];
+};
+
+const FIELD_LABELS: Record<string, string> = {
+  date: "Date",
+  payee: "Payee",
+  amount: "Amount",
+  debit: "Debit",
+  credit: "Credit",
+  account: "Account",
+  category: "Category",
+};
+
+/** Lists why lines were skipped, with line numbers and example values, so a bad export can be fixed. */
+function SkipReasons({ total, reasons, readable }: { total: number; reasons: SkipSummary[]; readable?: number }) {
+  if (!total) return null;
+  const most = readable !== undefined && total > readable;
+  return (
+    <div className={`space-y-1 rounded-lg p-3 text-sm ${most ? "bg-amber-500/10" : "bg-foreground/5"}`}>
+      <p className="font-medium">
+        {total} {total === 1 ? "line" : "lines"} can&apos;t be read and will be skipped:
+      </p>
+      <ul className="list-disc space-y-1 pl-5">
+        {reasons.map((r) => (
+          <li key={r.reason}>
+            <span className="font-medium">{r.reason}</span>: {r.count} {r.count === 1 ? "line" : "lines"} (line{" "}
+            {r.lines.join(", ")}
+            {r.count > r.lines.length ? ", …" : ""})
+            {r.examples.length ? (
+              <span className="opacity-70">
+                {" "}
+                for example {r.examples.map((e) => `“${e}”`).join(", ")}
+              </span>
+            ) : null}
+          </li>
+        ))}
+      </ul>
+      {most ? (
+        <p className="opacity-80">
+          Most of the file can&apos;t be read, so you may want to check these examples before importing.
+        </p>
+      ) : null}
+    </div>
+  );
+}
 
 export function CsvImporter(props: {
   preview: (input: { text: string }) => Promise<PreviewResult>;
@@ -120,9 +173,15 @@ export function CsvImporter(props: {
               })}
             </tbody>
           </table>
-          {preview.skippedLines ? (
-            <p className="text-sm opacity-70">{preview.skippedLines} unreadable lines will be skipped.</p>
-          ) : null}
+          <p className="text-xs opacity-60">
+            {preview.readableRows} transactions read. Columns used:{" "}
+            {Object.entries(FIELD_LABELS)
+              .filter(([k]) => preview.columns[k])
+              .map(([k, label]) => `${label} from “${preview.columns[k]}”`)
+              .join(", ")}
+            .
+          </p>
+          <SkipReasons total={preview.skippedLines} reasons={preview.skipReasons} readable={preview.readableRows} />
           <button
             disabled={pending || !text}
             onClick={() =>
@@ -148,6 +207,9 @@ export function CsvImporter(props: {
             {result.alreadyPresent} were already here, {result.coveredBySimplefin} are covered by bank sync,{" "}
             {result.skippedLines} lines were unreadable.
           </p>
+          <div className="mt-2">
+            <SkipReasons total={result.skippedLines} reasons={result.skipReasons} />
+          </div>
         </div>
       ) : null}
     </div>

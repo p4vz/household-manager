@@ -1,5 +1,12 @@
 import { describe, expect, it } from "vitest";
-import { assignExternalIds, parseAmount, parseDate, parseSimplifiCsv, splitCategory } from "@/modules/finance/ingest/csv";
+import {
+  assignExternalIds,
+  parseAmount,
+  parseDate,
+  parseSimplifiCsv,
+  splitCategory,
+  summarizeSkipped,
+} from "@/modules/finance/ingest/csv";
 import { looksLikeTransfer, normalizeMerchant } from "@/modules/finance/ingest/merchant";
 import { isSyncSlot } from "@/modules/finance/ingest/schedule";
 
@@ -16,7 +23,7 @@ describe("Simplifi CSV parsing", () => {
   it("reads rows, categories and amounts", () => {
     const { rows, skipped } = parseSimplifiCsv(SAMPLE_CSV);
     expect(rows).toHaveLength(5);
-    expect(skipped).toEqual([{ line: 7, reason: "unreadable date" }]);
+    expect(skipped).toEqual([{ line: 7, reason: "unreadable date", value: "not-a-date" }]);
     expect(rows[0]).toMatchObject({
       account: "Chase Sapphire",
       date: "2024-03-02",
@@ -46,6 +53,92 @@ describe("Simplifi CSV parsing", () => {
     expect(parseDate("02/30/2024")).toBeNull();
     expect(parseDate("1/2/24")).toBe("2024-01-02");
     expect(splitCategory("Uncategorized")).toEqual({ category: null, subcategory: null });
+  });
+  it("accepts the date shapes spreadsheets and exports produce", () => {
+    expect(parseDate("2024-03-02T00:00:00.000Z")).toBe("2024-03-02");
+    expect(parseDate("3/2/2024 12:00:00 AM")).toBe("2024-03-02");
+    expect(parseDate("2024/03/02")).toBe("2024-03-02");
+    expect(parseDate("03-02-2024")).toBe("2024-03-02");
+    expect(parseDate("Mar 2, 2024")).toBe("2024-03-02");
+    expect(parseDate("2-Mar-24")).toBe("2024-03-02");
+    expect(parseDate("20240302")).toBe("2024-03-02");
+    expect(parseDate("25/12/2024")).toBe("2024-12-25");
+    expect(parseDate("")).toBeNull();
+  });
+  it("accepts the amount shapes spreadsheets and exports produce", () => {
+    expect(parseAmount("−12.34")).toBe(-12.34); // unicode minus
+    expect(parseAmount("-$1,234.50")).toBe(-1234.5);
+    expect(parseAmount("$-5")).toBe(-5);
+    expect(parseAmount("($8.00)")).toBe(-8);
+    expect(parseAmount("12.34-")).toBe(-12.34);
+    expect(parseAmount("USD 9.99")).toBe(9.99);
+    expect(parseAmount("1 234,56")).toBe(1234.56);
+    expect(parseAmount("1,234")).toBe(1234);
+    expect(parseAmount("+3")).toBe(3);
+    expect(parseAmount("")).toBeNull();
+    expect(parseAmount("-")).toBeNull();
+  });
+});
+
+describe("Simplifi CSV export variants", () => {
+  it("reads Simplifi's export with history migrated from Mint", () => {
+    const csv = [
+      "Date\tAccount\tReviewed\tPayee\tCategory\tExclusion\tAmount",
+      "26-Oct-25\tCard B(Imported)\tno\tPlay Place\tMint Expense:Amusement\tno\t-20.12",
+      "27-Oct-25\tCard B(Imported)\tyes\tCard Payment\tMint Transfer:Credit Card Payment\tyes\t100.00",
+    ].join("\n");
+    const { rows, skipped } = parseSimplifiCsv(csv);
+    expect(skipped).toEqual([]);
+    expect(rows[0]).toMatchObject({
+      account: "Card B",
+      date: "2025-10-26",
+      amount: -20.12,
+      description: "Play Place",
+      category: "Amusement",
+      subcategory: null,
+      isTransfer: false,
+    });
+    expect(rows[1]).toMatchObject({ date: "2025-10-27", isTransfer: true });
+    // Same file saved with commas instead of tabs.
+    expect(parseSimplifiCsv(csv.replace(/\t/g, ",")).rows).toHaveLength(2);
+  });
+  it("handles a BOM, title lines above the header, quoted commas and footer totals", () => {
+    const csv = [
+      "\uFEFFTransactions export",
+      "All dates",
+      "",
+      "Account,Date,Payee,Category,Amount,Notes",
+      'Card A,1/5/2024 12:00:00 AM,"Joe\'s Pizza, Inc.",Dining,"($1,020.00)",',
+      "Card A,Jan 6 2024,Shell,Auto & Transport: Gas,−40.00,",
+      ",,,,,",
+      "Total,,,,-1060.00,",
+    ].join("\r\n");
+    const { rows, skipped, columns, headerLine } = parseSimplifiCsv(csv);
+    expect(headerLine).toBe(4);
+    expect(columns).toMatchObject({ date: "Date", payee: "Payee", amount: "Amount", account: "Account" });
+    expect(rows).toHaveLength(2);
+    expect(rows[0]).toMatchObject({ date: "2024-01-05", amount: -1020, description: "Joe's Pizza, Inc." });
+    expect(rows[1]).toMatchObject({ date: "2024-01-06", amount: -40 });
+    expect(skipped).toEqual([{ line: 8, reason: "summary or total line" }]);
+  });
+  it("reads separate debit and credit columns", () => {
+    const csv = "Posted Date,Description,Debit,Credit\n2024-02-01,Grocer,25.10,\n2024-02-02,Refund,,5\n";
+    const { rows } = parseSimplifiCsv(csv);
+    expect(rows.map((r) => r.amount)).toEqual([-25.1, 5]);
+  });
+  it("reads tab and semicolon separated files", () => {
+    expect(parseSimplifiCsv("date\tpayee\tamount\n2024-02-01\tGrocer\t-3\n").rows).toHaveLength(1);
+    expect(parseSimplifiCsv("date;payee;amount\n2024-02-01;Grocer;-3,50\n").rows[0].amount).toBe(-3.5);
+  });
+  it("explains every skipped line with an example value", () => {
+    const csv = "postedOn,payee,amount\n13/45/2024,A,1\n2024-01-01,B,abc\n2024-01-02,,1\n2024-01-03,C,\n";
+    const { skipped } = parseSimplifiCsv(csv);
+    expect(summarizeSkipped(skipped)).toEqual([
+      { reason: "unreadable date", count: 1, lines: [2], examples: ["13/45/2024"] },
+      { reason: "unreadable amount", count: 1, lines: [3], examples: ["abc"] },
+      { reason: "no payee", count: 1, lines: [4], examples: [] },
+      { reason: "no amount", count: 1, lines: [5], examples: [] },
+    ]);
   });
 });
 

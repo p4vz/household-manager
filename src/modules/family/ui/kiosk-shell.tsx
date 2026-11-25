@@ -2,6 +2,7 @@
 
 import { useRouter } from "next/navigation";
 import { useEffect, useRef, useState, type ReactNode } from "react";
+import { useKioskWatchdog } from "./use-kiosk-watchdog";
 
 /**
  * Kiosk frame: exactly one 100vh screen (no page scroll), live clock,
@@ -12,6 +13,10 @@ import { useEffect, useRef, useState, type ReactNode } from "react";
  * burn-in; a tap wakes it. The moon button forces night mode on or off
  * until the next change of period. During the day the layout also shifts by
  * a pixel or two every few minutes.
+ *
+ * A watchdog (watchdog.ts) reloads the page if fresh renders stop arriving,
+ * after the connection comes back, and once a night, without ever looping
+ * while offline.
  */
 const REFRESH_MS = 30_000;
 const IDLE_MS = 3 * 60_000;
@@ -30,12 +35,20 @@ export function isNight(now: Date, tz: string): boolean {
   return mins >= 21 * 60 || mins < 6 * 60 + 30;
 }
 
-export function KioskShell({ tz, children, header }: { tz: string; children: ReactNode; header: ReactNode }) {
+export function KioskShell({ tz, renderedAt, children, header }: { tz: string; renderedAt: number; children: ReactNode; header: ReactNode }) {
   const router = useRouter();
+  const { offline } = useKioskWatchdog(renderedAt, tz);
   const [now, setNow] = useState(() => new Date());
   const [override, setOverride] = useState<{ night: boolean; scheduled: boolean } | null>(null);
   const [idle, setIdle] = useState(false);
   const lastTouch = useRef(0);
+  // A refresh that cannot reach the server makes Next.js fall back to a full
+  // page load (which lands on the offline page), so skip refreshes while
+  // offline and let the watchdog reload once the connection is back.
+  const offlineRef = useRef(offline);
+  useEffect(() => {
+    offlineRef.current = offline;
+  }, [offline]);
 
   useEffect(() => {
     lastTouch.current = Date.now();
@@ -45,7 +58,7 @@ export function KioskShell({ tz, children, header }: { tz: string; children: Rea
       setIdle(Date.now() - lastTouch.current > IDLE_MS);
     }, 15_000);
     const refresh = setInterval(() => {
-      if (document.visibilityState === "visible") router.refresh();
+      if (document.visibilityState === "visible" && navigator.onLine && !offlineRef.current) router.refresh();
     }, REFRESH_MS);
     const wake = () => {
       lastTouch.current = Date.now();
@@ -78,6 +91,11 @@ export function KioskShell({ tz, children, header }: { tz: string; children: Rea
           <div className="text-5xl font-bold tabular-nums">{time}</div>
           <div className="text-2xl font-medium opacity-80">{date}</div>
           <div className="ml-auto flex items-center gap-3">
+            {offline ? (
+              <span role="status" className="rounded-full bg-amber-500 px-4 py-2 text-lg font-semibold text-white">
+                Offline, reconnecting…
+              </span>
+            ) : null}
             {header}
             <button
               type="button"
