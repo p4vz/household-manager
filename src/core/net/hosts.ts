@@ -9,6 +9,8 @@ export const STATIC_OUTBOUND_HOSTS = [
   "oauth2.googleapis.com",
   "openidconnect.googleapis.com",
   "www.googleapis.com",
+  // Gmail, read-only, for return emails (family/mail.ts)
+  "gmail.googleapis.com",
   // SimpleFIN Bridge
   "bridge.simplefin.org",
   "beta-bridge.simplefin.org",

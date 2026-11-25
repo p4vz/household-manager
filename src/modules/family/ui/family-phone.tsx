@@ -4,7 +4,7 @@ import { startTransition, useState } from "react";
 import { ChoreBoard, type BoardKidView } from "./chore-board";
 import { field, tap } from "./kit";
 import { PrintTodayButtons } from "./print-today";
-import { ReturnsPanel, type ReturnView } from "./returns-panel";
+import { ReturnsPanel, type MemberReturnTools, type ReturnView } from "./returns-panel";
 import { ShoppingPanel, type ShoppingActions, type ShoppingBoard, type ShoppingMemberActions } from "./shopping-panel";
 import { UpkeepPanel, type UpkeepView } from "./upkeep-panel";
 import type { AgendaDayView } from "./calendar-panel";
@@ -26,6 +26,8 @@ export type FamilyPhoneActions = {
   addChore: Fn<{ kidId: string; title: string; icon: string; recurrence: "daily" | "weekly" | "once"; stars: number }>;
   archiveChore: Fn<{ id: string }>;
   deleteReturn: Fn<{ id: string }>;
+  /** Returns found in this member's email, and fill-from-screenshot. */
+  memberReturns: MemberReturnTools;
   calendar: EventActions;
   syncCalendar: () => Promise<{ ok: boolean; message: string | null }>;
 };
@@ -112,6 +114,7 @@ export function FamilyPhone({
             returns={returns}
             stores={stores}
             actions={{ setStatus: actions.setReturnStatus, add: actions.addReturn }}
+            member={actions.memberReturns}
             manage={(r) => (
               <button type="button" aria-label="Delete" className={`${tap} px-2 opacity-60`} onClick={() => startTransition(() => actions.deleteReturn({ id: r.id }))}>
                 🗑

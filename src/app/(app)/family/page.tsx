@@ -3,7 +3,9 @@ import { after } from "next/server";
 import { syncGoogleCalendarsIfStale } from "@/modules/calendar/api";
 import { LiveRefresh } from "@/modules/family/ui/live-refresh";
 import { requireUserOrRedirect } from "@/core/auth/guard";
-import { CHORE_ICONS } from "@/modules/family/api";
+import { CHORE_ICONS, listReturnSuggestions, memberFromLabel } from "@/modules/family/api";
+import { relativeDue, shortDate } from "@/modules/family/ui/dates";
+import type { SuggestionView } from "@/modules/family/ui/return-suggestions";
 import { FamilyPhone } from "@/modules/family/ui/family-phone";
 import {
   addOneTimeChoreAction,
@@ -18,7 +20,11 @@ import { loadHub } from "../../kiosk/load";
 import { shoppingActions } from "../../kiosk/shopping-actions-map";
 import {
   addChoreAction,
+  acceptSuggestionAction,
   addKidAction,
+  dismissSuggestionAction,
+  extractReturnAction,
+  markSuggestionReturnedAction,
   archiveChoreAction,
   deleteEventAction,
   deleteReturnAction,
@@ -31,8 +37,13 @@ import {
 
 /** Phone companion to the kitchen kiosk: calendar, lists, chores, returns, upkeep and setup. Refreshes every 45 s. */
 export default async function FamilyPage() {
-  await requireUserOrRedirect();
-  const hub = await loadHub();
+  const user = await requireUserOrRedirect();
+  const [hub, found] = await Promise.all([loadHub(), listReturnSuggestions(memberFromLabel(user.owner))]);
+  // Found in this member's own mailboxes; never loaded for the other member or the kiosk.
+  const suggestions: SuggestionView[] = found.map((s) => ({
+    ...s,
+    deadlineLabel: s.returnDeadline ? `by ${shortDate(s.returnDeadline)} (${relativeDue(hub.today, s.returnDeadline)})` : null,
+  }));
   after(() => syncGoogleCalendarsIfStale(90_000).then(() => undefined, () => undefined));
   return (
     <section className="-m-6 space-y-3 p-3 sm:m-0 sm:p-0">
@@ -76,6 +87,13 @@ export default async function FamilyPage() {
           addChore: addChoreAction,
           archiveChore: archiveChoreAction,
           deleteReturn: deleteReturnAction,
+          memberReturns: {
+            suggestions,
+            accept: acceptSuggestionAction,
+            markReturned: markSuggestionReturnedAction,
+            dismiss: dismissSuggestionAction,
+            extract: extractReturnAction,
+          },
           calendar: { create: createEventAction, update: updateEventAction, remove: deleteEventAction },
           syncCalendar: syncCalendarAction.bind(null, {}),
         }}

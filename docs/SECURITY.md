@@ -268,6 +268,7 @@ fails if `fetch(` is used anywhere else.
 | Host | Why |
 | --- | --- |
 | `accounts.google.com`, `oauth2.googleapis.com`, `openidconnect.googleapis.com`, `www.googleapis.com` | Google sign-in; Google Calendar (two-way family calendar sync, `calendar.events`) |
+| `gmail.googleapis.com` | return emails: read-only search of the mailboxes each member connected (`gmail.readonly`) |
 | `bridge.simplefin.org`, `beta-bridge.simplefin.org` | bank sync |
 | `generativelanguage.googleapis.com` | Gemini |
 | `api.anthropic.com` | Claude |
@@ -383,6 +384,44 @@ any extra calendars in `GOOGLE_CALENDARS`.
   calendar is shared with ("Make changes to events") plus
   `GOOGLE_CALENDAR_ID`. `calendar.events` cannot change calendar sharing or
   settings, only events.
+
+## Return emails (Gmail)
+
+Each member connects their own Gmail mailboxes (Settings → Email for
+returns) with a separate Google sign-in that asks only for
+`gmail.readonly`. It is a restricted scope, so while the OAuth app is not
+verified Google shows an "unverified app" screen; that is expected for a
+two-person household app.
+
+- **Tokens.** The connect flow uses a one-time `state` (10 minutes, stored in
+  `family_mail_connect_states`, bound to the member) and PKCE. The refresh
+  token and the mailbox address are sealed with AES-256-GCM
+  (`src/core/secrets/secret-box.ts`). Only a hash of the address is stored
+  in clear, to recognise a reconnect. Disconnect revokes the grant at
+  Google and deletes the mailbox and everything found in it.
+- **What is read.** A search (`mail-text.ts`) that matches return-related
+  subjects and phrases only, since the last scan (45 days the first time),
+  in Inbox and, if the member leaves it on, Spam. At most 25 new messages
+  per mailbox per scan, every 3 hours from the hourly cron or on "Scan now".
+- **What is kept.** Extracted fields (store, item, deadline, how to
+  return) and Gmail's message id, in `family_return_suggestions`. The email
+  body is held in memory for one AI call and never stored.
+- **What the AI sees.** Subject, sender display name and up to 4,000
+  characters of body text after `scrubMailText()`: links, email addresses,
+  phone numbers, order / tracking / RMA numbers, any token with 5+ digits,
+  card masks and household legal names are removed, then
+  `sanitizeReferencePayload()` runs as for every AI call.
+- **Privacy between members.** Mailboxes and found returns are visible only
+  to the member who connected the mailbox, never to the other member or the
+  kiosk. A found return reaches the shared list only when that member taps
+  Add (or Mark returned for a refund).
+- **Screenshots and pasted text.** "Fill from a screenshot or text" on the
+  phone's Returns tab reads screenshots in the browser with Tesseract OCR
+  (`public/ocr/`, copied from `node_modules` at build time). The image never
+  leaves the phone. The recognised text is shown, can be edited, and goes
+  through the same scrub and AI call; the member confirms the fields before
+  anything is saved. `/ocr/*` gets its own CSP (`ocrAssetPolicy()`) so the
+  OCR worker may run WebAssembly; nothing else gets `'wasm-unsafe-eval'`.
 
 ## Bank sync limits
 
