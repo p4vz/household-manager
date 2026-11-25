@@ -32,7 +32,7 @@ update here and in the tests that enforce it.
 | `/kiosk/pair` | anyone | a code box; its one action trades a one-time pairing code for a kiosk cookie (see "Kitchen kiosk") |
 | `/kiosk` | allowlisted users or a paired kiosk device | session, or a device token checked against the database by the page and every kiosk action |
 | `/api/auth/*` | anyone | Auth.js OAuth flow; allowlist enforced in callbacks |
-| `/manifest.webmanifest`, `/sw.js`, `/offline.html`, `/icons/*` | anyone | static PWA files with no household data; the service worker caches only these and Next.js build files, never pages or data |
+| `/manifest.webmanifest`, `/kiosk.webmanifest`, `/sw.js`, `/offline.html`, `/kiosk-offline.html`, `/icons/*` | anyone | static PWA files with no household data; the service worker caches only these and Next.js build files, never pages or data |
 | `/api/cron/simplefin-sync`, `/api/cron/monthly-advisor`, `/api/cron/card-catalog`, `/api/cron/family-hub` | Railway cron only | `Authorization: Bearer $CRON_SECRET`, constant-time compare, fails closed if the secret is missing or short |
 | `/api/mcp` | assistants a member approved | OAuth bearer token (see "Assistant access"); 404 unless `MCP_ENABLED=true` |
 | `/api/oauth/register`, `/api/oauth/token`, `/api/oauth/revoke` | assistant apps | registration grants nothing; token needs a PKCE proof or refresh token; rate limited; 404 unless enabled |
@@ -85,6 +85,23 @@ account. Pavel chose a paired device token (2026-11-23):
   it is unpaired. Return notes and order references are shown on the wall,
   so text holding a card-number-shaped number (13 to 19 digits passing the
   Luhn check) is refused.
+
+### Kiosk setup and self-recovery
+
+The screen runs without a paid kiosk browser: open `/kiosk` in Chrome on
+the DeX phone, pair it, then "Add to Home screen". It installs as its own
+app ("Kitchen", `public/kiosk.webmanifest`: start `/kiosk`, full screen,
+landscape) and shares Chrome's cookies, so the pairing carries over. Pin
+it with Android's App pinning and turn on "Stay awake while charging".
+
+`useKioskWatchdog()` keeps it alive unattended (rules in
+`src/modules/family/ui/watchdog.ts`): it reloads when fresh renders stop
+for 3 minutes while the server still answers, once when the connection
+comes back, and once a night at 3 AM. While offline it never reloads; it
+pings a static file with backoff (15 s up to 5 min) and shows "Offline,
+reconnecting". At most 3 watchdog reloads per 15 minutes. If the page is
+opened with no connection, the service worker serves
+`/kiosk-offline.html`, which retries `/kiosk` every 30 s by itself.
 
 ## Assistant access (MCP)
 
