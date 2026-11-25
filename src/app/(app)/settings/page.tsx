@@ -13,8 +13,14 @@ import { InstallAppButton } from "@/components/pwa/install-app-button";
 import { listKioskDevices } from "@/core/kiosk/devices";
 import { BankSyncSettings, type BankSyncView } from "@/modules/finance/ui/bank-sync-settings";
 import { householdTimeZone, syncStatus } from "@/modules/finance/api";
+import { listMailboxes, memberFromLabel } from "@/modules/family/api";
+import { MailSettings } from "@/modules/family/ui/mail-settings";
 import {
   connectBankAction,
+  connectGmailAction,
+  disconnectMailboxAction,
+  scanMailNowAction,
+  setMailboxSpamAction,
   disconnectBankAction,
   syncBankNowAction,
   disconnectAllAssistantsAction,
@@ -47,8 +53,11 @@ const KEY_HELP: Record<KeyId, Pick<KeyRowStatus, "placeholder" | "help" | "getKe
   gemini: { placeholder: "AIza…", getKeyUrl: "https://aistudio.google.com/app/apikey" },
 };
 
-export default async function SettingsPage() {
-  await requireUserOrRedirect();
+export default async function SettingsPage({ searchParams }: PageProps<"/settings">) {
+  const user = await requireUserOrRedirect();
+  const justConnected = (await searchParams).mail === "connected";
+  // Only this member's own mailboxes, never the other member's.
+  const mailboxes = await listMailboxes(memberFromLabel(user.owner));
   const settings = await getAiSettings();
   const mcp = oauthConfig();
   const connections = mcp ? await listConnections() : [];
@@ -88,6 +97,14 @@ export default async function SettingsPage() {
       <div id="bank-sync" className="scroll-mt-6 space-y-3 rounded-xl border p-6">
         <h2 className="font-medium">Bank sync (SimpleFIN)</h2>
         <BankSyncSettings view={bankView} connect={connectBankAction} syncNow={syncBankNowAction} disconnect={disconnectBankAction} />
+      </div>
+      <div id="email" className="scroll-mt-6 space-y-3 rounded-xl border p-6">
+        <h2 className="font-medium">Email for returns</h2>
+        <MailSettings
+          mailboxes={mailboxes}
+          justConnected={justConnected}
+          actions={{ connect: connectGmailAction, scanNow: scanMailNowAction, setSpam: setMailboxSpamAction, disconnect: disconnectMailboxAction }}
+        />
       </div>
       <div className="space-y-5 rounded-xl border p-6">
         <h2 className="font-medium">AI configuration</h2>

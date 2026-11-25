@@ -10,6 +10,16 @@ import { z } from "zod";
 import { createPairingCode, revokeKioskDevice } from "@/core/kiosk/devices";
 import { formatPairingCode } from "@/core/kiosk/pairing";
 import { revokeAllConnections, revokeConnection, setConnectionPermissions } from "@/core/oauth/server";
+import { appOrigin } from "@/core/auth/origin";
+import { rateLimit } from "@/core/net/rate-limit";
+import {
+  MailConnectError,
+  disconnectMailbox,
+  memberFromLabel,
+  scanMemberMailboxes,
+  setMailboxSpam,
+  startMailConnect,
+} from "@/modules/family/api";
 import { connectSimplefin, disconnectSimplefin, syncSimplefinNow, viewerFromLabel } from "@/modules/finance/api";
 
 const save = authedAction(AiSettingsSchema, async (settings) => {
@@ -162,3 +172,39 @@ export async function disconnectBankAction() {
   revalidatePath("/settings");
   revalidatePath("/finance", "layout");
 }
+
+// ---- Return emails (Gmail, read-only) ----
+// Each member manages only their own mailboxes; the module checks ownership.
+
+export const connectGmailAction = authedAction(z.object({}), async (_input, user): Promise<{ url: string | null; error: string | null }> => {
+  try {
+    return { url: await startMailConnect(memberFromLabel(user.owner), await appOrigin()), error: null };
+  } catch (err) {
+    return { url: null, error: err instanceof MailConnectError ? err.message : "Could not start the Google sign-in" };
+  }
+});
+
+export const scanMailNowAction = authedAction(z.object({}), async (_input, user): Promise<{ message: string }> => {
+  const member = memberFromLabel(user.owner);
+  if (!rateLimit(`mail-scan:${member}`, 1, 2 * 60_000)) return { message: "Scanned a moment ago. Try again in two minutes." };
+  const results = await scanMemberMailboxes(member);
+  revalidatePath("/settings");
+  revalidatePath("/family");
+  if (results.length === 0) return { message: "No mailboxes connected." };
+  const found = results.reduce((n, r) => n + r.found, 0);
+  const failed = results.filter((r) => !r.ok).length;
+  return {
+    message: `${found === 0 ? "No new returns found" : `Found ${found} new return${found === 1 ? "" : "s"}`}${failed ? `; ${failed} mailbox${failed === 1 ? "" : "es"} failed (see below)` : ""}.`,
+  };
+});
+
+export const setMailboxSpamAction = authedAction(z.object({ id: z.uuid(), includeSpam: z.boolean() }), async (input, user) => {
+  await setMailboxSpam(memberFromLabel(user.owner), input.id, input.includeSpam);
+  revalidatePath("/settings");
+});
+
+export const disconnectMailboxAction = authedAction(z.object({ id: z.uuid() }), async (input, user) => {
+  await disconnectMailbox(memberFromLabel(user.owner), input.id);
+  revalidatePath("/settings");
+  revalidatePath("/family");
+});
