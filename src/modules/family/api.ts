@@ -232,6 +232,7 @@ export {
   listTemplates,
   moveShoppingItem,
   openItemCount,
+  openStoreCount,
   removeStore,
   renameList,
   reorderLists,

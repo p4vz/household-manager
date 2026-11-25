@@ -364,12 +364,12 @@ export function ShoppingPanel({
     >
       <QuickAdd board={board} onAdd={add} onNewList={() => setNewList(true)}>
         {member ? (
-          <button type="button" className={`${tap} border px-3 ${editing ? "bg-slate-900 text-white" : ""}`} onClick={() => setEditing(!editing)} aria-pressed={editing}>
-            {editing ? "Done" : "Edit"}
+          <button type="button" className={`${compactTap} border ${editing ? "bg-slate-900 text-white" : ""}`} onClick={() => setEditing(!editing)} aria-pressed={editing} aria-label={editing ? "Done editing" : "Edit lists"} title={editing ? "Done editing" : "Edit lists"}>
+            {editing ? "Done" : "✎"}
           </button>
         ) : null}
         {expandable ? (
-          <button type="button" className={`${tap} border px-3`} onClick={() => setExpanded(!expanded)} aria-label={expanded ? "Shrink" : "Full screen"}>
+          <button type="button" className={`${compactTap} border`} onClick={() => setExpanded(!expanded)} aria-label={expanded ? "Shrink" : "Full screen"}>
             {expanded ? "✕" : "⤢"}
           </button>
         ) : null}
@@ -498,6 +498,10 @@ export function ShoppingPanel({
 
 // ---------------------------------------------------------- quick add ----
 
+/** The add row sits in a narrow kiosk panel: one line, still 44 px touch targets. */
+const compactTap = "min-h-11 min-w-11 shrink-0 rounded-lg px-2.5 text-sm font-medium active:scale-95 transition-transform select-none";
+const compactField = "min-h-11 rounded-lg border border-slate-300 bg-white px-2 text-sm text-slate-900 dark:border-slate-600 dark:bg-slate-800 dark:text-slate-100";
+
 function QuickAdd({ board, onAdd, onNewList, children }: { board: ShoppingBoard; onAdd: (i: { name: string; store: string; listId: string }) => void; onNewList: () => void; children?: ReactNode }) {
   const [name, setName] = useState("");
   const [store, setStore] = useState("");
@@ -506,7 +510,7 @@ function QuickAdd({ board, onAdd, onNewList, children }: { board: ShoppingBoard;
   const storeValue = store || list?.sections[0]?.store || board.stores[0] || "";
   return (
     <form
-      className="flex flex-wrap gap-2"
+      className="flex min-w-0 items-center gap-1.5"
       onSubmit={(e) => {
         e.preventDefault();
         const n = name.trim();
@@ -516,15 +520,15 @@ function QuickAdd({ board, onAdd, onNewList, children }: { board: ShoppingBoard;
         onAdd({ name: n, store: s, listId: list.id });
       }}
     >
-      <input className={`${field} min-w-32 flex-[2]`} placeholder="Add item…" value={name} maxLength={80} onChange={(e) => setName(e.target.value)} disabled={!list} />
-      <input className={`${field} w-36 min-w-0 flex-1`} list="shopping-stores" placeholder="Store" aria-label="Store" value={storeValue} maxLength={40} onChange={(e) => setStore(e.target.value)} disabled={!list} />
+      <input className={`${compactField} min-w-0 flex-[2]`} placeholder="Add item…" value={name} maxLength={80} onChange={(e) => setName(e.target.value)} disabled={!list} />
+      <input className={`${compactField} w-24 min-w-0 flex-1`} list="shopping-stores" placeholder="Store" aria-label="Store" value={storeValue} maxLength={40} onChange={(e) => setStore(e.target.value)} disabled={!list} />
       <datalist id="shopping-stores">
         {board.stores.map((s) => (
           <option key={s} value={s} />
         ))}
       </datalist>
       {board.lists.length > 1 ? (
-        <select className={`${field} max-w-40`} value={list?.id} onChange={(e) => setListId(e.target.value)} aria-label="List">
+        <select className={`${compactField} w-24 min-w-0 shrink`} value={list?.id} onChange={(e) => setListId(e.target.value)} aria-label="List">
           {board.lists.map((l) => (
             <option key={l.id} value={l.id}>
               {l.name}
@@ -532,11 +536,11 @@ function QuickAdd({ board, onAdd, onNewList, children }: { board: ShoppingBoard;
           ))}
         </select>
       ) : null}
-      <button type="submit" className={`${tap} bg-sky-600 text-white`} disabled={!list}>
+      <button type="submit" className={`${compactTap} bg-sky-600 text-white`} disabled={!list}>
         Add
       </button>
-      <button type="button" className={`${tap} border px-3`} onClick={onNewList}>
-        ＋ List
+      <button type="button" className={`${compactTap} border`} onClick={onNewList} aria-label="New list" title="New list">
+        ＋
       </button>
       {children}
     </form>

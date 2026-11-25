@@ -108,6 +108,13 @@ export function openItemCount(board: Pick<ShoppingBoard, "lists">): number {
   return board.lists.reduce((n, l) => n + l.sections.reduce((m, s) => m + s.items.filter((i) => !i.checked).length, 0), 0);
 }
 
+/** Stores with something still to buy on active lists (the kiosk tab badge). */
+export function openStoreCount(board: Pick<ShoppingBoard, "lists">): number {
+  const stores = new Set<string>();
+  for (const l of board.lists) for (const s of l.sections) if (s.items.some((i) => !i.checked)) stores.add(s.store.trim().toLowerCase());
+  return stores.size;
+}
+
 /** Unticked items in one store across the active lists, for a printed slip. */
 export function storeItemsToBuy(board: Pick<ShoppingBoard, "lists">, store: string): { name: string; quantity: string | null }[] {
   const seen = new Set<string>();
