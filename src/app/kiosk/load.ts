@@ -2,12 +2,28 @@ import "server-only";
 import { homeWeather } from "@/core/weather/home-weather";
 import { householdTimeZone } from "@/core/time/zoned";
 import { KIOSK_DAYS_AHEAD, kioskCalendar, monthGridStart } from "@/modules/calendar/api";
-import { choreBoard, deadlineUrgency, kidProgress, listReturns, shoppingBoard } from "@/modules/family/api";
+import { choreBoard, deadlineUrgency, kidProgress, listReturns, readingSummaries, shoppingBoard } from "@/modules/family/api";
+import type { ReadingSummary } from "@/modules/family/api";
 import type { KidProgressView } from "@/modules/family/ui/goal-strip";
+import type { ReadingView } from "@/modules/family/ui/reading-log";
 import type { ReturnView } from "@/modules/family/ui/returns-panel";
 import type { UpkeepView } from "@/modules/family/ui/upkeep-panel";
 import { householdToday, longDate, relativeDue, shortDate } from "@/modules/family/ui/dates";
 import { listDueTasks } from "@/modules/maintenance/api";
+
+function readingView(r: ReadingSummary | undefined): ReadingView | undefined {
+  if (!r) return undefined;
+  return {
+    day: r.stats.day,
+    streak: r.stats.streak,
+    totalDays: r.stats.totalDays,
+    todayShare: r.stats.todayShare,
+    nextStreakAt: r.stats.nextStreakAt,
+    nextTotalAt: r.stats.nextTotalAt,
+    today: r.today,
+    books: r.books,
+  };
+}
 
 /** Everything the kiosk and the phone view show, shaped for the client components. */
 export async function loadHub(now = new Date()) {
@@ -16,7 +32,7 @@ export async function loadHub(now = new Date()) {
   const twoWeeks = new Date(`${today}T00:00:00Z`);
   twoWeeks.setUTCDate(twoWeeks.getUTCDate() + 14);
 
-  const [calendar, kids, shopping, returns, tasks, weather, progressRows] = await Promise.all([
+  const [calendar, kids, shopping, returns, tasks, weather, progressRows, reading] = await Promise.all([
     kioskCalendar(KIOSK_DAYS_AHEAD, now, { from: monthGridStart(today) }),
     choreBoard(now),
     shoppingBoard(now),
@@ -24,6 +40,7 @@ export async function loadHub(now = new Date()) {
     listDueTasks(twoWeeks.toISOString().slice(0, 10)),
     homeWeather(),
     kidProgress(now),
+    readingSummaries(now),
   ]);
   const progress: Record<string, KidProgressView> = Object.fromEntries(
     progressRows.map((p) => [
@@ -47,6 +64,7 @@ export async function loadHub(now = new Date()) {
           best: p.stars.best ? { name: p.stars.best.name, emoji: p.stars.best.emoji, stars: p.stars.best.stars } : null,
           next: p.stars.next ? { name: p.stars.next.name, emoji: p.stars.next.emoji, stars: p.stars.next.stars, missing: p.stars.next.missing } : null,
         },
+        reading: readingView(reading.get(p.kidId)),
         badges: p.badges,
         bestStreak: p.bestStreak,
         nextBadge: p.nextBadge,

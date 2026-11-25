@@ -183,6 +183,13 @@
       "when": 1795644445682,
       "tag": "0025_category_sources",
       "breakpoints": true
+    },
+    {
+      "idx": 26,
+      "version": "7",
+      "when": 1795646552657,
+      "tag": "0026_reading_log",
+      "breakpoints": true
     }
   ]
 }

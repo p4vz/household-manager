@@ -34,6 +34,8 @@ const actionFiles = walk(SRC)
 const CHILD_SAFE_ACTIONS: Record<string, string> = {
   setChoreDoneAction: "chores.tick",
   addOneTimeChoreAction: "chores.add",
+  logReadingAction: "reading.log",
+  deleteReadingAction: "reading.log",
   addReturnAction: "returns.add",
   syncCalendarAction: "calendar.sync",
   syncShoppingAction: "hub.view",
@@ -133,7 +135,7 @@ describe("kid-proof kitchen screen", () => {
   });
 
   it("names an ability on every kiosk action, and only the listed ones need an adult", () => {
-    const src = ["actions.ts", "shopping-actions.ts", "calendar-actions.ts", "adult-actions.ts"].map((f) => readFileSync(join(SRC, "app/kiosk", f), "utf8")).join("\n");
+    const src = ["actions.ts", "shopping-actions.ts", "calendar-actions.ts", "adult-actions.ts", "reading-actions.ts"].map((f) => readFileSync(join(SRC, "app/kiosk", f), "utf8")).join("\n");
     const declared = Object.fromEntries([...src.matchAll(/export const (\w+) = kioskAction\(\s*"([\w.]+)"/g)].map((m) => [m[1], m[2]]));
     expect(declared).toEqual({ ...CHILD_SAFE_ACTIONS, ...ADULT_ACTIONS });
     for (const a of Object.values(CHILD_SAFE_ACTIONS)) expect(CHILD_SAFE_ABILITIES).toContain(a);

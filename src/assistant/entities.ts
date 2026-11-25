@@ -35,6 +35,7 @@ export const KITCHEN_OWNER = "kitchen-screen";
 export const KITCHEN_ENTITIES: ReadonlySet<string> = new Set([
   "chore",
   "chore_goal",
+  "reading_entry",
   "shopping_item",
   "shopping_list",
   "shopping_template",
@@ -560,6 +561,52 @@ const chore: EntityAdapter = {
   },
 };
 
+export const ReadingFields = z
+  .object({
+    /** The kid's first name as on the chore board. */
+    kid: text(40),
+    /** YYYY-MM-DD, household day; defaults to today. */
+    day,
+    book: text(80),
+    language: z.enum(["en", "ru"]),
+    minutes: z.number().int().min(1).max(600),
+    pages: z.number().int().min(0).max(2000).nullable(),
+  })
+  .strict();
+
+/** Reading log entries. Milestone stars follow the log, so undo takes them back too. */
+const readingEntry: EntityAdapter = {
+  entity: "reading_entry",
+  title: "Reading",
+  async get(_ctx, key) {
+    const r = await family.getReading(key);
+    if (!r) return null;
+    const kid = (await family.listKids()).find((k) => k.id === r.kidId)?.name ?? "Kid";
+    return {
+      fields: { kid, day: r.day, book: r.book, language: r.language, minutes: r.minutes, pages: r.pages },
+      label: `${kid}: ${r.book}, ${r.minutes} min (${r.day})`,
+    };
+  },
+  async update(ctx, key, patch) {
+    const { kid, ...rest } = ReadingFields.partial().parse(patch);
+    const current = await family.getReading(key);
+    if (!current) throw new Error("That reading entry is gone");
+    if (kid && (await kidIdByName(kid)) !== current.kidId) throw new Error("An entry can't move to another kid. Add it for that kid and delete this one.");
+    await family.updateReading(key, rest, ctx.now);
+  },
+  async create(ctx, fields) {
+    const f = ReadingFields.partial({ day: true, pages: true }).parse(fields);
+    return family.addReading({ kidId: await kidIdByName(f.kid), day: f.day, book: f.book, language: f.language, minutes: f.minutes, pages: f.pages ?? null }, ctx.now);
+  },
+  async remove(_ctx, key) {
+    await family.deleteReading(key);
+  },
+  async restore(_ctx, _key, snapshot) {
+    const f = ReadingFields.parse(snapshot);
+    return family.restoreReading({ kidId: await kidIdByName(f.kid), day: f.day, book: f.book, language: f.language, minutes: f.minutes, pages: f.pages });
+  },
+};
+
 export const GoalFields = z
   .object({
     kid: text(40),
@@ -834,6 +881,7 @@ export const ADAPTERS: Record<string, EntityAdapter> = Object.fromEntries(
     kid,
     chore,
     choreGoal,
+    readingEntry,
     calendarEvent,
     tripCharge,
   ].map((a) => [a.entity, a]),

@@ -16,6 +16,8 @@ export const CHILD_SAFE_ABILITIES = [
   "hub.view",
   "chores.tick",
   "chores.add",
+  // Reading log: add an entry, or take back one of today's (older ones need an adult).
+  "reading.log",
   "shopping.add",
   "shopping.tick",
   "shopping.arrange",

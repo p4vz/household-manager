@@ -5,6 +5,7 @@ import { householdTimeZone } from "@/core/time/zoned";
 import { assertNoCardNumber } from "./guard";
 import { choreStreak, goalProgress, historyGrid, kidBadges, nextStreakBadge, type Badge, type GoalKind } from "./goals";
 import { familyChoreCompletions, familyChoreGoals, familyChores, familyKids, familyStarPrizes, familyStarSpends } from "./schema";
+import { readingStarsByKid } from "./reading-api";
 import { starBank, type StarBank, type StarPrize } from "./stars";
 import { addDays, dayBucket, weekBucket, type Recurrence } from "./time";
 
@@ -139,7 +140,7 @@ export async function kidProgress(now = new Date()): Promise<KidProgress[]> {
       .from(familyChoreCompletions)
       .groupBy(familyChoreCompletions.kidId),
     db().select().from(familyChores).where(eq(familyChores.recurrence, "daily")),
-    starBanks(),
+    starBanks(now),
   ]);
   const today = dayBucket(now, tz());
   const done = await completionsByChore(
@@ -323,8 +324,8 @@ export async function listStarPrizes(): Promise<StarPrize[]> {
 }
 
 /** Each kid's star bank: lifetime stars from chores, minus prizes given. */
-export async function starBanks(): Promise<Map<string, StarBank>> {
-  const [earned, spent, prizes] = await Promise.all([
+export async function starBanks(now = new Date()): Promise<Map<string, StarBank>> {
+  const [earned, spent, prizes, reading] = await Promise.all([
     db()
       .select({ kidId: familyChoreCompletions.kidId, stars: sql<number>`coalesce(sum(${familyChoreCompletions.stars}), 0)::int` })
       .from(familyChoreCompletions)
@@ -334,10 +335,15 @@ export async function starBanks(): Promise<Map<string, StarBank>> {
       .from(familyStarSpends)
       .groupBy(familyStarSpends.kidId),
     listStarPrizes(),
+    readingStarsByKid(now),
   ]);
   const kids = await db().select({ id: familyKids.id }).from(familyKids).where(eq(familyKids.active, true));
+  // Lifetime stars: chores plus reading-log milestones.
   return new Map(
-    kids.map((k) => [k.id, starBank(earned.find((e) => e.kidId === k.id)?.stars ?? 0, spent.find((s) => s.kidId === k.id)?.stars ?? 0, prizes)]),
+    kids.map((k) => [
+      k.id,
+      starBank((earned.find((e) => e.kidId === k.id)?.stars ?? 0) + (reading.get(k.id) ?? 0), spent.find((s) => s.kidId === k.id)?.stars ?? 0, prizes),
+    ]),
   );
 }
 

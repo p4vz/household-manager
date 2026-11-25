@@ -18,6 +18,7 @@ import {
   CalendarEventFields,
   ChoreFields,
   GoalFields,
+  ReadingFields,
   KidFields,
   MerchantRuleFields,
   AssetFields,
@@ -455,6 +456,31 @@ export const TOOLS: AssistantTool[] = [
         stats: k.stats,
         chores: k.chores.map((c) => ({ ref: refs.ref("chore", c.id), title: c.title, icon: c.icon, recurrence: c.recurrence, stars: c.stars, done: c.done })),
       }));
+    },
+  },
+  {
+    name: "reading_log",
+    description:
+      "Kids' reading log: per kid, today's reading toward the day's goal (a day counts with 20 minutes in English or 15 in Russian), days in a row, reading days in all, milestone stars (10 for every 5 days in a row, 50 for every 30 days), and entries from the last 30 days (ref, date, book, en/ru, minutes, pages). Refs work with edit_reading_log.",
+    input: {},
+    kind: "read",
+    scrub: "reference",
+    async run(_args, { ctx, refs }) {
+      const [kids, summaries] = await Promise.all([family.listKids(), family.readingSummaries(ctx.now)]);
+      return kids.map((k) => {
+        const r = summaries.get(k.id);
+        return {
+          kid: k.name,
+          rule: family.READING_RULE,
+          todayCounted: (r?.stats.todayShare ?? 0) >= 1,
+          todayPercent: Math.round((r?.stats.todayShare ?? 0) * 100),
+          daysInARow: r?.stats.streak ?? 0,
+          readingDays: r?.stats.totalDays ?? 0,
+          milestoneStars: r?.stats.stars ?? 0,
+          milestones: (r?.stats.milestones ?? []).slice(-5).map((m) => `${m.label} (${m.day}, +${m.stars} stars)`),
+          entries: (r?.recent ?? []).map((e) => ({ ref: refs.ref("reading_entry", e.id), date: e.day, book: e.book, language: e.language, minutes: e.minutes, pages: e.pages })),
+        };
+      });
     },
   },
   {
@@ -952,6 +978,31 @@ export const TOOLS: AssistantTool[] = [
     },
   },
   {
+    name: "edit_reading_log",
+    description:
+      "Kids' reading log. create (kid's name, book, language en or ru, minutes, optional pages, optional date in the last 14 days, default today); update (ref from reading_log: book, language, minutes, pages, date); delete. A day counts with 20 minutes in English or 15 in Russian; milestone stars follow automatically.",
+    input: {
+      action: ACTION,
+      ref: z.string().max(12).optional(),
+      kid: z.string().max(40).optional(),
+      day: z.iso.date().optional(),
+      book: z.string().max(80).optional(),
+      language: z.enum(["en", "ru"]).optional(),
+      minutes: z.number().int().min(1).max(600).optional(),
+      pages: z.number().int().min(0).max(2000).nullable().optional(),
+    },
+    kind: "edit",
+    scrub: "reference",
+    async run(args, env) {
+      const { action, ref, ...rest } = args as { action: string; ref?: string } & Fields;
+      return crud(env, "reading_entry", action, ref, rest, {
+        create: (f) => ReadingFields.partial({ day: true, pages: true }).parse({ pages: null, ...f }),
+        update: (f) => ReadingFields.omit({ kid: true }).partial().parse(f),
+        label: (f) => `${f.kid}: ${f.book}, ${f.minutes} min ${f.language === "ru" ? "Russian" : "English"}${f.day ? ` (${f.day})` : ""}`,
+      });
+    },
+  },
+  {
     name: "edit_chore_goal",
     description:
       "Kids' chore goals with a reward, e.g. read 10 days in a row -> a prize. create (kid's name, the chore's title on their board, which must be daily or weekly, streak or count, target 2 to 365, reward, optional emoji; a chore added in the same reply works); update (ref from chore_goals: target, reward, emoji, rewardGiven); archive.",
@@ -1112,6 +1163,7 @@ export const KITCHEN_TOOL_NAMES: ReadonlySet<string> = new Set([
   "calendar",
   "chores",
   "chore_goals",
+  "reading_log",
   "shopping_list",
   "shopping_lists",
   "purchase_returns",
@@ -1119,6 +1171,7 @@ export const KITCHEN_TOOL_NAMES: ReadonlySet<string> = new Set([
   "edit_calendar_event",
   "edit_chore",
   "edit_chore_goal",
+  "edit_reading_log",
   "edit_shopping_item",
   "edit_shopping_list",
   "edit_shopping_template",
