@@ -294,6 +294,7 @@ fails if `fetch(` is used anywhere else.
 | `geocoding-api.open-meteo.com`, `api.open-meteo.com` | trips: place lookup and weather forecast; home weather on the kiosk and home page (coordinates from `HOME_WEATHER` only; keyless) |
 | `en.wikipedia.org` | trips: article summary that grounds generated trivia (keyless) |
 | `overpass-api.de` | trips: gluten-free venues tagged in OpenStreetMap (keyless) |
+| `www.saferproducts.gov` | house upkeep: U.S. CPSC product-recall search for listed home equipment (keyless; only a product phrase such as "GE refrigerator" is sent, digit runs of 5+ removed) |
 
 The trips hosts receive only a place name or coordinates. No household
 data, names or credentials are sent to them.

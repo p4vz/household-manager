@@ -109,7 +109,11 @@ export const UpkeepFields = z
     estimatedCost: z.number().min(0).max(1_000_000).nullable(),
     recurrenceDays: z.number().int().min(1).max(3650).nullable(),
     notes: optText(1000),
+    area: optText(60),
+    parts: optText(300),
+    lastDoneOn: day.nullable(),
   })
+  .partial({ area: true, parts: true, lastDoneOn: true })
   .strict();
 
 const upkeepTask: EntityAdapter = {
@@ -119,7 +123,16 @@ const upkeepTask: EntityAdapter = {
     const t = await maintenance.getTask(key);
     if (!t) return null;
     return {
-      fields: { title: t.title, dueDate: t.dueDate, estimatedCost: t.estimatedCost, recurrenceDays: t.recurrenceDays, notes: t.notes },
+      fields: {
+        title: t.title,
+        dueDate: t.dueDate,
+        estimatedCost: t.estimatedCost,
+        recurrenceDays: t.recurrenceDays,
+        notes: t.notes,
+        area: t.area,
+        parts: t.parts,
+        lastDoneOn: t.lastDoneOn,
+      },
       label: `${t.title} (due ${t.dueDate}${t.completedOn ? `, done ${t.completedOn}` : ""})`,
     };
   },
@@ -136,6 +149,82 @@ const upkeepTask: EntityAdapter = {
   },
   async restore(_ctx, _key, snapshot) {
     return maintenance.scheduleTask(UpkeepFields.parse(snapshot));
+  },
+};
+
+export const AssetFields = z
+  .object({
+    name: text(80),
+    kind: z.enum(maintenance.ASSET_KINDS),
+    location: optText(60),
+    installedOn: day.nullable(),
+    cost: z.number().min(0).max(1_000_000).nullable(),
+    notes: optText(500),
+  })
+  .strict();
+
+const upkeepAsset: EntityAdapter = {
+  entity: "upkeep_asset",
+  title: "Home equipment",
+  async get(_ctx, key) {
+    const a = await maintenance.getAsset(key);
+    if (!a) return null;
+    return {
+      fields: { name: a.name, kind: a.kind, location: a.location, installedOn: a.installedOn, cost: a.cost, notes: a.notes },
+      label: a.name,
+    };
+  },
+  async update(_ctx, key, patch) {
+    await maintenance.updateAsset(key, AssetFields.partial().parse(patch));
+  },
+  async create(_ctx, fields) {
+    return maintenance.addAsset(AssetFields.parse({ location: null, installedOn: null, cost: null, notes: null, ...fields }));
+  },
+  async remove(_ctx, key) {
+    await maintenance.deleteAsset(key);
+  },
+  async restore(ctx, _key, snapshot) {
+    return this.create!(ctx, snapshot);
+  },
+};
+
+export const ProjectFields = z
+  .object({
+    date: day.nullable(),
+    period: optText(40),
+    title: text(120),
+    vendor: optText(120),
+    description: optText(1000),
+    amount: z.number().min(0).max(10_000_000).nullable(),
+    amountNote: optText(60),
+  })
+  .strict();
+
+/** House project and expense history. The linked transaction is kept as is and never shown here. */
+const houseProject: EntityAdapter = {
+  entity: "house_project",
+  title: "House project",
+  async get(_ctx, key) {
+    const p = await maintenance.getProject(key);
+    if (!p) return null;
+    return {
+      fields: { date: p.date, period: p.period, title: p.title, vendor: p.vendor, description: p.description, amount: p.amount, amountNote: p.amountNote },
+      label: `${p.title}${p.date ? ` (${p.date})` : p.period ? ` (${p.period})` : ""}`,
+    };
+  },
+  async update(_ctx, key, patch) {
+    await maintenance.updateProject(key, ProjectFields.partial().parse(patch));
+  },
+  async create(_ctx, fields) {
+    const { transactionId, ...rest } = fields as Fields & { transactionId?: string };
+    const f = ProjectFields.parse({ date: null, period: null, vendor: null, description: null, amount: null, amountNote: null, ...rest });
+    return maintenance.addProject({ ...f, transactionId: typeof transactionId === "string" ? transactionId : null });
+  },
+  async remove(_ctx, key) {
+    await maintenance.deleteProject(key);
+  },
+  async restore(ctx, _key, snapshot) {
+    return this.create!(ctx, snapshot);
   },
 };
 
@@ -284,7 +373,7 @@ const tripCharge: EntityAdapter = {
 };
 
 export const ADAPTERS: Record<string, EntityAdapter> = Object.fromEntries(
-  [transaction, merchantRule, upkeepTask, shoppingItem, purchaseReturn, chore, tripCharge].map((a) => [a.entity, a]),
+  [transaction, merchantRule, upkeepTask, upkeepAsset, houseProject, shoppingItem, purchaseReturn, chore, tripCharge].map((a) => [a.entity, a]),
 );
 
 export function adapterFor(entity: string): EntityAdapter {
