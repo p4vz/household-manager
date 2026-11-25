@@ -28,6 +28,8 @@ Google OAuth client: add `http://localhost:3000/api/auth/callback/google`
 (and the Railway URL equivalent) as an authorized redirect URI.
 For return emails, also add `/settings/email/callback` on the same origins,
 enable the Gmail API, and add the `gmail.readonly` scope to the consent screen.
+For backups, also add `/settings/backup/callback`, enable the Google Drive
+API, and add the `drive.file` scope.
 
 ## Checks
 
@@ -41,12 +43,13 @@ npm run lint && npm run typecheck && npm test && npm run build
 2. Set the variables from `.env.example` on the app service.
 3. Start command: `npm run db:migrate && npm start`.
 4. Add a second service from the same repo for cron: schedule `0 * * * *`,
-   start command `node scripts/cron.mjs simplefin-sync monthly-advisor card-catalog family-hub`, variables `APP_URL`
+   start command `node scripts/cron.mjs simplefin-sync monthly-advisor card-catalog family-hub backup notifications`, variables `APP_URL`
    (the app's public URL) and `CRON_SECRET`. The app only contacts SimpleFIN
    at 7 AM and 7 PM in `HOUSEHOLD_TIMEZONE`, runs the AI card
    review on the 1st of each month, checks due card catalog entries
    against issuer pages at 6 AM, and refreshes the kitchen kiosk's Google
-   Calendar copy every hour.
+   Calendar copy every hour, backs up to Google Drive at 3 AM
+   (docs/BACKUP.md) and sends phone notifications between 8 AM and 9 PM.
 
 ## First run
 
