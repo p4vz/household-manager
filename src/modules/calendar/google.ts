@@ -220,7 +220,8 @@ async function runSync(now: Date): Promise<GoogleSyncState> {
       const cal = await resolveCalendar(source);
       const events = (await fetchEvents(cal.id, source.label, windowStart, windowEnd))
         .map(toStoredEvent)
-        .filter((e): e is NonNullable<typeof e> => e !== null);
+        .filter((e): e is NonNullable<typeof e> => e !== null)
+        .map((e) => (source.hideNotes ? { ...e, notes: null } : e));
       await db().transaction(async (tx) => {
         for (const e of events) {
           const row = { ...e, calendarKey: source.key, lastSyncedAt: now };

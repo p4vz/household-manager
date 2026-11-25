@@ -97,6 +97,16 @@ beforeAll(async () => {
     start: { date: day(1) },
     end: { date: day(2) },
   });
+  store.set("en.usa#holiday@group.v.calendar.google.com", new Map());
+  store.get("en.usa#holiday@group.v.calendar.google.com")!.set("h1", {
+    id: "h1",
+    etag: '"h"',
+    summary: "Thanksgiving Day",
+    description: "Public holiday",
+    updated: NOW.toISOString(),
+    start: { date: day(2) },
+    end: { date: day(3) },
+  });
 });
 
 async function agendaItems() {
@@ -110,11 +120,15 @@ describe("two-way family calendar", () => {
     expect(state).toMatchObject({ ok: true });
     const cal = await api.kioskCalendar(7);
     expect(cal.writableLabel).toBe("Pavel + Raisa");
-    expect(cal.legend.map((l) => l.label)).toEqual(["Pavel + Raisa", "Kids"]);
+    expect(cal.legend.map((l) => l.label)).toEqual(["Pavel + Raisa", "Kids", "US holidays"]);
     const soccer = (await agendaItems()).find((i) => i.title === "Soccer");
     expect(soccer?.edit).toBeUndefined();
+    // US holidays: read-only, in their own colour, without Google's boilerplate notes.
+    const holiday = (await agendaItems()).find((i) => i.title === "Thanksgiving Day");
+    expect(holiday).toMatchObject({ who: "US holidays", color: "#dc2626", notes: null, allDay: true });
+    expect(holiday?.edit).toBeUndefined();
     // Calendar ids never leave the server.
-    expect(JSON.stringify(cal)).not.toMatch(/@group|me@x/);
+    expect(JSON.stringify(cal)).not.toMatch(/@group|me@x|holiday@/);
   });
 
   it("adds, edits and deletes events in Google and the mirror", async () => {
