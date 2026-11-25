@@ -96,3 +96,23 @@ describe("AI provider API keys", () => {
     expect(await keys.testApiKey("gemini")).toMatchObject({ ok: true });
   });
 });
+
+describe("Claude subscription token", () => {
+  const TOKEN = "sk-ant-oat01-" + "t".repeat(80) + "TOKN";
+
+  it("is checked, stored and masked like the other keys", async () => {
+    expect(keys.checkApiKeyShape("claude_subscription", TOKEN)).toBeNull();
+    expect(keys.checkApiKeyShape("claude_subscription", CLAUDE)).toMatch(/sk-ant-oat/);
+    expect(keys.checkApiKeyShape("anthropic", TOKEN)).toMatch(/subscription token/);
+    await keys.saveApiKey("claude_subscription", TOKEN);
+    expect(await keys.apiKeyStatus("claude_subscription")).toMatchObject({ source: "app", hint: "sk-ant-…TOKN" });
+    expect(await keys.providerConfigured("anthropic")).toBe(true);
+    expect(await keys.providerConfigured("gemini")).toBe(false);
+  });
+
+  it("falls back to CLAUDE_CODE_OAUTH_TOKEN", async () => {
+    vi.stubEnv("CLAUDE_CODE_OAUTH_TOKEN", TOKEN);
+    expect(await keys.apiKeyStatus("claude_subscription")).toMatchObject({ source: "env" });
+    expect(await keys.aiConfigured()).toBe(true);
+  });
+});

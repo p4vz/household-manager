@@ -26,6 +26,7 @@ const schema = z.object({
   SIMPLEFIN_ACCESS_URL: z.string().optional().default(""),
   GEMINI_API_KEY: z.string().optional().default(""),
   ANTHROPIC_API_KEY: z.string().optional().default(""),
+  CLAUDE_CODE_OAUTH_TOKEN: z.string().optional().default(""),
   HOUSEHOLD_LEGAL_NAMES: z.string().optional().default(""),
   HOUSEHOLD_TIMEZONE: z.string().optional().default("America/New_York"),
   /** Trips document vault key (32 bytes, base64). Uploads are refused without it. */

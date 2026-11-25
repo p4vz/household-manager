@@ -1,5 +1,5 @@
 import { AI_PROVIDERS, type AiProvider } from "@/core/ai/settings";
-import { allApiKeyStatus } from "@/core/ai/keys";
+import { KEY_IDS, allApiKeyStatus, type KeyId } from "@/core/ai/keys";
 import { getAiSettings } from "@/core/ai/store";
 import { AiApiKeys, type KeyRowStatus } from "@/components/ai-api-keys";
 import { requireUserOrRedirect } from "@/core/auth/guard";
@@ -27,7 +27,23 @@ import {
 } from "./actions";
 
 const LABELS: Record<AiProvider, string> = { gemini: "Google Gemini", anthropic: "Anthropic Claude" };
-const KEY_LABELS: Record<AiProvider, string> = { gemini: "Gemini", anthropic: "Claude (Anthropic)" };
+const KEY_LABELS: Record<KeyId, string> = {
+  claude_subscription: "Claude subscription token",
+  anthropic: "Claude API key (backup)",
+  gemini: "Gemini API key",
+};
+const KEY_HELP: Record<KeyId, Pick<KeyRowStatus, "placeholder" | "help" | "getKeyUrl">> = {
+  claude_subscription: {
+    placeholder: "sk-ant-oat01-…",
+    help: "Uses your Claude plan, like Agents UI. On your computer run claude setup-token, approve in the browser, and paste the token it prints (it lasts a year).",
+  },
+  anthropic: {
+    placeholder: "sk-ant-api03-…",
+    help: "Optional. Used only when the subscription call fails or hits its limit. Billed per token.",
+    getKeyUrl: "https://console.anthropic.com/settings/keys",
+  },
+  gemini: { placeholder: "AIza…", getKeyUrl: "https://aistudio.google.com/app/apikey" },
+};
 
 export default async function SettingsPage() {
   await requireUserOrRedirect();
@@ -51,18 +67,17 @@ export default async function SettingsPage() {
   };
   const configured: Record<AiProvider, boolean> = {
     gemini: keys.gemini.source !== null,
-    anthropic: keys.anthropic.source !== null,
+    anthropic: keys.anthropic.source !== null || keys.claude_subscription.source !== null,
   };
   // Only masked hints and dates go to the browser.
-  const keyRows: KeyRowStatus[] = (["anthropic", "gemini"] as const).map((p) => ({
+  const keyRows: KeyRowStatus[] = KEY_IDS.map((p) => ({
     provider: p,
     label: KEY_LABELS[p],
     source: keys[p].source,
     hint: keys[p].hint,
     savedAt: keys[p].savedAt,
     envAlsoSet: keys[p].envAlsoSet,
-    placeholder: p === "anthropic" ? "sk-ant-…" : "AIza…",
-    getKeyUrl: p === "anthropic" ? "https://console.anthropic.com/settings/keys" : "https://aistudio.google.com/app/apikey",
+    ...KEY_HELP[p],
   }));
 
   return (
@@ -76,8 +91,9 @@ export default async function SettingsPage() {
         <h2 className="font-medium">AI configuration</h2>
         <div className="space-y-2">
           <p className="text-sm opacity-80">
-            Keys are stored encrypted on the server and never shown again; only the last four characters are displayed.
-            A key saved here is used instead of the server&apos;s environment key.
+            Claude runs on your subscription when a token is saved, and falls back to the API key if that fails.
+            Tokens and keys are stored encrypted on the server and never shown again; only the last four characters are
+            displayed. One saved here is used instead of the server&apos;s environment variable.
           </p>
           <AiApiKeys rows={keyRows} actions={{ save: saveApiKeyAction, test: testApiKeyAction, remove: removeApiKeyAction }} />
         </div>

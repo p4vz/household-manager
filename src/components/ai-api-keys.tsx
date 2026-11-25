@@ -2,7 +2,7 @@
 
 import { useState, useTransition } from "react";
 
-type Provider = "gemini" | "anthropic";
+type Provider = "claude_subscription" | "anthropic" | "gemini";
 type Result = { ok: boolean; message: string };
 
 export type KeyRowStatus = {
@@ -13,7 +13,8 @@ export type KeyRowStatus = {
   savedAt: string | null;
   envAlsoSet: boolean;
   placeholder: string;
-  getKeyUrl: string;
+  help?: string;
+  getKeyUrl?: string;
 };
 
 type Actions = {
@@ -56,7 +57,7 @@ function KeyRow({ row, actions }: { row: KeyRowStatus; actions: Actions }) {
   return (
     <div className="space-y-2 rounded-lg border p-4">
       <div className="flex flex-wrap items-baseline gap-x-2">
-        <label htmlFor={inputId} className="font-medium">{row.label} API key</label>
+        <label htmlFor={inputId} className="font-medium">{row.label}</label>
         <span className="text-sm opacity-70">
           {row.source === "app" ? (
             <>
@@ -72,6 +73,7 @@ function KeyRow({ row, actions }: { row: KeyRowStatus; actions: Actions }) {
           )}
         </span>
       </div>
+      {row.help ? <p className="text-xs opacity-70">{row.help}</p> : null}
       <input
         id={inputId}
         type="password"
@@ -89,7 +91,7 @@ function KeyRow({ row, actions }: { row: KeyRowStatus; actions: Actions }) {
           onClick={() => run(() => actions.save({ provider: row.provider, key }), true)}
           className="rounded-lg bg-foreground px-3 py-1.5 text-background disabled:opacity-50"
         >
-          {row.source === "app" ? "Replace key" : "Save key"}
+          {row.source === "app" ? "Replace" : "Save"}
         </button>
         <button
           type="button"
@@ -97,7 +99,7 @@ function KeyRow({ row, actions }: { row: KeyRowStatus; actions: Actions }) {
           onClick={() => run(() => actions.test({ provider: row.provider, key }))}
           className="rounded-lg border px-3 py-1.5 disabled:opacity-50"
         >
-          {key.trim() ? "Test this key" : "Test saved key"}
+          {key.trim() ? "Test this one" : "Test saved"}
         </button>
         {row.source === "app" ? (
           <button
@@ -109,9 +111,11 @@ function KeyRow({ row, actions }: { row: KeyRowStatus; actions: Actions }) {
             Remove
           </button>
         ) : null}
-        <a href={row.getKeyUrl} target="_blank" rel="noreferrer noopener" className="underline opacity-70">
-          Get a key
-        </a>
+        {row.getKeyUrl ? (
+          <a href={row.getKeyUrl} target="_blank" rel="noreferrer noopener" className="underline opacity-70">
+            Get a key
+          </a>
+        ) : null}
       </div>
       {pending ? <p className="text-sm opacity-70">Working…</p> : null}
       {!pending && result ? (

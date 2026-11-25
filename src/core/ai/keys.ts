@@ -5,7 +5,12 @@ import { outboundFetch } from "@/core/net/outbound";
 import { AI_PROVIDERS, type AiProvider } from "./settings";
 
 /**
- * API keys for the AI providers.
+ * API keys for the AI providers, plus the Claude subscription token.
+ *
+ * "claude_subscription" is the long-lived token printed by `claude setup-token`
+ * (Claude Code's subscription sign-in). With it, Claude calls run through
+ * the Claude Agent SDK on the household's own plan (see claude-code.ts);
+ * the Anthropic API key, if any, is the backup.
  *
  * A key pasted in Settings is stored in `core_settings` sealed with
  * AES-256-GCM (same secret box as the SimpleFIN access URL) and wins over
@@ -16,17 +21,21 @@ import { AI_PROVIDERS, type AiProvider } from "./settings";
  * ever sees a masked hint ("sk-ant-…abcd") worked out at save time.
  */
 
-const ENV: Record<AiProvider, "GEMINI_API_KEY" | "ANTHROPIC_API_KEY"> = {
+export const KEY_IDS = ["claude_subscription", "anthropic", "gemini"] as const;
+export type KeyId = (typeof KEY_IDS)[number];
+
+const ENV: Record<KeyId, string> = {
   gemini: "GEMINI_API_KEY",
   anthropic: "ANTHROPIC_API_KEY",
+  claude_subscription: "CLAUDE_CODE_OAUTH_TOKEN",
 };
 
-const settingKey = (provider: AiProvider) => `ai.key.${provider}`;
+const settingKey = (provider: KeyId) => `ai.key.${provider}`;
 
 type Stored = { sealed: string; hint: string; savedAt: string };
 
 export type ApiKeyStatus = {
-  provider: AiProvider;
+  provider: KeyId;
   /** Which key calls use: the one saved in the app, the environment's, or none. */
   source: "app" | "env" | null;
   hint: string | null;
@@ -44,21 +53,27 @@ export function maskApiKey(key: string): string {
 }
 
 /** Light shape check. Providers decide validity; this only catches pasting the wrong thing. */
-export function checkApiKeyShape(provider: AiProvider, key: string): string | null {
+export function checkApiKeyShape(provider: KeyId, key: string): string | null {
   if (key.length < 20 || key.length > 400) return "That doesn't look like an API key (wrong length).";
   if (/\s/.test(key)) return "API keys don't contain spaces or line breaks.";
+  if (provider === "claude_subscription" && !key.startsWith("sk-ant-oat")) {
+    return "Subscription tokens from claude setup-token start with sk-ant-oat.";
+  }
+  if (provider === "anthropic" && key.startsWith("sk-ant-oat")) {
+    return "That is a subscription token. Paste it in the Claude subscription field instead.";
+  }
   if (provider === "anthropic" && !key.startsWith("sk-ant-")) return "Claude API keys start with sk-ant-.";
   if (provider === "gemini" && key.startsWith("sk-")) return "That looks like a Claude or OpenAI key, not a Gemini key.";
   return null;
 }
 
-async function readStored(provider: AiProvider): Promise<Stored | null> {
+async function readStored(provider: KeyId): Promise<Stored | null> {
   const v = (await getSetting(settingKey(provider))) as Partial<Stored> | undefined;
   return v && typeof v.sealed === "string" && v.sealed ? (v as Stored) : null;
 }
 
 /** The key calls should use, or null. Server-only; never return this to a client. */
-export async function getApiKey(provider: AiProvider): Promise<string | null> {
+export async function getApiKey(provider: KeyId): Promise<string | null> {
   const stored = await readStored(provider);
   if (stored) {
     try {
@@ -70,7 +85,7 @@ export async function getApiKey(provider: AiProvider): Promise<string | null> {
   return process.env[ENV[provider]] || null;
 }
 
-export async function saveApiKey(provider: AiProvider, key: string): Promise<void> {
+export async function saveApiKey(provider: KeyId, key: string): Promise<void> {
   const k = key.trim();
   await setSetting(settingKey(provider), {
     sealed: seal(k),
@@ -79,11 +94,11 @@ export async function saveApiKey(provider: AiProvider, key: string): Promise<voi
   } satisfies Stored);
 }
 
-export async function removeApiKey(provider: AiProvider): Promise<void> {
+export async function removeApiKey(provider: KeyId): Promise<void> {
   await deleteSetting(settingKey(provider));
 }
 
-export async function apiKeyStatus(provider: AiProvider): Promise<ApiKeyStatus> {
+export async function apiKeyStatus(provider: KeyId): Promise<ApiKeyStatus> {
   const env = process.env[ENV[provider]] || "";
   const stored = await readStored(provider);
   if (stored) return { provider, source: "app", hint: stored.hint, savedAt: stored.savedAt, envAlsoSet: Boolean(env) };
@@ -91,27 +106,38 @@ export async function apiKeyStatus(provider: AiProvider): Promise<ApiKeyStatus> 
   return { provider, source: null, hint: null, savedAt: null, envAlsoSet: false };
 }
 
-export async function allApiKeyStatus(): Promise<Record<AiProvider, ApiKeyStatus>> {
-  const entries = await Promise.all(AI_PROVIDERS.map(async (p) => [p, await apiKeyStatus(p)] as const));
-  return Object.fromEntries(entries) as Record<AiProvider, ApiKeyStatus>;
+export async function allApiKeyStatus(): Promise<Record<KeyId, ApiKeyStatus>> {
+  const entries = await Promise.all(KEY_IDS.map(async (p) => [p, await apiKeyStatus(p)] as const));
+  return Object.fromEntries(entries) as Record<KeyId, ApiKeyStatus>;
 }
 
-/** True when at least one provider has a key (saved or from the environment). */
+/** True when this provider can be called: Claude by subscription token or API key, Gemini by API key. */
+export async function providerConfigured(provider: AiProvider): Promise<boolean> {
+  if (provider === "anthropic" && (await getApiKey("claude_subscription"))) return true;
+  return Boolean(await getApiKey(provider));
+}
+
+/** True when at least one provider can be called (saved or from the environment). */
 export async function aiConfigured(): Promise<boolean> {
-  for (const p of AI_PROVIDERS) if (await getApiKey(p)) return true;
+  for (const p of AI_PROVIDERS) if (await providerConfigured(p)) return true;
   return false;
 }
 
-export type KeyTestResult = { ok: boolean; message: string };
+/** `rejected`: the provider refused the credential itself (not a network or rate-limit problem). */
+export type KeyTestResult = { ok: boolean; message: string; rejected?: boolean };
 
 /**
  * Checks a key by listing the provider's models: no tokens are spent and no
  * household data is sent. Only the HTTP status is reported back, never the
  * provider's response body (which could echo the request).
  */
-export async function testApiKey(provider: AiProvider, key?: string): Promise<KeyTestResult> {
+export async function testApiKey(provider: KeyId, key?: string): Promise<KeyTestResult> {
   const k = key?.trim() || (await getApiKey(provider));
   if (!k) return { ok: false, message: "No key to test. Paste one first." };
+  if (provider === "claude_subscription") {
+    const { testSubscriptionToken } = await import("./claude-code");
+    return testSubscriptionToken(k);
+  }
   let res: Response;
   try {
     res =
@@ -130,7 +156,7 @@ export async function testApiKey(provider: AiProvider, key?: string): Promise<Ke
   await res.body?.cancel().catch(() => undefined);
   if (res.ok) return { ok: true, message: "Key works." };
   if (res.status === 401 || res.status === 403 || res.status === 400) {
-    return { ok: false, message: `The provider rejected this key (HTTP ${res.status}).` };
+    return { ok: false, rejected: true, message: `The provider rejected this key (HTTP ${res.status}).` };
   }
   if (res.status === 429) return { ok: true, message: "Key accepted, but the provider is rate limiting right now." };
   return { ok: false, message: `The provider answered HTTP ${res.status}. Try again later.` };

@@ -2,9 +2,9 @@
 
 import { revalidatePath } from "next/cache";
 import { authedAction } from "@/core/actions/authed-action";
-import { checkApiKeyShape, getApiKey, removeApiKey, saveApiKey, testApiKey, type KeyTestResult } from "@/core/ai/keys";
+import { KEY_IDS, checkApiKeyShape, providerConfigured, removeApiKey, saveApiKey, testApiKey, type KeyTestResult } from "@/core/ai/keys";
 import { requireUser } from "@/core/auth/guard";
-import { AI_PROVIDERS, AiSettingsSchema } from "@/core/ai/settings";
+import { AiSettingsSchema } from "@/core/ai/settings";
 import { getAiSettings, saveAiSettings } from "@/core/ai/store";
 import { z } from "zod";
 import { createPairingCode, revokeKioskDevice } from "@/core/kiosk/devices";
@@ -31,7 +31,7 @@ export async function saveAiSettingsAction(form: FormData) {
 // The key is accepted here and sealed server-side. Nothing returned from
 // these actions contains it; errors are written by hand so they cannot echo it.
 
-const ProviderInput = z.enum(AI_PROVIDERS);
+const ProviderInput = z.enum(KEY_IDS);
 const KeyInput = z.object({ provider: ProviderInput, key: z.string().max(400) });
 
 export const saveApiKeyAction = authedAction(KeyInput, async ({ provider, key }): Promise<KeyTestResult> => {
@@ -40,19 +40,20 @@ export const saveApiKeyAction = authedAction(KeyInput, async ({ provider, key })
   if (shape) return { ok: false, message: shape };
   const test = await testApiKey(provider, k);
   // A key the provider rejects outright is not saved; a network blip or rate limit doesn't block saving.
-  if (!test.ok && test.message.startsWith("The provider rejected")) return test;
+  if (test.rejected) return test;
   await saveApiKey(provider, k);
   // If the active provider has no key at all, switch to the one just added so it starts working.
   const settings = await getAiSettings();
   let switched = false;
-  if (settings.provider !== provider && !(await getApiKey(settings.provider))) {
-    await saveAiSettings({ ...settings, provider });
+  const target = provider === "claude_subscription" ? "anthropic" : provider;
+  if (settings.provider !== target && !(await providerConfigured(settings.provider))) {
+    await saveAiSettings({ ...settings, provider: target });
     switched = true;
   }
   revalidatePath("/settings");
   const note = switched ? " It is now the active provider." : "";
   return test.ok
-    ? { ok: true, message: `Saved. Key works.${note}` }
+    ? { ok: true, message: `Saved. ${test.message}${note}` }
     : { ok: true, message: `Saved, but not verified: ${test.message}${note}` };
 });
 
