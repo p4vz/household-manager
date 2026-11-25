@@ -1,4 +1,4 @@
-import { index, jsonb, pgTable, text, timestamp, uniqueIndex, uuid } from "drizzle-orm/pg-core";
+import { index, integer, jsonb, pgTable, text, timestamp, uniqueIndex, uuid } from "drizzle-orm/pg-core";
 
 /** App-wide settings (AI provider choice, etc.), one row per key. */
 export const coreSettings = pgTable("core_settings", {
@@ -101,6 +101,24 @@ export const coreKioskDevices = pgTable(
     createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
     lastSeenAt: timestamp("last_seen_at", { withTimezone: true }),
     revokedAt: timestamp("revoked_at", { withTimezone: true }),
+    /** Adult mode on this screen ends at this time (null: locked). Set only by a correct adult PIN. */
+    adultUntil: timestamp("adult_until", { withTimezone: true }),
+    /** Wrong adult PINs since the last lockout or success. */
+    pinFailures: integer("pin_failures").notNull().default(0),
+    /** No PIN tries on this screen until then. */
+    pinLockedUntil: timestamp("pin_locked_until", { withTimezone: true }),
   },
   (t) => [uniqueIndex("core_kiosk_devices_token_uq").on(t.tokenHash)],
 );
+
+/**
+ * The household's adult PIN for the kitchen screen (one row, id "household").
+ * Set and changed only by a signed-in member in Settings; stored as a salted
+ * scrypt hash (core/kiosk/adult.ts).
+ */
+export const coreKioskAdultPin = pgTable("core_kiosk_adult_pin", {
+  id: text("id").primaryKey(),
+  pinHash: text("pin_hash").notNull(),
+  updatedBy: text("updated_by").notNull(),
+  updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
+});

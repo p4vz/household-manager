@@ -8,8 +8,10 @@ export type UpkeepView = { id: string; title: string; dueDate: string; dueLabel:
 /**
  * Upcoming and overdue house upkeep from the maintenance module. Ticking one
  * marks it done today; a repeating task comes back on its next date.
+ * Without `complete` (the kitchen screen, which kids use) the list is
+ * read-only.
  */
-export function UpkeepPanel({ tasks, complete }: { tasks: UpkeepView[]; complete: (input: { taskId: string }) => Promise<void> }) {
+export function UpkeepPanel({ tasks, complete }: { tasks: UpkeepView[]; complete?: (input: { taskId: string }) => Promise<void> }) {
   const [list, remove] = useOptimistic(tasks, (state, id: string) => state.filter((t) => t.id !== id));
   const [confirm, setConfirm] = useState<UpkeepView | null>(null);
   return (
@@ -28,13 +30,15 @@ export function UpkeepPanel({ tasks, complete }: { tasks: UpkeepView[]; complete
                 {t.repeatLabel ? <span className="opacity-70"> · {t.repeatLabel}</span> : null}
               </div>
             </div>
-            <button type="button" onClick={() => setConfirm(t)} className={`${tap} shrink-0 bg-emerald-600 text-white`}>
-              Done
-            </button>
+            {complete ? (
+              <button type="button" onClick={() => setConfirm(t)} className={`${tap} shrink-0 bg-emerald-600 text-white`}>
+                Done
+              </button>
+            ) : null}
           </li>
         ))}
       </ul>
-      {confirm ? (
+      {confirm && complete ? (
         <Modal title="Mark as done today?" onClose={() => setConfirm(null)}>
           <p className="mb-2 text-lg">{confirm.title}</p>
           {confirm.repeatLabel ? <p className="mb-4 text-sm opacity-70">The next one is scheduled automatically ({confirm.repeatLabel}).</p> : null}

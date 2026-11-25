@@ -11,6 +11,13 @@ export const PAIRING_ALPHABET = "ABCDEFGHJKMNPQRSTUVWXYZ23456789";
 export const PAIRING_CODE_LENGTH = 8;
 export const PAIRING_TTL_MS = 10 * 60 * 1000;
 export const KIOSK_COOKIE = "hm_kiosk";
+/**
+ * Set (path "/") next to the device cookie, which only rides on /kiosk. While
+ * it is there the proxy sends every other page to /kiosk and drops any Google
+ * session in that browser, so kids can't leave the kitchen screen for the
+ * app. Holds no secret: only leaving kitchen mode (adult PIN) removes it.
+ */
+export const KIOSK_LOCK_COOKIE = "hm_kiosk_lock";
 /** The device cookie lasts a year; unpairing in Settings ends it at once. */
 export const KIOSK_COOKIE_MAX_AGE = 60 * 60 * 24 * 365;
 

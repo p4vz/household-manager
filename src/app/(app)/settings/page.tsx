@@ -7,7 +7,9 @@ import { oauthConfig } from "@/core/oauth/policy";
 import { listConnections } from "@/core/oauth/server";
 import { memberDisplayName } from "@/core/auth/display-name";
 import { AssistantRule, PermissionCheckboxes } from "@/components/assistant-permissions";
+import { AdultPinForm } from "@/components/adult-pin-form";
 import { KioskPairingCode } from "@/components/kiosk-pairing";
+import { hasAdultPin } from "@/core/kiosk/adult";
 import { AppUpdatePanel } from "@/components/pwa/app-update-panel";
 import { InstallAppButton } from "@/components/pwa/install-app-button";
 import { listKioskDevices } from "@/core/kiosk/devices";
@@ -26,6 +28,7 @@ import {
   disconnectAllAssistantsAction,
   disconnectAssistantAction,
   makeKioskPairingCodeAction,
+  setAdultPinAction,
   removeApiKeyAction,
   saveAiSettingsAction,
   saveApiKeyAction,
@@ -62,6 +65,7 @@ export default async function SettingsPage({ searchParams }: PageProps<"/setting
   const mcp = oauthConfig();
   const connections = mcp ? await listConnections() : [];
   const kiosks = await listKioskDevices();
+  const pinSet = await hasAdultPin();
   const keys = await allApiKeyStatus();
   const bank = await syncStatus();
   const lastRun = bank.runs[0];
@@ -155,10 +159,21 @@ export default async function SettingsPage({ searchParams }: PageProps<"/setting
       <div className="space-y-3 rounded-xl border p-6">
         <h2 className="font-medium">Kitchen kiosk</h2>
         <p className="text-sm opacity-80">
-          To pair the wall screen, open <code>/kiosk/pair</code> on it and type a code made here. A paired screen can show
-          and use the kiosk (calendar, chores, shopping, returns, upkeep) and nothing else: no finance, trips or settings.
+          To pair the wall screen, open <code>/kiosk/pair</code> on it and type a code made here, or tap Kitchen mode on it while
+          signed in. A paired screen is locked to the kiosk and is kid-safe: it can tick chores, add to shopping lists, add and
+          change events and add returns. No finance, trips, settings or Ask Claude, ever.
         </p>
         <KioskPairingCode make={makeKioskPairingCodeAction.bind(null, {})} />
+        <div className="space-y-2 border-t pt-3">
+          <h3 className="font-medium">Adult PIN</h3>
+          <p className="text-sm opacity-80">
+            On the screen, <b>🔒 Adult</b> and this PIN turn on adult controls for 5 minutes: delete events and pictures, finish
+            upkeep, move returns along and exit kitchen mode. Five wrong tries lock the screen out for 15 minutes. It can only be
+            set or changed here.{" "}
+            {pinSet ? "A PIN is set." : <b>No PIN set yet: kitchen mode can&apos;t be left from the screen without one.</b>}
+          </p>
+          <AdultPinForm isSet={pinSet} save={setAdultPinAction} />
+        </div>
         {kiosks.length === 0 ? (
           <p className="text-sm opacity-60">No screens paired.</p>
         ) : (

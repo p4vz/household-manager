@@ -32,13 +32,13 @@ function refresh() {
   revalidatePath("/calendar");
 }
 
-export const setChoreDoneAction = kioskAction(z.object({ choreId: id, done: z.boolean() }), async ({ choreId, done }) => {
+export const setChoreDoneAction = kioskAction("chores.tick", z.object({ choreId: id, done: z.boolean() }), async ({ choreId, done }) => {
   if (done) await completeChore(choreId);
   else await undoChore(choreId);
   refresh();
 });
 
-export const addOneTimeChoreAction = kioskAction(
+export const addOneTimeChoreAction = kioskAction("chores.add", 
   z.object({ kidId: id, title: z.string().trim().min(1).max(60), icon: z.enum(CHORE_ICONS).optional() }),
   async (input) => {
     await addChore({ ...input, recurrence: "once" });
@@ -46,7 +46,7 @@ export const addOneTimeChoreAction = kioskAction(
   },
 );
 
-export const addReturnAction = kioskAction(
+export const addReturnAction = kioskAction("returns.add", 
   z.object({
     itemName: name,
     store,
@@ -66,19 +66,19 @@ export const addReturnAction = kioskAction(
   },
 );
 
-export const setReturnStatusAction = kioskAction(z.object({ id, status: z.enum(RETURN_STATUSES) }), async (input) => {
+export const setReturnStatusAction = kioskAction("returns.status", z.object({ id, status: z.enum(RETURN_STATUSES) }), async (input) => {
   await setReturnStatus(input.id, input.status);
   refresh();
 });
 
 /** Ticks an upkeep task done today; a repeating task schedules its next date. */
-export const completeUpkeepAction = kioskAction(z.object({ taskId: id }), async ({ taskId }) => {
+export const completeUpkeepAction = kioskAction("upkeep.complete", z.object({ taskId: id }), async ({ taskId }) => {
   await completeTask(taskId, { date: householdToday() });
   refresh();
   revalidatePath("/maintenance");
 });
 
-export const syncCalendarAction = kioskAction(z.object({}), async () => {
+export const syncCalendarAction = kioskAction("calendar.sync", z.object({}), async () => {
   const state = await syncGoogleCalendars({ force: true });
   refresh();
   return { ok: state.ok, message: state.message };

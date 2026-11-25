@@ -7,6 +7,7 @@ import { requireUser } from "@/core/auth/guard";
 import { AiSettingsSchema } from "@/core/ai/settings";
 import { getAiSettings, saveAiSettings } from "@/core/ai/store";
 import { z } from "zod";
+import { WeakPinError, setAdultPin } from "@/core/kiosk/adult";
 import { createPairingCode, revokeKioskDevice } from "@/core/kiosk/devices";
 import { formatPairingCode } from "@/core/kiosk/pairing";
 import { revokeAllConnections, revokeConnection, setConnectionPermissions } from "@/core/oauth/server";
@@ -118,6 +119,22 @@ export const makeKioskPairingCodeAction = authedAction(z.object({}), async (_inp
   const { code, expiresAt } = await createPairingCode(user.owner);
   return { code: formatPairingCode(code), expiresAt: expiresAt.toISOString() };
 });
+
+/** The kitchen screen's adult PIN: set and changed only here, by a signed-in member. */
+export const setAdultPinAction = authedAction(
+  z.object({ pin: z.string().max(20), confirm: z.string().max(20) }),
+  async ({ pin, confirm }, user): Promise<{ error: string | null }> => {
+    if (pin !== confirm) return { error: "The two PINs don't match." };
+    try {
+      await setAdultPin(pin, user.owner);
+    } catch (err) {
+      if (err instanceof WeakPinError) return { error: err.message };
+      throw err;
+    }
+    revalidatePath("/settings");
+    return { error: null };
+  },
+);
 
 const unpair = authedAction(z.object({ id: z.uuid() }), async ({ id }) => {
   await revokeKioskDevice(id);
