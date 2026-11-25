@@ -684,3 +684,32 @@ export {
   type HouseQuestionKind,
 } from "./review/house";
 export type { HouseSuggestion } from "./schema";
+
+// ---------- subscriptions ----------
+
+export {
+  listSubscriptions,
+  saveDetected as saveDetectedSubscription,
+  addManualSubscription,
+  updateSubscription,
+  deleteSubscription,
+  type SubscriptionRow,
+  type SubscriptionInput,
+} from "./subscriptions";
+export { SUBSCRIPTION_CADENCES, SUBSCRIPTION_STATUSES, type SubscriptionCadence, type SubscriptionStatus } from "./schema";
+
+// ---------- net worth ----------
+
+export {
+  netWorth,
+  scopeOwners,
+  listNetWorthItems,
+  addNetWorthItem,
+  updateNetWorthItem,
+  setNetWorthValue,
+  deleteNetWorthItem,
+  type NetWorthScope,
+  type NetWorthItemInput,
+} from "./net-worth";
+export { NET_WORTH_KIND_LABELS, GROUP_LABELS as NET_WORTH_GROUP_LABELS, LIABILITY_KINDS, type NetWorth } from "./net-worth-compute";
+export { NET_WORTH_ITEM_KINDS, type NetWorthItemKind } from "./schema";

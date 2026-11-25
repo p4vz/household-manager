@@ -406,3 +406,88 @@ export const financeReviewQuestions = pgTable("finance_review_questions", {
   outcome: jsonb("outcome").$type<{ summary: string; changesetId: string | null }>(),
   answeredAt: timestamp("answered_at", { withTimezone: true }).notNull().defaultNow(),
 });
+
+// ---------------------------------------------------------- subscriptions ----
+
+export const SUBSCRIPTION_CADENCES = ["weekly", "monthly", "quarterly", "yearly"] as const;
+export type SubscriptionCadence = (typeof SUBSCRIPTION_CADENCES)[number];
+export const SUBSCRIPTION_STATUSES = ["active", "cancelled", "ignored"] as const;
+export type SubscriptionStatus = (typeof SUBSCRIPTION_STATUSES)[number];
+
+/**
+ * Running subscriptions. Recurring charges are detected from transactions
+ * on the fly (./subscriptions); a row here is what a member confirmed,
+ * edited, cancelled, marked "not a subscription" (ignored) or added by hand.
+ * `merchantKey` ties a row to its detected charges. Visibility follows the
+ * account rule: joint plus the viewer's own.
+ */
+export const financeSubscriptions = pgTable(
+  "finance_subscriptions",
+  {
+    id: uuid("id").primaryKey().defaultRandom(),
+    owner: text("owner", { enum: OWNERS }).notNull().default("joint"),
+    /** Lower-cased merchant for detected ones; null for manual ones. */
+    merchantKey: text("merchant_key"),
+    name: text("name").notNull(),
+    amount: money("amount"),
+    cadence: text("cadence", { enum: SUBSCRIPTION_CADENCES }).notNull().default("monthly"),
+    status: text("status", { enum: SUBSCRIPTION_STATUSES }).notNull().default("active"),
+    /** Manual next charge date (detected ones work it out from the last charge). */
+    nextCharge: date("next_charge"),
+    notes: text("notes"),
+    createdBy: text("created_by", { enum: ["user1", "user2"] }),
+    updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
+  },
+  (t) => [uniqueIndex("finance_subscriptions_merchant_uq").on(t.owner, t.merchantKey)],
+);
+
+// -------------------------------------------------------------- net worth ----
+
+/**
+ * One balance per account per day, written after each bank sync, so net
+ * worth history includes market moves that transactions don't show.
+ */
+export const financeBalanceSnapshots = pgTable(
+  "finance_balance_snapshots",
+  {
+    accountId: uuid("account_id")
+      .notNull()
+      .references(() => financeAccounts.id, { onDelete: "cascade" }),
+    date: date("date").notNull(),
+    balance: money("balance").notNull(),
+  },
+  (t) => [primaryKey({ columns: [t.accountId, t.date] })],
+);
+
+export const NET_WORTH_ITEM_KINDS = ["home", "vehicle", "property", "investment", "other_asset", "mortgage", "loan", "other_liability"] as const;
+export type NetWorthItemKind = (typeof NET_WORTH_ITEM_KINDS)[number];
+
+/**
+ * Things net worth counts that no bank feed reports: the house, cars, a
+ * private loan. Values are positive; liability kinds are subtracted. Each
+ * update adds a dated value, so history keeps the old ones.
+ */
+export const financeNetWorthItems = pgTable("finance_net_worth_items", {
+  id: uuid("id").primaryKey().defaultRandom(),
+  owner: text("owner", { enum: OWNERS }).notNull().default("joint"),
+  kind: text("kind", { enum: NET_WORTH_ITEM_KINDS }).notNull(),
+  name: text("name").notNull(),
+  /** Counted from this date in history; before it the item didn't exist. */
+  acquiredOn: date("acquired_on"),
+  /** Sold or paid off: not counted from this date. */
+  closedOn: date("closed_on"),
+  notes: text("notes"),
+  createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+});
+
+export const financeNetWorthValues = pgTable(
+  "finance_net_worth_values",
+  {
+    itemId: uuid("item_id")
+      .notNull()
+      .references(() => financeNetWorthItems.id, { onDelete: "cascade" }),
+    asOf: date("as_of").notNull(),
+    value: money("value").notNull(),
+  },
+  (t) => [primaryKey({ columns: [t.itemId, t.asOf] })],
+);

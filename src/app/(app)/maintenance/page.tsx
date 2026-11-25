@@ -172,6 +172,7 @@ export default async function MaintenancePage({ searchParams }: PageProps<"/main
           <a className="underline" href="#questions">Questionable transactions ({questions.count})</a>
           <a className="underline" href="#history">House history ({projects.length})</a>
           <a className="underline" href="#equipment">Equipment ({assets.length})</a>
+          <Link className="underline" href="/maintenance/binder">Home binder</Link>
         </nav>
         <p className="text-sm opacity-70">
           Ask Claude to add or change any of this, look up recommended intervals, or check recalls: <Link className="underline" href="/assistant">Ask Claude</Link>.
