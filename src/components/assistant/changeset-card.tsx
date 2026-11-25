@@ -40,6 +40,11 @@ const ENTITY: Record<string, string> = {
   shopping_item: "Shopping item",
   purchase_return: "Return",
   chore: "Chore",
+  chore_goal: "Chore goal",
+  shopping_list: "Shopping list",
+  shopping_template: "List template",
+  calendar_event: "Calendar event",
+  binder_entry: "Home binder",
   trip_charge: "Trip charge",
 };
 
@@ -61,6 +66,21 @@ const FIELD: Record<string, string> = {
   done: "Done",
   merchant: "Merchant",
   link: "Trip link",
+  completedOn: "Done on",
+  actualCost: "Cost",
+  recurrence: "How often",
+  target: "Target",
+  rewardEmoji: "Reward emoji",
+  rewardGiven: "Reward given",
+  deferredUntil: "Put off until",
+  allDay: "All day",
+  startDate: "Starts",
+  endDate: "Ends",
+  startTime: "From",
+  endTime: "To",
+  startsOn: "Starts",
+  expiresOn: "Ends / due",
+  url: "Link",
 };
 
 const STATUS: Record<string, { text: string; variant: "default" | "secondary" | "warning" | "destructive" | "outline" }> = {
@@ -74,9 +94,19 @@ const STATUS: Record<string, { text: string; variant: "default" | "secondary" | 
   partial: { text: "Partly applied", variant: "warning" },
 };
 
+type StoreItems = { store: string; items: { name: string; quantity?: string | null }[] }[];
+
 function show(v: unknown): string {
   if (v === null || v === undefined || v === "") return "(empty)";
   if (typeof v === "boolean") return v ? "yes" : "no";
+  if (Array.isArray(v)) {
+    // A template's or list's stores and items.
+    if (v.every((x) => x && typeof x === "object" && "store" in x && Array.isArray((x as StoreItems[number]).items))) {
+      return (v as StoreItems).map((s) => `${s.store}: ${s.items.map((i) => (i.quantity ? `${i.name} (${i.quantity})` : i.name)).join(", ") || "nothing"}`).join("; ") || "(empty)";
+    }
+    return v.map((x) => (typeof x === "object" ? JSON.stringify(x) : String(x))).join(", ") || "(empty)";
+  }
+  if (typeof v === "object") return JSON.stringify(v);
   return String(v);
 }
 
@@ -85,7 +115,7 @@ function fieldLabel(k: string) {
 }
 
 /** Internal links (ids) that mean nothing on screen. */
-const HIDDEN = new Set(["transactionId", "assetId"]);
+const HIDDEN = new Set(["transactionId", "assetId", "projectId", "checked"]);
 
 function Diff({ c }: { c: ChangeRow }) {
   if (c.op === "create") {
@@ -101,7 +131,10 @@ function Diff({ c }: { c: ChangeRow }) {
       </ul>
     );
   }
-  if (c.op === "delete") return <p className="text-xs text-red-700">{c.entity === "chore" ? "Archive (history stays)" : "Delete (restorable with Undo)"}</p>;
+  if (c.op === "delete") {
+    const archive = c.entity === "chore" || c.entity === "chore_goal";
+    return <p className="text-xs text-red-700">{archive ? "Archive (history stays)" : "Delete (restorable with Undo)"}</p>;
+  }
   return (
     <ul className="text-xs">
       {Object.keys(c.after ?? {}).map((k) => (

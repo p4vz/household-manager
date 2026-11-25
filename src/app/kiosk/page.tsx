@@ -9,7 +9,7 @@ import { KitchenModeButton } from "@/components/kitchen-mode-button";
 import { WeatherWidget } from "@/components/weather-widget";
 import { KioskControls } from "@/modules/family/ui/kiosk-controls";
 import { clearUnpairedScreenAction, enterKitchenModeAction } from "./pair/actions";
-import { askKitchenAction, deleteEventAdultAction, exitKitchenModeAction, lockAdultAction, removeEventPhotoAdultAction, unlockAdultAction } from "./adult-actions";
+import { askKitchenAction, deleteEventAdultAction, kitchenChangeAction, exitKitchenModeAction, lockAdultAction, removeEventPhotoAdultAction, unlockAdultAction } from "./adult-actions";
 import { syncGoogleCalendarsIfStale } from "@/modules/calendar/api";
 import { CHORE_ICONS, openStoreCount } from "@/modules/family/api";
 import { CalendarPanel } from "@/modules/family/ui/calendar-panel";
@@ -73,6 +73,7 @@ export default async function KioskPage() {
               lock: lockAdultAction,
               exit: exitKitchenModeAction,
               ask: askKitchenAction,
+              change: kitchenChangeAction,
             }}
           />
           {hub.printing ? (

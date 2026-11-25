@@ -11,14 +11,21 @@ import * as maintenance from "@/modules/maintenance/api";
 import * as trips from "@/modules/trips/api";
 import { DraftBook } from "./changesets";
 import type { RefBook } from "./conversations";
+import { kitchenRefusal } from "./changesets";
 import {
   adapterFor,
+  BinderFields,
+  CalendarEventFields,
+  ChoreFields,
+  GoalFields,
   MerchantRuleFields,
   AssetFields,
   ProjectFields,
   ReturnFields,
   sameFields,
   ShoppingFields,
+  ShoppingListFields,
+  TemplateFields,
   TransactionPatch,
   TripChargeFields,
   UpkeepFields,
@@ -106,6 +113,8 @@ async function draftUpdate(env: ToolEnv, entity: string, key: string, patch: Fie
 }
 
 async function draftDelete(env: ToolEnv, entity: string, key: string) {
+  const refused = kitchenRefusal(env.ctx, entity, "delete");
+  if (refused) throw new Error(`${refused}.`);
   const current = await adapterFor(entity).get(env.ctx, key);
   if (!current) throw new Error(`That ${entity.replace(/_/g, " ")} no longer exists.`);
   env.drafts.add({ entity, op: "delete", key, label: current.label, before: current.fields, after: null });
@@ -123,6 +132,33 @@ function queued(env: ToolEnv, changed: number) {
 }
 
 const ACTION = z.enum(["create", "update", "delete"]);
+const kitchen = (env: ToolEnv) => env.ctx.surface === "kitchen";
+
+function draftCreate(env: ToolEnv, entity: string, label: string, after: Fields) {
+  env.drafts.add({ entity, op: "create", key: null, label, before: null, after });
+  return queued(env, 1);
+}
+
+/** create / update / delete for one adapter, with the tool's parsed fields. */
+async function crud(
+  env: ToolEnv,
+  entity: string,
+  action: string,
+  ref: string | undefined,
+  rest: Fields,
+  schema: { create: (f: Fields) => Fields; update: (f: Fields) => Fields; label: (f: Fields) => string },
+) {
+  if (action === "create") {
+    const f = schema.create(rest);
+    return draftCreate(env, entity, schema.label(f), f);
+  }
+  const key = env.refs.resolve(String(ref ?? ""), entity);
+  if (action === "delete") {
+    await draftDelete(env, entity, key);
+    return queued(env, 1);
+  }
+  return queued(env, (await draftUpdate(env, entity, key, schema.update(rest))) ? 1 : 0);
+}
 
 /** Turns a `vehicleRef` argument into the record's assetId (null unlinks). */
 function withAssetId<T extends Fields>(args: T, env: ToolEnv): T {
@@ -240,11 +276,14 @@ export const TOOLS: AssistantTool[] = [
   // ---------------------------------------------------------- household reads
   {
     name: "upkeep_tasks",
-    description: "House upkeep tasks: open ones, plus ones completed since a date if given. Each has a ref for edit_upkeep_task.",
+    description:
+      "House and car upkeep tasks: open ones, plus ones completed since a date if given. Each has a ref for edit_upkeep_task (update, complete, reopen, delete).",
     input: { completedSince: z.iso.date().optional() },
     kind: "read",
     scrub: "reference",
-    async run(args, { refs }) {
+    async run(args, env) {
+      const { refs } = env;
+      const assets = kitchen(env) ? new Map((await maintenance.listAssets()).map((a) => [a.id, a.name])) : null;
       return (await maintenance.listTasks({ completedSince: (args.completedSince as string) ?? null })).map((t) => ({
         ref: refs.ref("upkeep_task", t.id),
         title: t.title,
@@ -254,10 +293,10 @@ export const TOOLS: AssistantTool[] = [
         completedOn: t.completedOn,
         repeatsEveryDays: t.recurrenceDays,
         area: t.area,
-        parts: t.parts,
         lastDoneOn: t.lastDoneOn,
-        notes: t.notes,
-        ...(t.assetId && { vehicleOrEquipmentRef: refs.ref("upkeep_asset", t.assetId) }),
+        // The kitchen screen leaves out upkeep notes and parts, as it always has.
+        ...(!assets && { parts: t.parts, notes: t.notes }),
+        ...(t.assetId && (assets ? { for: assets.get(t.assetId) ?? null } : { vehicleOrEquipmentRef: refs.ref("upkeep_asset", t.assetId) })),
         ...((t.dueMileage || t.recurrenceMiles || t.lastDoneMileage) && {
           dueAtMiles: t.dueMileage,
           repeatsEveryMiles: t.recurrenceMiles,
@@ -389,20 +428,21 @@ export const TOOLS: AssistantTool[] = [
     input: { includeReturned: z.boolean().optional() },
     kind: "read",
     scrub: "reference",
-    async run(args, { refs }) {
+    async run(args, env) {
       return (await family.listReturns({ includeReturned: Boolean(args.includeReturned) })).map((r) => ({
-        ref: refs.ref("purchase_return", r.id),
+        ref: env.refs.ref("purchase_return", r.id),
         item: r.itemName,
         store: r.store,
         returnDeadline: r.returnDeadline,
         status: r.status,
-        notes: r.notes,
+        ...(!kitchen(env) && { notes: r.notes }),
       }));
     },
   },
   {
     name: "chores",
-    description: "Kids' chore board for today: each kid's chores (ref, done for this period) and stats (streak, stars).",
+    description:
+      "Kids' chore board for today: each kid (by name) with their chores (ref, title, icon, daily/weekly/once, stars, done for this period) and stats (streak, stars). Refs work with edit_chore.",
     input: {},
     kind: "read",
     scrub: "reference",
@@ -410,23 +450,104 @@ export const TOOLS: AssistantTool[] = [
       return (await family.choreBoard(ctx.now)).map((k) => ({
         kid: k.name,
         stats: k.stats,
-        chores: k.chores.map((c) => ({ ref: refs.ref("chore", c.id), title: c.title, recurrence: c.recurrence, stars: c.stars, done: c.done })),
+        chores: k.chores.map((c) => ({ ref: refs.ref("chore", c.id), title: c.title, icon: c.icon, recurrence: c.recurrence, stars: c.stars, done: c.done })),
+      }));
+    },
+  },
+  {
+    name: "chore_goals",
+    description:
+      "Kids' chore goals (e.g. read 10 days in a row for a prize): kid, chore, streak or count, target, progress, reached, reward and whether it was given. Includes reached and rewarded ones. Refs work with edit_chore_goal.",
+    input: {},
+    kind: "read",
+    scrub: "reference",
+    async run(_args, { ctx, refs }) {
+      const kids = new Map((await family.listKids()).map((k) => [k.id, k.name]));
+      return (await family.listGoals(ctx.now, { includeDone: true })).map((g) => ({
+        ref: refs.ref("chore_goal", g.id),
+        kid: kids.get(g.kidId) ?? null,
+        chore: g.choreTitle,
+        kind: g.kind,
+        target: g.target,
+        unit: g.unit,
+        progress: g.progress,
+        reached: g.reached,
+        achievedOn: g.achievedOn,
+        reward: g.reward,
+        rewardEmoji: g.rewardEmoji,
+        rewardGiven: Boolean(g.rewardGivenAt),
+        startedOn: g.startedOn,
+      }));
+    },
+  },
+  {
+    name: "shopping_lists",
+    description:
+      "The shopping lists themselves (ref, name, put off until, how many items left by store) and the saved list templates (ref, name, stores and items). Refs work with edit_shopping_list and edit_shopping_template; items are in shopping_list.",
+    input: {},
+    kind: "read",
+    scrub: "reference",
+    async run(_args, { ctx, refs }) {
+      const [board, templates] = await Promise.all([family.shoppingBoard(ctx.now), family.listTemplates()]);
+      return {
+        lists: [...board.lists, ...board.deferred].map((l) => ({
+          ref: refs.ref("shopping_list", l.id),
+          name: l.name,
+          deferredUntil: l.deferredUntil,
+          stores: l.sections.map((sec) => ({ store: sec.store, left: sec.items.filter((i) => !i.checked).length, bought: sec.items.filter((i) => i.checked).length })),
+        })),
+        templates: templates.map((t) => ({ ref: refs.ref("shopping_template", t.id), name: t.name, stores: t.stores })),
+      };
+    },
+  },
+  {
+    name: "home_binder",
+    description:
+      "The home binder: manuals, warranties, insurance policies, property tax bills, receipts. Category, title, provider, linked equipment or project, start and end dates, amount, link, notes, whether a file is attached. Refs work with edit_binder_entry.",
+    input: {},
+    kind: "read",
+    scrub: "reference",
+    async run(_args, { refs }) {
+      return (await maintenance.listBinder()).map((d) => ({
+        ref: refs.ref("binder_entry", d.id),
+        category: d.category,
+        title: d.title,
+        provider: d.provider,
+        startsOn: d.startsOn,
+        expiresOn: d.expiresOn,
+        amount: d.amount,
+        url: d.url,
+        notes: d.notes,
+        hasFile: d.hasFile,
+        ...(d.assetId && { equipmentRef: refs.ref("upkeep_asset", d.assetId) }),
+        ...(d.projectId && { projectRef: refs.ref("house_project", d.projectId) }),
       }));
     },
   },
   {
     name: "calendar",
-    description: "Family calendar for the next days (Google calendars plus trips and events typed in the app), and household reminders (upkeep, annual fees).",
-    input: { days: z.number().int().min(1).max(30).optional().describe("Default 14") },
+    description:
+      "Family calendar from a date (default today) for up to 9 days (Google calendars plus trips and events typed in the app), and household reminders (upkeep, annual fees). Events on the family calendar carry a ref for edit_calendar_event; repeating ones say so and can only be changed in Google Calendar.",
+    input: {
+      from: z.iso.date().optional().describe("First day, YYYY-MM-DD (default today)"),
+      days: z.number().int().min(1).max(9).optional().describe("Default 9"),
+    },
     kind: "read",
     scrub: "reference",
-    async run(args, { ctx }) {
-      const days = (args.days as number | undefined) ?? 14;
-      const [agenda, reminders] = await Promise.all([calendar.kioskCalendar(Math.min(days, 9), ctx.now), calendar.listUpcoming(isoDay(ctx.now), 50)]);
+    async run(args, { ctx, refs }) {
+      const days = (args.days as number | undefined) ?? 9;
+      const from = args.from ? new Date(`${String(args.from)}T12:00:00Z`) : ctx.now;
+      const [agenda, reminders] = await Promise.all([calendar.kioskCalendar(days, from), calendar.listUpcoming(isoDay(from), 50)]);
       return {
         agenda: agenda.days.map((d) => ({
           date: d.date,
-          items: d.items.map((i) => ({ title: i.title, time: i.timeLabel, location: i.location, who: i.who })),
+          items: d.items.map((i) => ({
+            ...(i.edit && { ref: refs.ref("calendar_event", i.edit.id), ...(i.edit.recurring && { repeats: true }) }),
+            title: i.title,
+            time: i.timeLabel,
+            location: i.location,
+            who: i.who,
+          })),
         })),
         reminders: reminders.map((e) => ({ title: e.title, startDate: e.startDate, endDate: e.endDate, from: e.sourceModule })),
       };
@@ -597,9 +718,10 @@ export const TOOLS: AssistantTool[] = [
   },
   {
     name: "edit_upkeep_task",
-    description: "Create, update or delete a house upkeep task. update/delete need the ref from upkeep_tasks. Completed tasks are history and can't be deleted.",
+    description:
+      "House or car upkeep tasks. create; update (ref from upkeep_tasks); complete (mark done on completedOn, default today, with the cost and the car's odometer reading if known; a repeating task then schedules its next one); reopen (undo a completion and drop the next one it scheduled); delete (open tasks only; completed ones are history).",
     input: {
-      action: ACTION,
+      action: z.enum(["create", "update", "complete", "reopen", "delete"]),
       ref: z.string().max(12).optional(),
       title: z.string().max(120).optional(),
       dueDate: z.iso.date().optional(),
@@ -612,22 +734,37 @@ export const TOOLS: AssistantTool[] = [
       vehicleRef: z.string().max(12).nullable().optional().describe("Ref of the car (or equipment) from home_equipment this is for; null to unlink"),
       dueMileage: z.number().int().min(0).nullable().optional().describe("Cars: due at this odometer reading"),
       recurrenceMiles: z.number().int().min(1).max(200000).nullable().optional().describe("Cars: repeat every this many miles (with or instead of days)"),
+      completedOn: z.iso.date().optional().describe("complete: the day it was done (default today)"),
+      actualCost: z.number().min(0).max(1_000_000).nullable().optional().describe("complete: what it cost"),
+      mileage: z.number().int().min(0).max(2_000_000).nullable().optional().describe("complete, cars: odometer reading when done"),
     },
     kind: "edit",
     scrub: "reference",
     async run(args, env) {
-      const { action, ref, ...rest } = withAssetId(args as { action: string; ref?: string } & Fields, env);
-      if (action === "create") {
-        const f = UpkeepFields.parse({ estimatedCost: null, recurrenceDays: null, notes: null, ...rest });
-        env.drafts.add({ entity: "upkeep_task", op: "create", key: null, label: `${f.title} (due ${f.dueDate})`, before: null, after: f });
-        return queued(env, 1);
+      if (kitchen(env) && args.vehicleRef !== undefined) throw new Error("Linking a car is done in the phone app.");
+      const { action, ref, completedOn, actualCost, mileage, ...rest } = withAssetId(args as { action: string; ref?: string } & Fields, env);
+      if (action === "complete" || action === "reopen") {
+        const key = env.refs.resolve(String(ref ?? ""), "upkeep_task");
+        const patch: Fields =
+          action === "reopen"
+            ? { completedOn: null }
+            : {
+                completedOn: (completedOn as string | undefined) ?? env.ctx.now.toISOString().slice(0, 10),
+                ...(actualCost != null && { actualCost }),
+                ...(mileage != null && { lastDoneMileage: mileage }),
+              };
+        const current = await adapterFor("upkeep_task").get(env.ctx, key);
+        if (action === "complete" && current?.fields.completedOn) throw new Error("That task is already done. Reopen it first to change the completion.");
+        if (action === "reopen" && current && !current.fields.completedOn) return queued(env, 0);
+        // Reopening also clears the cost, and puts back the odometer reading it had before.
+        if (action === "reopen") patch.actualCost = null;
+        return queued(env, (await draftUpdate(env, "upkeep_task", key, patch)) ? 1 : 0);
       }
-      const key = env.refs.resolve(String(ref ?? ""), "upkeep_task");
-      if (action === "delete") {
-        await draftDelete(env, "upkeep_task", key);
-        return queued(env, 1);
-      }
-      return queued(env, (await draftUpdate(env, "upkeep_task", key, UpkeepFields.partial().parse(rest))) ? 1 : 0);
+      return crud(env, "upkeep_task", action, ref, rest, {
+        create: (f) => UpkeepFields.parse({ estimatedCost: null, recurrenceDays: null, notes: null, ...f }),
+        update: (f) => UpkeepFields.partial().parse(f),
+        label: (f) => `${f.title} (due ${f.dueDate})`,
+      });
     },
   },
   {
@@ -759,22 +896,213 @@ export const TOOLS: AssistantTool[] = [
   },
   {
     name: "edit_chore",
-    description: "Mark a chore done or not done for its current period, or archive it (history stays). Ref from chores.",
-    input: { ref: z.string().max(12), action: z.enum(["mark_done", "mark_not_done", "archive"]) },
+    description:
+      "Kids' chores. create (kid's name, title, optional icon emoji, daily/weekly/once, stars 1 to 5); update (ref from chores: title, icon, recurrence, stars); mark_done / mark_not_done for the current period; archive (history stays, undo brings it back).",
+    input: {
+      action: z.enum(["create", "update", "mark_done", "mark_not_done", "archive"]),
+      ref: z.string().max(12).optional(),
+      kid: z.string().max(40).optional().describe("create: the kid's name as on the chore board"),
+      title: z.string().max(60).optional(),
+      icon: z.string().max(8).optional().describe("One emoji"),
+      recurrence: z.enum(["daily", "weekly", "once"]).optional().describe("Default daily"),
+      stars: z.number().int().min(1).max(5).optional().describe("Default 1"),
+    },
     kind: "edit",
     scrub: "reference",
     async run(args, env) {
-      const key = env.refs.resolve(String(args.ref), "chore");
-      if (args.action === "archive") {
+      const { action, ref, ...rest } = args as { action: string; ref?: string } & Fields;
+      if (action === "create") {
+        const f = ChoreFields.parse({ icon: "✅", recurrence: "daily", stars: 1, done: false, ...rest });
+        return draftCreate(env, "chore", `${f.kid}: ${f.title} (${f.recurrence})`, f);
+      }
+      const key = env.refs.resolve(String(ref ?? ""), "chore");
+      if (action === "archive") {
         await draftDelete(env, "chore", key);
         return queued(env, 1);
       }
-      return queued(env, (await draftUpdate(env, "chore", key, { done: args.action === "mark_done" })) ? 1 : 0);
+      if (action === "update") {
+        const patch = ChoreFields.omit({ kid: true, done: true }).partial().parse(rest);
+        return queued(env, (await draftUpdate(env, "chore", key, patch)) ? 1 : 0);
+      }
+      return queued(env, (await draftUpdate(env, "chore", key, { done: action === "mark_done" })) ? 1 : 0);
+    },
+  },
+  {
+    name: "edit_chore_goal",
+    description:
+      "Kids' chore goals with a reward, e.g. read 10 days in a row -> a prize. create (kid's name, the chore's title on their board, which must be daily or weekly, streak or count, target 2 to 365, reward, optional emoji; a chore added in the same reply works); update (ref from chore_goals: target, reward, emoji, rewardGiven); archive.",
+    input: {
+      action: z.enum(["create", "update", "archive"]),
+      ref: z.string().max(12).optional(),
+      kid: z.string().max(40).optional(),
+      chore: z.string().max(60).optional().describe("create: the chore's title"),
+      kind: z.enum(["streak", "count"]).optional().describe("streak = N in a row (days for daily chores, weeks for weekly); count = N times in all"),
+      target: z.number().int().min(2).max(365).optional(),
+      reward: z.string().max(80).optional(),
+      rewardEmoji: z.string().max(8).optional(),
+      rewardGiven: z.boolean().optional().describe("update: the reward was handed over"),
+    },
+    kind: "edit",
+    scrub: "reference",
+    async run(args, env) {
+      const { action, ref, ...rest } = args as { action: string; ref?: string } & Fields;
+      return crud(env, "chore_goal", action === "archive" ? "delete" : action, ref, rest, {
+        create: (f) => GoalFields.parse({ kind: "streak", rewardEmoji: "🎁", rewardGiven: false, ...f }),
+        update: (f) => GoalFields.pick({ target: true, reward: true, rewardEmoji: true, rewardGiven: true }).partial().parse(f),
+        label: (f) => `${f.kid}: ${f.chore} ${f.target} ${f.kind === "streak" ? "in a row" : "times"} for ${f.reward}`,
+      });
+    },
+  },
+  {
+    name: "edit_shopping_list",
+    description:
+      "Whole shopping lists. create (name, optionally from a template by name, optionally put off until a date); update (ref from shopping_lists: rename, or deferredUntil to put it off, null to bring it back); delete (removes its items too; undo rebuilds it). Add items with edit_shopping_item and the list's name.",
+    input: {
+      action: ACTION,
+      ref: z.string().max(12).optional(),
+      name: z.string().max(60).optional(),
+      template: z.string().max(60).optional().describe("create: template name from shopping_lists"),
+      deferredUntil: z.iso.date().nullable().optional(),
+    },
+    kind: "edit",
+    scrub: "reference",
+    async run(args, env) {
+      const { action, ref, ...rest } = args as { action: string; ref?: string } & Fields;
+      return crud(env, "shopping_list", action, ref, rest, {
+        create: (f) => ShoppingListFields.parse({ deferredUntil: null, template: null, ...f }),
+        update: (f) => ShoppingListFields.omit({ template: true }).partial().parse(f),
+        label: (f) => String(f.name),
+      });
+    },
+  },
+  {
+    name: "edit_shopping_template",
+    description:
+      "Shopping list templates (stores with their usual items) to start lists from. create (name plus stores, or fromListRef to copy a list's stores and items); update (ref from shopping_lists: name, or stores to replace all its stores and items); delete.",
+    input: {
+      action: ACTION,
+      ref: z.string().max(12).optional(),
+      name: z.string().max(60).optional(),
+      stores: z
+        .array(z.object({ store: z.string().min(1).max(40), items: z.array(z.object({ name: z.string().min(1).max(80), quantity: z.string().max(20).nullable().optional() })).max(200) }))
+        .max(30)
+        .optional(),
+      fromListRef: z.string().max(12).optional().describe("create: copy this list's stores and items"),
+    },
+    kind: "edit",
+    scrub: "reference",
+    async run(args, env) {
+      const { action, ref, fromListRef, ...rest } = args as { action: string; ref?: string; fromListRef?: string } & Fields;
+      if (action === "create" && fromListRef) {
+        const list = await family.getList(env.refs.resolve(fromListRef, "shopping_list"), env.ctx.now);
+        if (!list) throw new Error("That list is gone.");
+        rest.stores = list.sections.map((sec) => ({ store: sec.store, items: sec.items.map((i) => ({ name: i.name, quantity: i.quantity })) }));
+      }
+      const withQty = (f: Fields) =>
+        f.stores === undefined
+          ? f
+          : { ...f, stores: (f.stores as { store: string; items: { name: string; quantity?: string | null }[] }[]).map((x) => ({ ...x, items: x.items.map((i) => ({ name: i.name, quantity: i.quantity ?? null })) })) };
+      return crud(env, "shopping_template", action, ref, rest, {
+        create: (f) => TemplateFields.parse(withQty(f)),
+        update: (f) => TemplateFields.partial().parse(withQty(f)),
+        label: (f) => String(f.name),
+      });
+    },
+  },
+  {
+    name: "edit_calendar_event",
+    description:
+      "Events on the family Google calendar. create (title, startDate, and either allDay or startTime and endTime in 24-hour HH:MM household time; endDate for multi-day events; location, notes); update (ref from calendar); delete. Repeating events can't be changed here. Never put account, card or confirmation numbers in notes.",
+    input: {
+      action: ACTION,
+      ref: z.string().max(12).optional(),
+      title: z.string().max(200).optional(),
+      location: z.string().max(200).nullable().optional(),
+      notes: z.string().max(2000).nullable().optional(),
+      allDay: z.boolean().optional(),
+      startDate: z.iso.date().optional(),
+      endDate: z.iso.date().optional().describe("Last day, inclusive (default startDate)"),
+      startTime: z.string().max(5).nullable().optional().describe("HH:MM"),
+      endTime: z.string().max(5).nullable().optional().describe("HH:MM"),
+    },
+    kind: "edit",
+    scrub: "reference",
+    async run(args, env) {
+      const { action, ref, ...rest } = args as { action: string; ref?: string } & Fields;
+      if (action !== "create") {
+        const e = await calendar.familyEventForEdit(env.refs.resolve(String(ref ?? ""), "calendar_event"));
+        if (e?.recurring) throw new Error("That event repeats. Repeating events are changed in Google Calendar itself.");
+      }
+      return crud(env, "calendar_event", action, ref, rest, {
+        create: (f) => {
+          const allDay = f.allDay ?? !(f.startTime && f.endTime);
+          return CalendarEventFields.parse({ location: null, notes: null, startTime: null, endTime: null, ...f, allDay, endDate: f.endDate ?? f.startDate });
+        },
+        update: (f) => CalendarEventFields.partial().parse(f),
+        label: (f) => `${f.title} (${f.startDate}${f.allDay ? "" : ` ${f.startTime}`})`,
+      });
+    },
+  },
+  {
+    name: "edit_binder_entry",
+    description:
+      "Home binder entries: manuals, warranties, insurance, property tax, receipts. create (category, title, provider, equipmentRef or projectRef to link, startsOn, expiresOn (warranty end, renewal or due date; a reminder is set automatically), amount, url, notes); update (ref from home_binder); delete (only entries without a file). Files are added in the binder page. Never store policy, account or serial numbers.",
+    input: {
+      action: ACTION,
+      ref: z.string().max(12).optional(),
+      category: z.enum(maintenance.BINDER_CATEGORIES).optional(),
+      title: z.string().max(120).optional(),
+      provider: z.string().max(120).nullable().optional(),
+      equipmentRef: z.string().max(12).nullable().optional().describe("Ref from home_equipment; null to unlink"),
+      projectRef: z.string().max(12).nullable().optional().describe("Ref from house_projects; null to unlink"),
+      startsOn: z.iso.date().nullable().optional(),
+      expiresOn: z.iso.date().nullable().optional(),
+      amount: z.number().min(0).nullable().optional(),
+      url: z.string().max(500).nullable().optional(),
+      notes: z.string().max(1000).nullable().optional(),
+    },
+    kind: "edit",
+    scrub: "reference",
+    async run(args, env) {
+      const { action, ref, equipmentRef, projectRef, ...rest } = args as { action: string; ref?: string; equipmentRef?: string | null; projectRef?: string | null } & Fields;
+      if (equipmentRef !== undefined) rest.assetId = equipmentRef == null ? null : env.refs.resolve(equipmentRef, "upkeep_asset");
+      if (projectRef !== undefined) rest.projectId = projectRef == null ? null : env.refs.resolve(projectRef, "house_project");
+      return crud(env, "binder_entry", action, ref, rest, {
+        create: (f) => BinderFields.parse({ category: "other", provider: null, assetId: null, projectId: null, startsOn: null, expiresOn: null, amount: null, url: null, notes: null, ...f }),
+        update: (f) => BinderFields.partial().parse(f),
+        label: (f) => String(f.title),
+      });
     },
   },
 ];
 
 export const TOOL_NAMES = TOOLS.map((t) => t.name);
+
+/**
+ * The kitchen screen's tools: its own modules only (calendar, chores and
+ * goals, shopping, returns, upkeep). No money, trips, equipment, binder,
+ * research or anything else; KITCHEN_ENTITIES and kitchenRefusal() back
+ * this up when changes are applied.
+ */
+export const KITCHEN_TOOL_NAMES: ReadonlySet<string> = new Set([
+  "calendar",
+  "chores",
+  "chore_goals",
+  "shopping_list",
+  "shopping_lists",
+  "purchase_returns",
+  "upkeep_tasks",
+  "edit_calendar_event",
+  "edit_chore",
+  "edit_chore_goal",
+  "edit_shopping_item",
+  "edit_shopping_list",
+  "edit_shopping_template",
+  "edit_purchase_return",
+  "edit_upkeep_task",
+]);
+
+export const KITCHEN_TOOLS = TOOLS.filter((t) => KITCHEN_TOOL_NAMES.has(t.name));
 
 /** Runs a tool and returns what the model may see: scrubbed JSON, or an error message. */
 export async function runTool(tool: AssistantTool, rawArgs: unknown, env: ToolEnv): Promise<string> {

@@ -5,6 +5,7 @@ import { z } from "zod";
 import { authedAction } from "@/core/actions/authed-action";
 import { applyChangeset, discardChangeset, undoChange, undoChangeset } from "@/assistant/changesets";
 import { deleteConversation } from "@/assistant/conversations";
+import { MAX_PHOTO_TEXT } from "@/assistant/inbox";
 import { contextFor, MAX_MESSAGE_CHARS, sendMessage } from "@/assistant/service";
 
 /** Every module page may show data the assistant just changed. */
@@ -19,10 +20,14 @@ function friendly(e: unknown) {
 }
 
 export const sendMessageAction = authedAction(
-  z.object({ conversationId: z.uuid().nullable(), text: z.string().trim().min(1).max(MAX_MESSAGE_CHARS) }),
+  z.object({
+    conversationId: z.uuid().nullable(),
+    text: z.string().trim().min(1).max(MAX_MESSAGE_CHARS),
+    photoText: z.string().max(MAX_PHOTO_TEXT * 2).nullish(),
+  }),
   async (input, user) => {
     try {
-      const r = await sendMessage(user, input.conversationId, input.text);
+      const r = await sendMessage(user, input.conversationId, input.text, input.photoText ?? null);
       refresh();
       return { ok: true as const, conversationId: r.conversationId };
     } catch (e) {

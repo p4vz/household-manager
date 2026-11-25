@@ -4,7 +4,7 @@ import { revalidatePath } from "next/cache";
 import { cookies } from "next/headers";
 import { z } from "zod";
 import { kioskAction } from "@/core/actions/kiosk-action";
-import { askKitchen, KITCHEN_MAX_QUESTION, KITCHEN_MAX_TURNS } from "@/assistant/kitchen";
+import { askKitchen, kitchenChange, KITCHEN_MAX_QUESTION, KITCHEN_MAX_TURNS, KITCHEN_MAX_PHOTO_TEXT, type KitchenChanges } from "@/assistant/kitchen";
 import { endAdultMode, tryAdultPin } from "@/core/kiosk/adult";
 import { revokeKioskDevice } from "@/core/kiosk/devices";
 import { KIOSK_COOKIE, KIOSK_LOCK_COOKIE } from "@/core/kiosk/pairing";
@@ -17,7 +17,7 @@ import { CalendarWriteError, deleteGoogleEvent, removeEventPhoto } from "@/modul
  * locking again are open to the screen; everything else here needs adult
  * mode, checked on the server by kioskAction's ability. Money, trips and
  * settings are not reachable from the screen even then, and Ask Claude here
- * only knows what the kitchen screen shows (assistant/kitchen.ts).
+ * only knows and changes what the kitchen screen shows (assistant/kitchen.ts).
  */
 const id = z.uuid();
 
@@ -71,21 +71,46 @@ export const removeEventPhotoAdultAction = kioskAction("calendar.photo.remove", 
   return { error: null };
 });
 
-/** Ask Claude about the calendar, chores, shopping, returns and upkeep. Nothing is stored. */
+function askError(err: unknown) {
+  const m = err instanceof Error ? err.message : "";
+  return /key|subscription|configur/i.test(m) ? "Claude isn't set up yet. Add it in Settings on your phone." : "Claude couldn't answer. Try again.";
+}
+
+/**
+ * Ask Claude about, or change, the calendar, chores, shopping, returns and
+ * upkeep. The conversation is not stored; changes are, with Undo.
+ */
 export const askKitchenAction = kioskAction(
   "assistant.kitchen",
   z.object({
     history: z.array(z.object({ role: z.enum(["user", "assistant"]), text: z.string().max(2000) })).max(KITCHEN_MAX_TURNS * 2),
     question: z.string().trim().min(1).max(KITCHEN_MAX_QUESTION),
+    photoText: z.string().max(KITCHEN_MAX_PHOTO_TEXT * 2).nullish(),
   }),
-  async ({ history, question }, actor): Promise<{ answer: string | null; error: string | null }> => {
+  async ({ history, question, photoText }, actor): Promise<{ answer: string | null; changes: KitchenChanges | null; error: string | null }> => {
     const who = actor.kind === "kiosk" ? actor.device.id : "member";
-    if (!rateLimit(`kiosk-ask:${who}`, 20, 10 * 60_000)) return { answer: null, error: "That's a lot of questions. Try again in a few minutes." };
+    if (!rateLimit(`kiosk-ask:${who}`, 20, 10 * 60_000)) return { answer: null, changes: null, error: "That's a lot of questions. Try again in a few minutes." };
     try {
-      return { answer: await askKitchen(history, question), error: null };
+      const r = await askKitchen(history, question, new Date(), photoText ?? null);
+      if (r.changes) refresh();
+      return { answer: r.answer, changes: r.changes, error: null };
     } catch (err) {
-      const m = err instanceof Error ? err.message : "";
-      return { answer: null, error: /key|subscription|configur/i.test(m) ? "Claude isn't set up yet. Add it in Settings on your phone." : "Claude couldn't answer. Try again." };
+      return { answer: null, changes: null, error: askError(err) };
+    }
+  },
+);
+
+/** Apply, discard or undo what Claude changed from the kitchen screen. */
+export const kitchenChangeAction = kioskAction(
+  "assistant.kitchen",
+  z.object({ action: z.enum(["apply", "discard", "undo", "undo_one"]), id, changesetId: id }),
+  async ({ action, id: target, changesetId }): Promise<{ changes: KitchenChanges | null; error: string | null }> => {
+    try {
+      const changes = await kitchenChange(action, target, changesetId);
+      refresh();
+      return { changes, error: null };
+    } catch (err) {
+      return { changes: null, error: err instanceof Error ? err.message.slice(0, 200) : "That didn't work." };
     }
   },
 );

@@ -44,7 +44,7 @@ const eventInput = z.object({
 type Result = { error: string | null };
 
 /** Google failures come back as a message for the modal, not a thrown error (which production hides). */
-async function calendarWrite(fn: () => Promise<void>): Promise<Result> {
+async function calendarWrite(fn: () => Promise<unknown>): Promise<Result> {
   try {
     await fn();
   } catch (err) {
