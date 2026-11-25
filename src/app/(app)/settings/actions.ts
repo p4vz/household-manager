@@ -2,9 +2,10 @@
 
 import { revalidatePath } from "next/cache";
 import { authedAction } from "@/core/actions/authed-action";
+import { KEY_IDS, checkApiKeyShape, providerConfigured, removeApiKey, saveApiKey, testApiKey, type KeyTestResult } from "@/core/ai/keys";
 import { requireUser } from "@/core/auth/guard";
 import { AiSettingsSchema } from "@/core/ai/settings";
-import { saveAiSettings } from "@/core/ai/store";
+import { getAiSettings, saveAiSettings } from "@/core/ai/store";
 import { z } from "zod";
 import { createPairingCode, revokeKioskDevice } from "@/core/kiosk/devices";
 import { formatPairingCode } from "@/core/kiosk/pairing";
@@ -25,6 +26,51 @@ export async function saveAiSettingsAction(form: FormData) {
   });
   revalidatePath("/settings");
 }
+
+// ---- AI provider API keys ----
+// The key is accepted here and sealed server-side. Nothing returned from
+// these actions contains it; errors are written by hand so they cannot echo it.
+
+const ProviderInput = z.enum(KEY_IDS);
+const KeyInput = z.object({ provider: ProviderInput, key: z.string().max(400) });
+
+export const saveApiKeyAction = authedAction(KeyInput, async ({ provider, key }): Promise<KeyTestResult> => {
+  const k = key.trim();
+  const shape = checkApiKeyShape(provider, k);
+  if (shape) return { ok: false, message: shape };
+  const test = await testApiKey(provider, k);
+  // A key the provider rejects outright is not saved; a network blip or rate limit doesn't block saving.
+  if (test.rejected) return test;
+  await saveApiKey(provider, k);
+  // If the active provider has no key at all, switch to the one just added so it starts working.
+  const settings = await getAiSettings();
+  let switched = false;
+  const target = provider === "claude_subscription" ? "anthropic" : provider;
+  if (settings.provider !== target && !(await providerConfigured(settings.provider))) {
+    await saveAiSettings({ ...settings, provider: target });
+    switched = true;
+  }
+  revalidatePath("/settings");
+  const note = switched ? " It is now the active provider." : "";
+  return test.ok
+    ? { ok: true, message: `Saved. ${test.message}${note}` }
+    : { ok: true, message: `Saved, but not verified: ${test.message}${note}` };
+});
+
+export const testApiKeyAction = authedAction(KeyInput, async ({ provider, key }) => {
+  const k = key.trim();
+  if (k) {
+    const shape = checkApiKeyShape(provider, k);
+    if (shape) return { ok: false, message: shape } satisfies KeyTestResult;
+  }
+  return testApiKey(provider, k || undefined);
+});
+
+export const removeApiKeyAction = authedAction(z.object({ provider: ProviderInput }), async ({ provider }) => {
+  await removeApiKey(provider);
+  revalidatePath("/settings");
+  return { ok: true, message: "Removed." } satisfies KeyTestResult;
+});
 
 const disconnect = authedAction(z.object({ id: z.uuid() }), async ({ id }) => {
   await revokeConnection(id);

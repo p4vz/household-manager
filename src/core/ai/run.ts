@@ -1,10 +1,36 @@
 import "server-only";
 import { generateText, isStepCount, Output } from "ai";
-import type { z } from "zod";
+import { z } from "zod";
+import { runClaudeCodeStructured } from "./claude-code";
+import { getApiKey } from "./keys";
 import { languageModel, webSearchTools } from "./provider";
 import type { Sanitized } from "./sanitize";
-import type { AiTier } from "./settings";
+import type { AiSettings, AiTier } from "./settings";
 import { getAiSettings } from "./store";
+
+/**
+ * Claude goes through the household's subscription first (Claude Code via
+ * the Agent SDK, token from `claude setup-token`), and falls back to the
+ * Anthropic API key when the subscription call fails (usage limit, expired
+ * token, outage) and a key is saved. Gemini always uses its API key.
+ *
+ * Returns the subscription result, or null when the API path should run.
+ */
+async function viaSubscription<T>(
+  settings: AiSettings,
+  call: (token: string) => Promise<T>,
+): Promise<{ value: T } | null> {
+  if (settings.provider !== "anthropic") return null;
+  const token = await getApiKey("claude_subscription");
+  if (!token) return null;
+  try {
+    return { value: await call(token) };
+  } catch (err) {
+    if (!(await getApiKey("anthropic"))) throw err;
+    console.warn(`[ai] ${err instanceof Error ? err.message : "subscription call failed"}; using the API key instead`);
+    return null;
+  }
+}
 
 /**
  * The one entry point for AI calls. Both providers receive the identical
@@ -19,10 +45,21 @@ export async function runStructured<S extends z.ZodType, P>(opts: {
   schema: S;
 }): Promise<z.infer<S>> {
   const settings = await getAiSettings();
+  const prompt = `${opts.task}\n\nDATA (JSON):\n${JSON.stringify(opts.payload)}`;
+  const sub = await viaSubscription(settings, (token) =>
+    runClaudeCodeStructured({
+      token,
+      model: settings.models.anthropic[opts.tier],
+      system: opts.system,
+      prompt,
+      schema: opts.schema,
+    }),
+  );
+  if (sub) return sub.value;
   const result = await generateText({
-    model: languageModel(settings, opts.tier),
+    model: await languageModel(settings, opts.tier),
     system: opts.system,
-    prompt: `${opts.task}\n\nDATA (JSON):\n${JSON.stringify(opts.payload)}`,
+    prompt,
     output: Output.object({ schema: opts.schema }),
     maxRetries: 2,
   });
@@ -30,6 +67,11 @@ export async function runStructured<S extends z.ZodType, P>(opts: {
 }
 
 export type WebSource = { url: string; title: string | null };
+
+const ResearchNotes = z.object({
+  notes: z.string(),
+  sources: z.array(z.object({ url: z.string(), title: z.string().nullable() })),
+});
 
 /**
  * Two-step public-web lookup for facts the app keeps on file (card terms).
@@ -54,11 +96,34 @@ export async function runWebResearch<S extends z.ZodType, P>(opts: {
   maxSearches?: number;
 }): Promise<{ output: z.infer<S>; notes: string; sources: WebSource[] }> {
   const settings = await getAiSettings();
+  const researchPrompt = `${opts.task}\n\nDATA (JSON):\n${JSON.stringify(opts.payload)}\n\nSearch the web, then write factual notes. Cite the page each fact came from.`;
+
+  const sub = await viaSubscription(settings, async (token) => {
+    const domains = opts.allowedDomains?.length ? `\nOnly use pages on these sites: ${opts.allowedDomains.join(", ")}.` : "";
+    const research = await runClaudeCodeStructured({
+      token,
+      model: settings.models.anthropic[opts.tier],
+      system: opts.system,
+      prompt: `${researchPrompt}${domains}\nUse at most ${opts.maxSearches ?? 5} searches. Return the notes and the URL and title of every page you used.`,
+      schema: ResearchNotes,
+      webSearch: true,
+    });
+    const output = await runClaudeCodeStructured({
+      token,
+      model: settings.models.anthropic.fast,
+      system: EXTRACT_SYSTEM,
+      prompt: extractPrompt(opts.task, research.notes, research.sources),
+      schema: opts.schema,
+    });
+    return { output, notes: research.notes, sources: research.sources };
+  });
+  if (sub) return sub.value;
+
   const research = await generateText({
-    model: languageModel(settings, opts.tier),
+    model: await languageModel(settings, opts.tier),
     system: opts.system,
-    prompt: `${opts.task}\n\nDATA (JSON):\n${JSON.stringify(opts.payload)}\n\nSearch the web, then write factual notes. Cite the page each fact came from.`,
-    tools: webSearchTools(settings, { allowedDomains: opts.allowedDomains, maxUses: opts.maxSearches }),
+    prompt: researchPrompt,
+    tools: await webSearchTools(settings, { allowedDomains: opts.allowedDomains, maxUses: opts.maxSearches }),
     stopWhen: isStepCount(4),
     maxRetries: 2,
   });
@@ -67,11 +132,18 @@ export async function runWebResearch<S extends z.ZodType, P>(opts: {
     .map((s) => ({ url: s.url, title: s.title ?? null }));
 
   const extract = await generateText({
-    model: languageModel(settings, "fast"),
-    system: "You convert research notes into JSON. Use only facts stated in the notes. Do not add anything the notes do not say.",
-    prompt: `${opts.task}\n\nNOTES:\n${research.text}\n\nSOURCES:\n${sources.map((s) => `- ${s.title ?? ""} ${s.url}`).join("\n")}`,
+    model: await languageModel(settings, "fast"),
+    system: EXTRACT_SYSTEM,
+    prompt: extractPrompt(opts.task, research.text, sources),
     output: Output.object({ schema: opts.schema }),
     maxRetries: 2,
   });
   return { output: extract.output as z.infer<S>, notes: research.text, sources };
+}
+
+const EXTRACT_SYSTEM =
+  "You convert research notes into JSON. Use only facts stated in the notes. Do not add anything the notes do not say.";
+
+function extractPrompt(task: string, notes: string, sources: WebSource[]): string {
+  return `${task}\n\nNOTES:\n${notes}\n\nSOURCES:\n${sources.map((s) => `- ${s.title ?? ""} ${s.url}`).join("\n")}`;
 }

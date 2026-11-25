@@ -15,7 +15,7 @@ export default async function KidsPage({ params, searchParams }: PageProps<"/tri
   const kids = travelers.filter((t) => t.kind === "child");
   const players = kids.length ? kids : travelers;
   const name = new Map(travelers.map((t) => [t.id, t.name]));
-  const ai = aiConfigured();
+  const ai = await aiConfigured();
 
   // Hunt points per traveller across the trip.
   const points = new Map<string, number>();

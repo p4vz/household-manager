@@ -1,6 +1,7 @@
 import "server-only";
 import { and, asc, count, desc, eq, gte, inArray, isNotNull, isNull, lt, max, min, sql, type SQL } from "drizzle-orm";
 import type { ModuleName } from "@/core/bus/events";
+import { aiConfigured } from "@/core/ai/keys";
 import { db } from "@/core/db/client";
 import { categorizeUncategorized, setMerchantCategory } from "./ai/categorize";
 import { applyFilters, cashFlow, categoryBreakdown, rangeMonths, topMerchants, type OwnerFilter, type RangeKey } from "./analytics/compute";
@@ -85,7 +86,7 @@ export async function disconnectSimplefin() {
 
 export async function runScheduledSync(now = new Date()) {
   const result = await syncSimplefin({ trigger: "cron", now });
-  if (result.status === "ok" && result.inserted > 0 && aiConfigured()) {
+  if (result.status === "ok" && result.inserted > 0 && (await aiConfigured())) {
     // Best effort: a provider outage must not fail the bank sync.
     await categorizeUncategorized().catch((err) =>
       console.error(`[finance] AI categorization failed: ${err instanceof Error ? err.message : err}`),
@@ -96,9 +97,6 @@ export async function runScheduledSync(now = new Date()) {
   return result;
 }
 
-function aiConfigured() {
-  return Boolean(process.env.GEMINI_API_KEY || process.env.ANTHROPIC_API_KEY);
-}
 
 export { categorizeUncategorized, setMerchantCategory };
 
@@ -294,7 +292,7 @@ export async function runMonthlyAdvisorIfDue(now = new Date()) {
   const tz = householdTimeZone();
   const day = Number(new Intl.DateTimeFormat("en-US", { timeZone: tz, day: "numeric" }).format(now));
   if (day !== 1 || localHour(now, tz) !== 8) return { status: "skipped" as const, reason: "Not the monthly slot" };
-  if (!aiConfigured()) return { status: "skipped" as const, reason: "No AI provider key configured" };
+  if (!(await aiConfigured())) return { status: "skipped" as const, reason: "No AI provider key configured" };
   if (await hasReportForMonth(now)) return { status: "skipped" as const, reason: "Already ran this month" };
   await runAdvisor("monthly", now);
   return { status: "ok" as const };

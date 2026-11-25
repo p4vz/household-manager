@@ -12,9 +12,7 @@ import { PACKING_CATEGORIES, TRIVIA_CATEGORIES } from "./schema";
  * "child, age 8".
  */
 
-export function aiConfigured(): boolean {
-  return Boolean(process.env.GEMINI_API_KEY || process.env.ANTHROPIC_API_KEY);
-}
+export { aiConfigured } from "@/core/ai/keys";
 
 const SYSTEM = `You are the resident guide inside a family travel app.
 You write for a family travelling together, including children.

@@ -1,5 +1,7 @@
 import { AI_PROVIDERS, type AiProvider } from "@/core/ai/settings";
+import { KEY_IDS, allApiKeyStatus, type KeyId } from "@/core/ai/keys";
 import { getAiSettings } from "@/core/ai/store";
+import { AiApiKeys, type KeyRowStatus } from "@/components/ai-api-keys";
 import { requireUserOrRedirect } from "@/core/auth/guard";
 import { oauthConfig } from "@/core/oauth/policy";
 import { listConnections } from "@/core/oauth/server";
@@ -16,12 +18,32 @@ import {
   disconnectAllAssistantsAction,
   disconnectAssistantAction,
   makeKioskPairingCodeAction,
+  removeApiKeyAction,
   saveAiSettingsAction,
+  saveApiKeyAction,
+  testApiKeyAction,
   unpairKioskAction,
   saveAssistantPermissionsAction,
 } from "./actions";
 
 const LABELS: Record<AiProvider, string> = { gemini: "Google Gemini", anthropic: "Anthropic Claude" };
+const KEY_LABELS: Record<KeyId, string> = {
+  claude_subscription: "Claude subscription token",
+  anthropic: "Claude API key (backup)",
+  gemini: "Gemini API key",
+};
+const KEY_HELP: Record<KeyId, Pick<KeyRowStatus, "placeholder" | "help" | "getKeyUrl">> = {
+  claude_subscription: {
+    placeholder: "sk-ant-oat01-…",
+    help: "Uses your Claude plan, like Agents UI. On your computer run claude setup-token, approve in the browser, and paste the token it prints (it lasts a year).",
+  },
+  anthropic: {
+    placeholder: "sk-ant-api03-…",
+    help: "Optional. Used only when the subscription call fails or hits its limit. Billed per token.",
+    getKeyUrl: "https://console.anthropic.com/settings/keys",
+  },
+  gemini: { placeholder: "AIza…", getKeyUrl: "https://aistudio.google.com/app/apikey" },
+};
 
 export default async function SettingsPage() {
   await requireUserOrRedirect();
@@ -29,6 +51,7 @@ export default async function SettingsPage() {
   const mcp = oauthConfig();
   const connections = mcp ? await listConnections() : [];
   const kiosks = await listKioskDevices();
+  const keys = await allApiKeyStatus();
   const bank = await syncStatus();
   const lastRun = bank.runs[0];
   // Status only: the access URL itself never leaves the server.
@@ -43,9 +66,19 @@ export default async function SettingsPage() {
     timeZone: householdTimeZone(),
   };
   const configured: Record<AiProvider, boolean> = {
-    gemini: Boolean(process.env.GEMINI_API_KEY),
-    anthropic: Boolean(process.env.ANTHROPIC_API_KEY),
+    gemini: keys.gemini.source !== null,
+    anthropic: keys.anthropic.source !== null || keys.claude_subscription.source !== null,
   };
+  // Only masked hints and dates go to the browser.
+  const keyRows: KeyRowStatus[] = KEY_IDS.map((p) => ({
+    provider: p,
+    label: KEY_LABELS[p],
+    source: keys[p].source,
+    hint: keys[p].hint,
+    savedAt: keys[p].savedAt,
+    envAlsoSet: keys[p].envAlsoSet,
+    ...KEY_HELP[p],
+  }));
 
   return (
     <section className="max-w-xl space-y-6">
@@ -54,35 +87,45 @@ export default async function SettingsPage() {
         <h2 className="font-medium">Bank sync (SimpleFIN)</h2>
         <BankSyncSettings view={bankView} connect={connectBankAction} syncNow={syncBankNowAction} disconnect={disconnectBankAction} />
       </div>
-      <form action={saveAiSettingsAction} className="space-y-5 rounded-xl border p-6">
+      <div className="space-y-5 rounded-xl border p-6">
         <h2 className="font-medium">AI configuration</h2>
-        <fieldset className="space-y-2">
-          <legend className="text-sm opacity-70">Active provider</legend>
-          {AI_PROVIDERS.map((p) => (
-            <label key={p} className="flex items-center gap-2">
-              <input type="radio" name="provider" value={p} defaultChecked={settings.provider === p} />
-              {LABELS[p]}
-              {!configured[p] ? <span className="text-xs text-amber-600">(API key not set)</span> : null}
-            </label>
-          ))}
-        </fieldset>
-        {AI_PROVIDERS.map((p) => (
-          <fieldset key={p} className="grid grid-cols-2 gap-3">
-            <legend className="col-span-2 text-sm opacity-70">{LABELS[p]} models</legend>
-            <label className="text-sm">
-              Fast (merchant cleanup)
-              <input name={`${p}.fast`} defaultValue={settings.models[p].fast}
-                className="mt-1 w-full rounded border bg-transparent px-2 py-1" />
-            </label>
-            <label className="text-sm">
-              Flagship (monthly audits)
-              <input name={`${p}.flagship`} defaultValue={settings.models[p].flagship}
-                className="mt-1 w-full rounded border bg-transparent px-2 py-1" />
-            </label>
+        <div className="space-y-2">
+          <p className="text-sm opacity-80">
+            Claude runs on your subscription when a token is saved, and falls back to the API key if that fails.
+            Tokens and keys are stored encrypted on the server and never shown again; only the last four characters are
+            displayed. One saved here is used instead of the server&apos;s environment variable.
+          </p>
+          <AiApiKeys rows={keyRows} actions={{ save: saveApiKeyAction, test: testApiKeyAction, remove: removeApiKeyAction }} />
+        </div>
+        <form action={saveAiSettingsAction} className="space-y-5">
+          <fieldset className="space-y-2">
+            <legend className="text-sm opacity-70">Active provider</legend>
+            {AI_PROVIDERS.map((p) => (
+              <label key={p} className="flex items-center gap-2">
+                <input type="radio" name="provider" value={p} defaultChecked={settings.provider === p} />
+                {LABELS[p]}
+                {!configured[p] ? <span className="text-xs text-amber-600">(API key not set)</span> : null}
+              </label>
+            ))}
           </fieldset>
-        ))}
-        <button type="submit" className="rounded-lg bg-foreground px-4 py-2 text-background">Save</button>
-      </form>
+          {AI_PROVIDERS.map((p) => (
+            <fieldset key={p} className="grid grid-cols-2 gap-3">
+              <legend className="col-span-2 text-sm opacity-70">{LABELS[p]} models</legend>
+              <label className="text-sm">
+                Fast (merchant cleanup)
+                <input name={`${p}.fast`} defaultValue={settings.models[p].fast}
+                  className="mt-1 w-full rounded border bg-transparent px-2 py-1" />
+              </label>
+              <label className="text-sm">
+                Flagship (monthly audits)
+                <input name={`${p}.flagship`} defaultValue={settings.models[p].flagship}
+                  className="mt-1 w-full rounded border bg-transparent px-2 py-1" />
+              </label>
+            </fieldset>
+          ))}
+          <button type="submit" className="rounded-lg bg-foreground px-4 py-2 text-background">Save</button>
+        </form>
+      </div>
 
       <div className="space-y-3 rounded-xl border p-6">
         <h2 className="font-medium">Kitchen kiosk</h2>

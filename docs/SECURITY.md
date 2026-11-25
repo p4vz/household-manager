@@ -270,7 +270,7 @@ needs a review here.
 ## Secrets
 
 `DATABASE_URL`, `AUTH_SECRET`, `AUTH_GOOGLE_SECRET`, `CRON_SECRET`,
-`SIMPLEFIN_ACCESS_URL`, `GEMINI_API_KEY`, `ANTHROPIC_API_KEY`, `DOC_VAULT_KEY`,
+`SIMPLEFIN_ACCESS_URL`, `GEMINI_API_KEY`, `ANTHROPIC_API_KEY`, `CLAUDE_CODE_OAUTH_TOKEN`, `DOC_VAULT_KEY`,
 `GOOGLE_CALENDAR_SERVICE_ACCOUNT`, `GOOGLE_REFRESH_TOKEN` (or `GOOGLE_CALENDAR_REFRESH_TOKEN`),
 `GOOGLE_CLIENT_SECRET`, `GOOGLE_CALENDAR_ID` and `GOOGLE_CALENDARS` are read
 only by server code. Files that read them import `server-only`, so a Client
@@ -287,6 +287,35 @@ last sync, counts). The setup token is posted once through an allowlisted
 server action, claimed from the server, and not kept. Disconnect deletes the
 stored URL (synced data stays); an env-provided URL can only be removed on
 the server. Rotating `AUTH_SECRET` means reconnecting SimpleFIN.
+
+Claude can also run on the household's Claude subscription. The token from
+`claude setup-token` is pasted in Settings (stored like the keys below, key
+`ai.key.claude_subscription`) or set as `CLAUDE_CODE_OAUTH_TOKEN`. Claude calls
+then go through the Claude Agent SDK (`src/core/ai/claude-code.ts`), which
+starts Claude Code as a child process with: no tools (only WebSearch for the
+card-catalog research step), no settings files, no saved sessions, an empty
+working directory under the temp dir, and a minimal environment (the token,
+PATH, proxy/CA variables). `DATABASE_URL`, `AUTH_SECRET` and every other
+secret are not passed to it. Non-essential traffic is off, so it only calls
+`api.anthropic.com`, which is already allowlisted; this child process is the
+one network path that does not go through `outboundFetch`. The same sanitized
+payloads are sent either way. If the subscription call fails (usage limit,
+expired token) and an Anthropic API key is saved, the call is retried on the
+API; otherwise the error is shown. Error text is scrubbed of tokens.
+
+AI provider API keys can also be pasted in Settings > AI configuration (any
+allowlisted user). They are stored the same way (`core_settings` keys
+`ai.key.anthropic` / `ai.key.gemini`, AES-256-GCM under the `AUTH_SECRET`
+derived key) and a saved key wins over `ANTHROPIC_API_KEY` /
+`GEMINI_API_KEY`, which stay as the fallback. The browser only ever gets a
+masked hint (`sk-ant-…abcd`, prefix plus last four characters) computed at
+save time; the key is never returned by a Server Action, never logged, and
+error messages are fixed strings. "Test" lists the provider's models
+(`api.anthropic.com/v1/models`, `generativelanguage.googleapis.com/v1beta/models`)
+with the key in a header, spends no tokens, sends no household data and
+reports only the HTTP status. A key the provider rejects is not saved.
+Removing a key deletes the row. Rotating `AUTH_SECRET` makes saved keys
+unreadable; calls then fall back to the environment until they are re-entered.
 
 ## Google Calendar sync
 

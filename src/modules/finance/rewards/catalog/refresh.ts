@@ -1,6 +1,7 @@
 import "server-only";
 import { and, eq } from "drizzle-orm";
 import { z } from "zod";
+import { aiConfigured } from "@/core/ai/keys";
 import { runWebResearch, type WebSource } from "@/core/ai/run";
 import { sanitizePayload } from "@/core/ai/sanitize";
 import { db } from "@/core/db/client";
@@ -221,7 +222,7 @@ export async function dueCatalogProducts(now = new Date()) {
 /** Daily cron slot. Checks up to MAX_PER_RUN due cards, one at a time. */
 export async function runCatalogRefreshIfDue(now = new Date()) {
   if (localHour(now, householdTimeZone()) !== REFRESH_HOUR) return { status: "skipped" as const, reason: "Not the refresh slot" };
-  if (!process.env.GEMINI_API_KEY && !process.env.ANTHROPIC_API_KEY) return { status: "skipped" as const, reason: "No AI provider key configured" };
+  if (!(await aiConfigured())) return { status: "skipped" as const, reason: "No AI provider key configured" };
   await ensureCatalogSeeded();
   const due = (await dueCatalogProducts(now)).slice(0, MAX_PER_RUN);
   const results: RefreshResult[] = [];

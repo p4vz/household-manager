@@ -21,7 +21,8 @@ const securityHeaders = [
 
 const nextConfig: NextConfig = {
   poweredByHeader: false,
-  serverExternalPackages: ["postgres"],
+  // The Agent SDK starts Claude Code from its platform package at runtime; keep it out of the bundle.
+  serverExternalPackages: ["postgres", "@anthropic-ai/claude-agent-sdk"],
   experimental: {
     // Simplifi CSV history uploads.
     serverActions: { bodySizeLimit: "15mb" },
