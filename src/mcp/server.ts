@@ -5,7 +5,6 @@ import type { McpCaller } from "@/core/oauth/server";
 import { legalNamesFromEnv } from "@/core/ai/sanitize";
 import { oauthConfig } from "@/core/oauth/policy";
 import { connectorToolList, runConnectorTool } from "@/assistant/connector";
-import * as family from "@/modules/family/api";
 import * as trips from "@/modules/trips/api";
 import { forAssistant } from "./sanitize";
 import { serverInstructions, toolsFor, type AssistantTool } from "./tools";
@@ -16,15 +15,9 @@ import { serverInstructions, toolsFor, type AssistantTool } from "./tools";
  * into a trip note or a card nickname never leaves the server.
  */
 async function namesToScrub(): Promise<string[]> {
-  const [travellers, kids] = await Promise.all([trips.listTravelers().catch(() => []), family.listKids().catch(() => [])]);
-  // Kids' first names, as on the chore board, may pass (the "Make changes"
-  // tools manage kids by first name); the rest of a traveller's name is still removed.
-  const kidNames = new Set(kids.map((k) => k.name.trim().toLowerCase()));
-  const travellerParts = travellers.flatMap((t) => {
-    const parts = t.name.trim().split(/\s+/);
-    return parts.some((p) => kidNames.has(p.toLowerCase())) ? parts.filter((p) => !kidNames.has(p.toLowerCase())) : [t.name];
-  });
-  return [...legalNamesFromEnv(), ...travellerParts].filter((n) => n.trim().length >= 2);
+  const travellers = await trips.listTravelers().catch(() => []);
+  // First names stay (Danya, Raisa); surnames and so full names are removed (core/ai/sanitize.ts).
+  return [...legalNamesFromEnv(), ...travellers.map((t) => t.name)].filter((n) => n.trim().length >= 2);
 }
 
 /** Ask Claude's tools for connections given a "Make changes" permission (src/assistant/connector.ts). */

@@ -271,7 +271,7 @@ enforced in code:
    digit runs, crypto wallet addresses (EVM, bech32, base58, other long
    key-like tokens), IBANs, email addresses and booking/confirmation-style
    codes (flight numbers such as `UA1234` survive), plus the household's
-   legal names and every name in the trips travellers list.
+   surnames from HOUSEHOLD_LEGAL_NAMES and the trips travellers list (first names and nicknames stay).
 
 **Booking codes, the one opt-in exception.** Pavel asked for a way to let
 an assistant read a trip's confirmation codes. A code reaches an assistant
@@ -327,9 +327,8 @@ wait for the member's Apply in the app. They are marked `readOnlyHint:
 false`. They still cannot move money, edit amounts, accounts, bank
 connections, keys, settings or permissions, and answers are scrubbed as
 below. Refs (short handles instead of ids) persist per connection in a
-hidden conversation row. Kids' first names as shown on the chore board
-pass the name scrub (they are how these tools address kids); surnames and
-other traveller names are still removed.
+hidden conversation row. First names and nicknames pass the name scrub;
+surnames (of household members and travellers) are removed.
 
 **What assistants see.** The same rules as the AI providers. Answers are
 built field by field from card nicknames, owner labels (`User 1` /
@@ -650,7 +649,13 @@ Before anything goes to Gemini or Claude:
    institution ids and raw bank payloads are never copied.
 2. **Text scrub.** Every string is scrubbed of 4+ digit sequences (including
    masked and grouped forms like `****1234` or `4111 1111 ...`) and of the
-   names in `HOUSEHOLD_LEGAL_NAMES`.
+   surnames in `HOUSEHOLD_LEGAL_NAMES` (so full legal names never go out).
+   First names and nicknames are kept (Pavel, 2026-11-25: "Danya (Daniel);
+   Raya (Raisa). Both variants should be unredacted"). Each entry is a legal
+   name with an optional nickname, comma-separated:
+   `Daniel Smith=Danya, Raisa Smith=Raya, Elana Smith, Pavel Smith=Pavel`.
+   Ask Claude, the kitchen screen and the connector are told the nicknames
+   so they use them.
 3. **Type gate.** `runStructured()` only accepts a `Sanitized<T>` payload,
    which can only be produced by the sanitizer.
 

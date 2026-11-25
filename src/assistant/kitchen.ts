@@ -4,7 +4,7 @@ import { householdTimeZone } from "@/core/time/zoned";
 import * as calendar from "@/modules/calendar/api";
 import * as family from "@/modules/family/api";
 import * as maintenance from "@/modules/maintenance/api";
-import { runAssistantTurn } from "./agent";
+import { peopleLine, runAssistantTurn } from "./agent";
 import { applyChangeset, discardChangeset, listChangesets, recordChangeset, undoChange, undoChangeset } from "./changesets";
 import { RefBook } from "./conversations";
 import { MAX_PHOTO_TEXT, withPhotoText } from "./inbox";
@@ -118,7 +118,7 @@ export async function askKitchen(history: KitchenTurn[], question: string, now =
     history: history.slice(-KITCHEN_MAX_TURNS * 2).map((t) => ({ role: t.role, text: scrubReferenceText(t.text.slice(0, 1200), legal), at: now.toISOString() })),
     userText: q,
     tools: KITCHEN_TOOLS,
-    system: `${SYSTEM}\n\nDATA:\n${JSON.stringify(snapshot)}`,
+    system: `${SYSTEM}\n${peopleLine()}\n\nDATA:\n${JSON.stringify(snapshot)}`,
     tier: "fast",
   });
   const id = await recordChangeset(ctx, null, `Kitchen screen: ${typed}`, drafts.drafts);

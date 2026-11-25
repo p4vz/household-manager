@@ -88,7 +88,7 @@ describe("card catalog", () => {
 
     // The search sent only public card names, nothing about the household.
     const sent = JSON.stringify(runWebResearch.mock.calls.map((c) => c[0].payload));
-    expect(sent).not.toMatch(/Alexandra|9876|Kroger|Shell/);
+    expect(sent).not.toMatch(/Smith|9876|Kroger|Shell/);
     expect(runWebResearch.mock.calls[0][0].allowedDomains).toEqual(["chase.com"]);
 
     // Audit: $100 gas at the 5% rotating rate, pizza at the user's own 10x.
@@ -154,7 +154,7 @@ describe("card catalog", () => {
     expect(flexCard.catalogTerms).toMatchObject({ product: "Chase Freedom Flex", verifiedDate: "not yet verified" });
     expect(payload.candidateCards.length).toBe(8);
     expect(payload.candidateCards.map((c: { card: string }) => c.card)).not.toContain("Chase Freedom Flex");
-    expect(JSON.stringify(payload)).not.toMatch(/Alexandra|9876/);
+    expect(JSON.stringify(payload)).not.toMatch(/Smith|9876/);
   });
 
   it("removing a catalog card unlinks it without deleting the household card's rules", async () => {

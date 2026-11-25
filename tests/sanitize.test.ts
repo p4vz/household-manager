@@ -17,8 +17,8 @@ describe("LLM sanitization", () => {
     }
   });
   it("strips legal names but keeps normal merchant text", () => {
-    expect(scrubText("Zelle to Alexandra Smith", names)).toBe("Zelle to [redacted]");
-    expect(scrubText("Payment from JORDAN", names)).toBe("Payment from [redacted]");
+    expect(scrubText("Zelle to Alexandra Smith", names)).toBe("Zelle to Alexandra [redacted]");
+    expect(scrubText("Payment from JORDAN", names)).toBe("Payment from JORDAN");
     expect(scrubText("Trader Joe's", names)).toBe("Trader Joe's");
     expect(scrubText("7-Eleven", names)).toBe("7-Eleven");
   });
@@ -43,7 +43,7 @@ describe("LLM sanitization", () => {
     );
     const json = JSON.stringify(out);
     expect(json).not.toMatch(/\d{4,}(?!-\d{2}-\d{2})/);
-    expect(json).not.toMatch(/Alexandra/i);
+    expect(json).not.toMatch(/Smith/i);
     expect(out.date).toBe("2026-11-02");
     expect(out.amount).toBe(-42.5);
   });
@@ -53,5 +53,15 @@ describe("LLM sanitization", () => {
     expect(p.rows[0].date).toBe("2026-10-05");
     expect(p.rows[0].amount).toBe(1234.5);
     expect(p.rows[0].note).toBe("acct [redacted]");
+  });
+});
+
+describe("household names (Pavel, 2026-11-25)", () => {
+  it("keeps first names and nicknames, removes surnames and so full names", async () => {
+    const { householdNicknames } = await import("@/core/ai/sanitize");
+    const entries = ["Daniel Smith=Danya", "Raisa Smith=Raya", "Elana Smith", "Pavel Smith=Pavel"];
+    expect(scrubText("Danya and Daniel, Raya and Raisa, Elana, Pavel Smith", entries)).toBe("Danya and Daniel, Raya and Raisa, Elana, Pavel [redacted]");
+    expect(scrubText("SMITH DANIEL", entries)).toBe("[redacted] DANIEL");
+    expect(householdNicknames(entries)).toEqual(["Danya (Daniel)", "Raya (Raisa)", "Pavel"]);
   });
 });
