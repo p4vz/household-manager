@@ -271,12 +271,41 @@ data. Page: `/assistant`, history at `/assistant/history`.
   Undo works per change or per batch and leaves rows that changed again.
   Batches are capped at 200 changes.
 - **What can change** (`entities.ts`): transaction category, subcategory,
-  notes and transfer flag; merchant category rules; upkeep tasks; shopping
+  notes and transfer flag; merchant category rules; upkeep tasks; home
+  equipment; shopping
   items; store returns; ticking or archiving chores. Deletes are soft where
   the module has it (chores archive) and otherwise restorable from the
   snapshot. Nothing moves money, edits amounts, accounts, bank connections,
   keys, settings or assistant permissions. Calendar and trips are read-only.
 - Conversations and changesets belong to the member who had them.
+
+## Finance review (one-time cleanup)
+
+`/finance/review`, run by each member over joint accounts and their own.
+
+1. **Reconcile** (`finance/review/reconcile.ts`, plain code): imported
+   CSV-only accounts are matched by name to linked SimpleFIN accounts and
+   can be merged (rows the bank feed already has, same amount within 3
+   days, are dropped); CSV/bank duplicates on one account; tidier nicknames
+   and account types; stale balances, gaps between the import and bank
+   sync, empty months, quiet unlinked accounts.
+2. **Categories** (`finance/review/taxonomy.ts`, `categories.ts`): one
+   category set (parents = `DEFAULT_CATEGORIES`, with subcategories). Mint
+   and Simplifi names map through a built-in alias list; Claude suggests the
+   rest via `runStructured` (category names and example merchants only).
+   Applying remaps visible transactions and the shared merchant rules.
+3. **Large purchases** (`finance/review/large.ts`): spending at or above a
+   per-member threshold (default $500; not transfers, income, mortgage, loan
+   or card payments) is listed until answered or skipped.
+4. **House upkeep** (`src/assistant/review.ts`): an answer goes to Claude
+   with the purchase's date, merchant, amount and category (scrubbed); the
+   resulting note, home equipment (`maintenance_assets`) and upkeep tasks
+   are recorded as an Ask Claude changeset, so they apply under the usual
+   policy and are undone from its history.
+
+Steps 1 and 2 log each fix in `finance_review_actions` with what is needed
+to undo it; undo leaves rows that were changed again since. Migration 0014
+also seeds the monthly "Change AC filters" task (Pavel, 2026-11-25).
 
 ## Kitchen kiosk and family hub
 

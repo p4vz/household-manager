@@ -7,6 +7,7 @@ const LINKS = [
   { href: "/finance/transactions", label: "Transactions" },
   { href: "/finance/accounts", label: "Accounts" },
   { href: "/finance/import", label: "Import" },
+  { href: "/finance/review", label: "Review" },
 ];
 
 export default function FinanceLayout({ children }: LayoutProps<"/finance">) {

@@ -1,6 +1,6 @@
 import { requireUserOrRedirect } from "@/core/auth/guard";
 import { householdToday, relativeDue, shortDate } from "@/modules/family/ui/dates";
-import { listOpenTasks } from "@/modules/maintenance/api";
+import { ASSET_KIND_LABELS, listAssets, listOpenTasks } from "@/modules/maintenance/api";
 import { completeTaskAction, deleteTaskAction, scheduleTaskAction } from "./actions";
 
 const PRESETS: [string, number][] = [
@@ -15,7 +15,7 @@ const PRESETS: [string, number][] = [
 export default async function MaintenancePage() {
   await requireUserOrRedirect();
   const today = householdToday();
-  const tasks = await listOpenTasks();
+  const [tasks, assets] = await Promise.all([listOpenTasks(), listAssets()]);
 
   async function addTask(form: FormData) {
     "use server";
@@ -92,6 +92,32 @@ export default async function MaintenancePage() {
           </li>
         ))}
       </ul>
+
+      <div className="space-y-2">
+        <h2 className="font-medium">Home equipment</h2>
+        {assets.length === 0 ? (
+          <p className="text-sm opacity-60">
+            Nothing listed yet. Answer the large-purchase questions in the{" "}
+            <a className="underline" href="/finance/review#large">Finance review</a>, or ask Claude to add the furnace, water heater or roof.
+          </p>
+        ) : (
+          <ul className="space-y-1 text-sm">
+            {assets.map((a) => (
+              <li key={a.id} className="rounded-lg border px-3 py-2">
+                <span className="font-medium">{a.name}</span>
+                <span className="opacity-70">
+                  {" "}
+                  · {ASSET_KIND_LABELS[a.kind]}
+                  {a.location ? ` · ${a.location}` : ""}
+                  {a.installedOn ? ` · since ${shortDate(a.installedOn)}` : ""}
+                  {a.cost != null ? ` · $${a.cost.toFixed(2)}` : ""}
+                </span>
+                {a.notes ? <p className="opacity-70">{a.notes}</p> : null}
+              </li>
+            ))}
+          </ul>
+        )}
+      </div>
     </section>
   );
 }

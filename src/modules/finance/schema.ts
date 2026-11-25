@@ -305,3 +305,53 @@ export const financeAdvisorReports = pgTable("finance_advisor_reports", {
   provider: text("provider").notNull(),
   report: jsonb("report").notNull(),
 });
+
+/**
+ * One-time Finance review (/finance/review): every change it makes is logged
+ * here with what is needed to undo it, per member. Kinds: merging an
+ * imported (CSV) account into its linked one, removing duplicate CSV copies,
+ * renaming or deactivating an account, and remapping categories.
+ */
+export const REVIEW_ACTION_KINDS = ["merge_account", "remove_duplicates", "rename_account", "deactivate_account", "map_categories"] as const;
+export type ReviewActionKind = (typeof REVIEW_ACTION_KINDS)[number];
+
+export const financeReviewActions = pgTable(
+  "finance_review_actions",
+  {
+    id: uuid("id").primaryKey().defaultRandom(),
+    viewer: text("viewer", { enum: ["user1", "user2"] }).notNull(),
+    kind: text("kind", { enum: REVIEW_ACTION_KINDS }).notNull(),
+    summary: text("summary").notNull(),
+    /** Kind-specific record of what changed (row ids, old values, snapshots of removed rows). */
+    undo: jsonb("undo").notNull(),
+    status: text("status", { enum: ["applied", "undone"] }).notNull().default("applied"),
+    createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+    undoneAt: timestamp("undone_at", { withTimezone: true }),
+  },
+  (t) => [index("finance_review_actions_viewer_idx").on(t.viewer, t.createdAt)],
+);
+
+/** Per member: the large-purchase threshold and the saved category proposal. */
+export const financeReviewState = pgTable("finance_review_state", {
+  viewer: text("viewer", { enum: ["user1", "user2"] }).primaryKey(),
+  largeThreshold: money("large_threshold").notNull().default(500),
+  /** Category mapping proposal (see review/categories.ts), kept until applied or rebuilt. */
+  categoryProposal: jsonb("category_proposal"),
+  updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
+});
+
+/**
+ * Large purchases the review asked about: answered ("What was this for?")
+ * or dismissed. A purchase with a row here is not asked about again.
+ */
+export const financeReviewQuestions = pgTable("finance_review_questions", {
+  transactionId: uuid("transaction_id")
+    .primaryKey()
+    .references(() => financeTransactions.id, { onDelete: "cascade" }),
+  viewer: text("viewer", { enum: ["user1", "user2"] }).notNull(),
+  status: text("status", { enum: ["answered", "dismissed"] }).notNull(),
+  answer: text("answer"),
+  /** What came of the answer: a short summary and the Ask Claude changeset holding the edits. */
+  outcome: jsonb("outcome").$type<{ summary: string; changesetId: string | null }>(),
+  answeredAt: timestamp("answered_at", { withTimezone: true }).notNull().defaultNow(),
+});

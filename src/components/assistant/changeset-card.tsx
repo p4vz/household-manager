@@ -35,6 +35,7 @@ const ENTITY: Record<string, string> = {
   transaction: "Transaction",
   merchant_rule: "Category rule",
   upkeep_task: "Upkeep task",
+  upkeep_asset: "Home equipment",
   shopping_item: "Shopping item",
   purchase_return: "Return",
   chore: "Chore",
@@ -42,6 +43,7 @@ const ENTITY: Record<string, string> = {
 
 const FIELD: Record<string, string> = {
   isTransfer: "Transfer",
+  installedOn: "Installed",
   dueDate: "Due",
   estimatedCost: "Estimated cost",
   recurrenceDays: "Repeats every (days)",

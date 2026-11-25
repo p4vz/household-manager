@@ -11,6 +11,7 @@ import type { RefBook } from "./conversations";
 import {
   adapterFor,
   MerchantRuleFields,
+  AssetFields,
   ReturnFields,
   sameFields,
   ShoppingFields,
@@ -224,6 +225,24 @@ export const TOOLS: AssistantTool[] = [
     },
   },
   {
+    name: "home_equipment",
+    description: "The house's equipment and big-ticket parts (HVAC, roof, water heater, appliances): kind, location, installed or bought date, cost, notes. Each has a ref for edit_home_equipment.",
+    input: {},
+    kind: "read",
+    scrub: "reference",
+    async run(_args, { refs }) {
+      return (await maintenance.listAssets()).map((a) => ({
+        ref: refs.ref("upkeep_asset", a.id),
+        name: a.name,
+        kind: a.kind,
+        location: a.location,
+        installedOn: a.installedOn,
+        cost: a.cost,
+        notes: a.notes,
+      }));
+    },
+  },
+  {
     name: "shopping_list",
     description:
       "Shopping items on every list, by list and store (checked = bought; ticking one item ticks the same item on the other active lists). Lists put off until a date show deferredUntil. Each item has a ref for edit_shopping_item.",
@@ -386,6 +405,36 @@ export const TOOLS: AssistantTool[] = [
         return queued(env, 1);
       }
       return queued(env, (await draftUpdate(env, "upkeep_task", key, UpkeepFields.partial().parse(rest))) ? 1 : 0);
+    },
+  },
+  {
+    name: "edit_home_equipment",
+    description: "Add, update or delete a piece of home equipment (furnace, roof, fridge). update/delete need the ref from home_equipment. Never put serial, model-registration or account numbers in notes.",
+    input: {
+      action: ACTION,
+      ref: z.string().max(12).optional(),
+      name: z.string().max(80).optional(),
+      kind: z.enum(maintenance.ASSET_KINDS).optional(),
+      location: z.string().max(60).nullable().optional(),
+      installedOn: z.iso.date().nullable().optional(),
+      cost: z.number().min(0).nullable().optional(),
+      notes: z.string().max(500).nullable().optional(),
+    },
+    kind: "edit",
+    scrub: "reference",
+    async run(args, env) {
+      const { action, ref, ...rest } = args as { action: string; ref?: string } & Fields;
+      if (action === "create") {
+        const f = AssetFields.parse({ kind: "other", location: null, installedOn: null, cost: null, notes: null, ...rest });
+        env.drafts.add({ entity: "upkeep_asset", op: "create", key: null, label: f.name, before: null, after: f });
+        return queued(env, 1);
+      }
+      const key = env.refs.resolve(String(ref ?? ""), "upkeep_asset");
+      if (action === "delete") {
+        await draftDelete(env, "upkeep_asset", key);
+        return queued(env, 1);
+      }
+      return queued(env, (await draftUpdate(env, "upkeep_asset", key, AssetFields.partial().parse(rest))) ? 1 : 0);
     },
   },
   {

@@ -14,3 +14,33 @@ export const maintenanceTasks = pgTable("maintenance_tasks", {
   previousTaskId: uuid("previous_task_id"),
   createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
 });
+
+export const ASSET_KINDS = ["hvac", "roof", "appliance", "plumbing", "electrical", "exterior", "yard", "other"] as const;
+export type AssetKind = (typeof ASSET_KINDS)[number];
+
+export const ASSET_KIND_LABELS: Record<AssetKind, string> = {
+  hvac: "Heating & cooling",
+  roof: "Roof",
+  appliance: "Appliance",
+  plumbing: "Plumbing",
+  electrical: "Electrical",
+  exterior: "Exterior",
+  yard: "Yard",
+  other: "Other",
+};
+
+/**
+ * Home equipment and big-ticket parts of the house (furnace, roof, water
+ * heater, fridge): what it is, when it was installed or bought, what it
+ * cost. Filled from the Finance review's large-purchase questions or by hand.
+ */
+export const maintenanceAssets = pgTable("maintenance_assets", {
+  id: uuid("id").primaryKey().defaultRandom(),
+  name: text("name").notNull(),
+  kind: text("kind", { enum: ASSET_KINDS }).notNull().default("other"),
+  location: text("location"),
+  installedOn: date("installed_on"),
+  cost: numeric("cost", { precision: 12, scale: 2, mode: "number" }),
+  notes: text("notes"),
+  createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+});

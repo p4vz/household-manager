@@ -567,3 +567,32 @@ export {
   type TransactionEditable,
   type MerchantRule,
 } from "./assistant";
+
+// ---------- one-time Finance review (/finance/review) ----------
+
+export {
+  reconcileReport,
+  mergeImportedAccount,
+  removeDuplicateCopies,
+  renameAccountForReview,
+  deactivateAccountForReview,
+  type ReconcileReport,
+  type ImportedMatch,
+  type DuplicatePair,
+  type NameFix,
+  type CoverageNote,
+} from "./review/reconcile";
+export { categoryReview, proposeCategoriesWithAi, applyCategoryMapping, type CategoryReviewRow, type CategoryMapping } from "./review/categories";
+export { TAXONOMY, PARENTS, allChoices, formatPair, parsePair, type CategoryPair } from "./review/taxonomy";
+export {
+  DEFAULT_LARGE_THRESHOLD,
+  largeThreshold,
+  setLargeThreshold,
+  largePurchases,
+  reviewTransaction,
+  recordLargePurchaseAnswer,
+  dismissLargePurchasesAt,
+  reopenLargePurchase,
+  type LargePurchase,
+} from "./review/large";
+export { listReviewActions, undoReviewAction } from "./review/log";

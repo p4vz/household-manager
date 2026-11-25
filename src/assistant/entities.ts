@@ -138,6 +138,42 @@ const upkeepTask: EntityAdapter = {
   },
 };
 
+export const AssetFields = z
+  .object({
+    name: text(80),
+    kind: z.enum(maintenance.ASSET_KINDS),
+    location: optText(60),
+    installedOn: day.nullable(),
+    cost: z.number().min(0).max(1_000_000).nullable(),
+    notes: optText(500),
+  })
+  .strict();
+
+const upkeepAsset: EntityAdapter = {
+  entity: "upkeep_asset",
+  title: "Home equipment",
+  async get(_ctx, key) {
+    const a = await maintenance.getAsset(key);
+    if (!a) return null;
+    return {
+      fields: { name: a.name, kind: a.kind, location: a.location, installedOn: a.installedOn, cost: a.cost, notes: a.notes },
+      label: a.name,
+    };
+  },
+  async update(_ctx, key, patch) {
+    await maintenance.updateAsset(key, AssetFields.partial().parse(patch));
+  },
+  async create(_ctx, fields) {
+    return maintenance.addAsset(AssetFields.parse({ location: null, installedOn: null, cost: null, notes: null, ...fields }));
+  },
+  async remove(_ctx, key) {
+    await maintenance.deleteAsset(key);
+  },
+  async restore(ctx, _key, snapshot) {
+    return this.create!(ctx, snapshot);
+  },
+};
+
 // ------------------------------------------------------------ family ----
 
 export const ShoppingFields = z
@@ -244,7 +280,7 @@ const chore: EntityAdapter = {
 };
 
 export const ADAPTERS: Record<string, EntityAdapter> = Object.fromEntries(
-  [transaction, merchantRule, upkeepTask, shoppingItem, purchaseReturn, chore].map((a) => [a.entity, a]),
+  [transaction, merchantRule, upkeepTask, upkeepAsset, shoppingItem, purchaseReturn, chore].map((a) => [a.entity, a]),
 );
 
 export function adapterFor(entity: string): EntityAdapter {

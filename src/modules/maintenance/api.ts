@@ -2,7 +2,9 @@ import "server-only";
 import { and, asc, eq, gte, isNull, lte, or } from "drizzle-orm";
 import { bus } from "@/core/bus";
 import { db } from "@/core/db/client";
-import { maintenanceTasks } from "./schema";
+import { ASSET_KINDS, ASSET_KIND_LABELS, maintenanceAssets, maintenanceTasks, type AssetKind } from "./schema";
+
+export { ASSET_KINDS, ASSET_KIND_LABELS, type AssetKind };
 
 /**
  * Home maintenance public API: upkeep tasks with due dates, optional costs
@@ -157,4 +159,49 @@ export async function listTasks(opts: { completedSince?: string | null; limit?: 
     )
     .orderBy(asc(maintenanceTasks.dueDate))
     .limit(Math.min(opts.limit ?? 200, 500));
+}
+
+// ---------- home equipment ----------
+
+export type AssetInput = {
+  name: string;
+  kind: AssetKind;
+  location?: string | null;
+  installedOn?: string | null;
+  cost?: number | null;
+  notes?: string | null;
+};
+
+export async function addAsset(input: AssetInput): Promise<string> {
+  const [row] = await db()
+    .insert(maintenanceAssets)
+    .values({
+      name: input.name,
+      kind: input.kind,
+      location: input.location ?? null,
+      installedOn: input.installedOn ?? null,
+      cost: input.cost ?? null,
+      notes: input.notes ?? null,
+    })
+    .returning({ id: maintenanceAssets.id });
+  return row.id;
+}
+
+export async function getAsset(id: string) {
+  const [row] = await db().select().from(maintenanceAssets).where(eq(maintenanceAssets.id, id));
+  return row ?? null;
+}
+
+export async function updateAsset(id: string, patch: Partial<AssetInput>) {
+  const set = Object.fromEntries(Object.entries(patch).filter(([, v]) => v !== undefined));
+  if (!Object.keys(set).length) return;
+  await db().update(maintenanceAssets).set(set).where(eq(maintenanceAssets.id, id));
+}
+
+export async function deleteAsset(id: string) {
+  await db().delete(maintenanceAssets).where(eq(maintenanceAssets.id, id));
+}
+
+export async function listAssets() {
+  return db().select().from(maintenanceAssets).orderBy(asc(maintenanceAssets.kind), asc(maintenanceAssets.name));
 }
