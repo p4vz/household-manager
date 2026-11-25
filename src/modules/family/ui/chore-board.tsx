@@ -1,6 +1,7 @@
 "use client";
 
 import { startTransition, useOptimistic, useState } from "react";
+import { GoalStrip, type KidProgressView } from "./goal-strip";
 import { Modal, ProgressBar, field, tap } from "./kit";
 
 export type BoardChoreView = { id: string; title: string; icon: string; recurrence: "daily" | "weekly" | "once"; stars: number; done: boolean };
@@ -23,7 +24,20 @@ type Actions = {
  * (checkmark, stars, progress bar move at once); tapping a done chore asks
  * before un-ticking, so a stray tap from a sibling cannot undo it.
  */
-export function ChoreBoard({ kids, actions, icons, layout = "kiosk" }: { kids: BoardKidView[]; actions: Actions; icons: readonly string[]; layout?: "kiosk" | "phone" }) {
+export function ChoreBoard({
+  kids,
+  actions,
+  icons,
+  layout = "kiosk",
+  progress,
+}: {
+  kids: BoardKidView[];
+  actions: Actions;
+  icons: readonly string[];
+  layout?: "kiosk" | "phone";
+  /** Goals and badges per kid id (goal-strip.tsx). */
+  progress?: Record<string, KidProgressView>;
+}) {
   const [board, setOptimistic] = useOptimistic(kids, (state, change: { choreId: string; done: boolean }) =>
     state.map((k) => {
       const chores = k.chores.map((c) => (c.id === change.choreId ? { ...c, done: change.done } : c));
@@ -76,6 +90,7 @@ export function ChoreBoard({ kids, actions, icons, layout = "kiosk" }: { kids: B
                 <span>🔥 {kid.stats.streak} day{kid.stats.streak === 1 ? "" : "s"}</span>
                 <span>{kid.stats.weekPercent}% week</span>
               </div>
+              {progress?.[kid.id] ? <GoalStrip progress={progress[kid.id]} color={kid.color} /> : null}
             </header>
             <ul className="min-h-0 flex-1 space-y-2 overflow-y-auto overscroll-contain">
               {kid.chores.map((c) => (

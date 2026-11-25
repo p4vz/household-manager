@@ -174,14 +174,17 @@ describe("external surface", () => {
     expect(src).not.toMatch(/authedAction\(/);
     const imports = [...src.matchAll(/from "([^"]+)"/g)].map((m) => m[1]);
     expect(imports.filter((i) => /modules\/(finance|trips|assistant)|core\/(mcp|ai)/.test(i))).toEqual([]);
-    const declared = [...src.matchAll(/export const (\w+) = kioskAction\("([\w.]+)"/g)].map((m) => `${m[1]}:${m[2]}`);
+    const declared = [...src.matchAll(/export const (\w+) = kioskAction\(\s*"([\w.]+)"/g)].map((m) => `${m[1]}:${m[2]}`);
     expect(declared).toEqual([
       "unlockAdultAction:adult.unlock",
       "lockAdultAction:adult.lock",
       "deleteEventAdultAction:calendar.delete",
       "removeEventPhotoAdultAction:calendar.photo.remove",
+      "askKitchenAction:assistant.kitchen",
       "exitKitchenModeAction:kiosk.exit",
     ]);
+    // Ask Claude on the screen is the kitchen-only one: a snapshot and no tools.
+    expect(imports.filter((i) => i.startsWith("@/assistant/"))).toEqual(["@/assistant/kitchen"]);
     expect(src.match(/^export /gm)?.length).toBe(declared.length + 1); // + the UnlockResult type
   });
 

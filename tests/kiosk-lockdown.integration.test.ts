@@ -61,6 +61,7 @@ const ADULT_ACTIONS: Record<string, string> = {
   deleteEventAdultAction: "calendar.delete",
   removeEventPhotoAdultAction: "calendar.photo.remove",
   exitKitchenModeAction: "kiosk.exit",
+  askKitchenAction: "assistant.kitchen",
 };
 /**
  * Public by design: the rate-limited code exchange that pairs a screen, and

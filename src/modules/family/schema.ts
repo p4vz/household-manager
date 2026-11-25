@@ -65,6 +65,37 @@ export const familyChoreCompletions = pgTable(
 );
 
 /**
+ * A goal for one kid on one daily or weekly chore, set by a parent: "read 10
+ * days in a row" (streak) or "read 30 times" (count), with the reward the
+ * parent wrote. Progress is computed from completions since `startedOn`
+ * (goals.ts). `achievedOn` is set once when it is reached and stays set;
+ * `rewardGivenAt` when a parent marks the reward handed over.
+ */
+export const familyChoreGoals = pgTable(
+  "family_chore_goals",
+  {
+    id: uuid("id").primaryKey().defaultRandom(),
+    kidId: uuid("kid_id")
+      .notNull()
+      .references(() => familyKids.id, { onDelete: "cascade" }),
+    choreId: uuid("chore_id")
+      .notNull()
+      .references(() => familyChores.id, { onDelete: "cascade" }),
+    kind: text("kind").$type<"streak" | "count">().notNull(),
+    target: integer("target").notNull(),
+    reward: text("reward").notNull(),
+    rewardEmoji: text("reward_emoji").notNull().default("🎁"),
+    startedOn: date("started_on").notNull(),
+    achievedOn: date("achieved_on"),
+    rewardGivenAt: timestamp("reward_given_at", { withTimezone: true }),
+    archivedAt: timestamp("archived_at", { withTimezone: true }),
+    createdBy: text("created_by").notNull(),
+    createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+  },
+  (t) => [index("family_chore_goals_kid_idx").on(t.kidId)],
+);
+
+/**
  * Shopping: lists (shown one below the other) hold store sections, which hold
  * item tiles. A list can be deferred until a date (hidden until then) and
  * saved as a template; a template starts new lists.
