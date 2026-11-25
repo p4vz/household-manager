@@ -27,7 +27,7 @@ import { loadHub } from "./load";
 import { shoppingActions } from "./shopping-actions-map";
 
 /** Installs as its own full-screen landscape app (public/kiosk.webmanifest). */
-export const metadata = { title: "Kitchen", manifest: "/kiosk.webmanifest" };
+export const metadata = { title: "Aprelev Kitchen", manifest: "/kiosk.webmanifest" };
 
 const CALENDAR_MAX_AGE_MS = 90_000;
 

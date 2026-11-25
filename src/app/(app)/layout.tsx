@@ -1,3 +1,4 @@
+import Image from "next/image";
 import Link from "next/link";
 import { signOut } from "@/core/auth/config";
 import { requireUserOrRedirect } from "@/core/auth/guard";
@@ -16,7 +17,10 @@ export default async function AppLayout({ children }: LayoutProps<"/">) {
   return (
     <div className="flex flex-1 flex-col">
       <header className="flex flex-wrap items-center gap-x-6 gap-y-2 border-b px-4 py-3 text-sm sm:px-6">
-        <Link href="/" className="font-semibold">Household</Link>
+        <Link href="/" className="flex items-center gap-2 font-semibold">
+          <Image src="/icons/icon.svg" alt="" unoptimized width={24} height={24} className="h-6 w-6" />
+          Aprelev Household
+        </Link>
         <nav className="order-last flex w-full gap-4 overflow-x-auto whitespace-nowrap sm:order-none sm:w-auto">
           {MODULE_DEFINITIONS.map((m) => (
             <Link key={m.name} href={m.href} className="opacity-80 hover:opacity-100">

@@ -12,7 +12,7 @@ export default function PrivacyPage() {
     <main className="mx-auto w-full max-w-2xl flex-1 space-y-4 p-6 text-sm leading-6">
       <h1 className="text-xl font-semibold">Privacy policy</h1>
       <p>
-        Household is a private app run by one household for its own members. It is not offered to the public, and only
+        Aprelev Household is a private app run by one household for its own members. It is not offered to the public, and only
         Google accounts the household has invited can sign in.
       </p>
       <h2 className="pt-2 font-semibold">What the app uses</h2>

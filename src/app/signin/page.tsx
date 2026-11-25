@@ -1,3 +1,4 @@
+import Image from "next/image";
 import { redirect } from "next/navigation";
 import { signIn } from "@/core/auth/config";
 import { currentUser } from "@/core/auth/guard";
@@ -17,7 +18,10 @@ export default async function SignInPage({ searchParams }: PageProps<"/signin">)
   return (
     <main className="flex flex-1 items-center justify-center p-6">
       <form action={signInWithGoogle} className="w-full max-w-sm space-y-4 rounded-xl border p-8">
-        <h1 className="text-xl font-semibold">Household</h1>
+        <h1 className="flex items-center gap-3 text-xl font-semibold">
+          <Image src="/icons/icon.svg" alt="" unoptimized width={40} height={40} className="h-10 w-10" />
+          Aprelev Household
+        </h1>
         <p className="text-sm opacity-70">Private app. Only invited Google accounts can sign in.</p>
         {error ? (
           <p className="rounded bg-red-500/10 p-2 text-sm text-red-600">

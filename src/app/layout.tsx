@@ -9,13 +9,13 @@ const geistSans = Geist({ variable: "--font-geist-sans", subsets: ["latin"] });
 const geistMono = Geist_Mono({ variable: "--font-geist-mono", subsets: ["latin"] });
 
 export const metadata: Metadata = {
-  title: "Household",
+  title: "Aprelev Household",
   description: "Private household manager",
   robots: { index: false, follow: false },
   // Installable on the parents' phones (public/manifest.webmanifest, public/sw.js).
   manifest: "/manifest.webmanifest",
-  appleWebApp: { capable: true, title: "Household", statusBarStyle: "default" },
-  icons: { apple: "/icons/apple-touch-icon.png" },
+  appleWebApp: { capable: true, title: "Aprelev", statusBarStyle: "default" },
+  icons: { icon: [{ url: "/favicon.ico", sizes: "any" }, { url: "/icons/icon.svg", type: "image/svg+xml" }], apple: "/icons/apple-touch-icon.png" },
 };
 
 export const viewport: Viewport = {

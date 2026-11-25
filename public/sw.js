@@ -7,7 +7,7 @@
  * no household data) are stored on the device. Everything else always goes
  * to the network, exactly as without a service worker.
  */
-const CACHE = "household-static-v3";
+const CACHE = "household-static-v4";
 const PRECACHE = ["/offline.html", "/kiosk-offline.html", "/icons/icon-192.png", "/manifest.webmanifest"];
 
 self.addEventListener("install", (event) => {

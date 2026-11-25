@@ -15,7 +15,7 @@ export default async function PairPage() {
       <div className="w-full max-w-md space-y-6 rounded-2xl border p-8">
         <h1 className="text-3xl font-semibold">Pair this screen</h1>
         <p className="opacity-80">
-          On your phone, open Household → Settings → Kitchen kiosk and tap <b>Make pairing code</b>. Type the code here.
+          On your phone, open Aprelev Household → Settings → Kitchen kiosk and tap <b>Make pairing code</b>. Type the code here.
         </p>
         <PairForm />
       </div>

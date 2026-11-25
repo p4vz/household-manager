@@ -42,7 +42,7 @@ export function UpdateBanner() {
 
   return (
     <div role="status" className="fixed inset-x-3 bottom-3 z-50 mx-auto flex max-w-md items-center gap-3 rounded-xl bg-slate-900 p-3 text-sm text-white shadow-lg">
-      <span className="flex-1">A new version of Household is ready.</span>
+      <span className="flex-1">A new version of Aprelev Household is ready.</span>
       <button type="button" onClick={() => setDismissed(latest)} className="min-h-10 px-2 opacity-70">
         Later
       </button>
