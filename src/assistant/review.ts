@@ -24,7 +24,11 @@ const MAX_ANSWER = 500;
 const Plan = z.object({
   summary: z.string().describe("One short sentence for the member: what you recorded."),
   note: z.string().describe("Short note for the transaction, e.g. 'New furnace and AC install'. At most 120 characters."),
-  houseRelated: z.boolean().describe("True when the purchase is about the house, its equipment or its upkeep."),
+  houseRelated: z.boolean().describe("True when the purchase is about the house, its equipment or its upkeep, or about upkeep of one of the household's cars."),
+  vehicle: z
+    .string()
+    .nullable()
+    .describe("When it was car upkeep (oil change, repair, tires, inspection, registration): the name of the car from vehicles, exactly as listed. Null otherwise."),
   equipment: z
     .object({
       name: z.string().describe("e.g. 'Furnace (Carrier)', 'Roof', 'Refrigerator'"),
@@ -56,7 +60,8 @@ const SYSTEM = [
   "You keep a household's house-upkeep records. A member explained a purchase or cash withdrawal. Decide whether it concerns the house.",
   "If it does, add it to the house project history, record the equipment it bought or replaced and the routine upkeep that equipment needs, with sensible intervals (HVAC service yearly, water heater flush yearly, roof inspection every 2 years, gutter cleaning twice a year).",
   "Never repeat an upkeep task, equipment or house project that already exists (houseProjects); if this payment belongs to one of them, set project to null. Never invent facts the member did not give; leave unknown fields null.",
-  "Never include card, account, serial or phone numbers or people's full names.",
+  "Car upkeep counts too: set vehicle to the car it was for, add it to the history like house work and suggest that car's next service only if it isn't already in openUpkeepTasks.",
+  "Never include card, account, serial, VIN, plate or phone numbers or people's full names.",
 ].join(" ");
 
 const iso = (d: Date) => d.toISOString().slice(0, 10);
@@ -73,9 +78,11 @@ export async function answerTransaction(user: HouseholdUser, transactionId: stri
   const today = iso(now);
 
   let plan: z.infer<typeof Plan> | null = null;
+  let vehicles: Awaited<ReturnType<typeof maintenance.listVehicles>> = [];
   let aiError: string | null = null;
   try {
     const [tasks, equipment, projects] = await Promise.all([maintenance.listOpenTasks(), maintenance.listAssets(), maintenance.listProjects()]);
+    vehicles = equipment.filter((x) => x.kind === "vehicle");
     plan = await runStructured({
       tier: "flagship",
       system: SYSTEM,
@@ -86,7 +93,9 @@ export async function answerTransaction(user: HouseholdUser, transactionId: stri
           purchase: { date: txn.date, merchant: txn.merchant, amount: Math.abs(txn.amount), category: finance.formatPair(txn) },
           memberAnswer: answer,
           openUpkeepTasks: tasks.map((x) => x.title),
-          equipment: equipment.map((x) => x.name),
+          equipment: equipment.filter((x) => x.kind !== "vehicle").map((x) => x.name),
+          // Nickname, make, model and year only: the app keeps no VIN or plate.
+          vehicles: vehicles.map((v) => ({ name: v.name, make: v.make, model: v.model, year: v.year, mileage: v.mileage })),
           houseProjects: projects.slice(0, 60).map((x) => ({ title: x.title, date: x.date ?? x.period })),
         },
         legal,
@@ -107,6 +116,7 @@ export async function answerTransaction(user: HouseholdUser, transactionId: stri
       drafts.add({ entity: "transaction", op: "update", key: transactionId, label: current.label, before: { notes: before }, after: { notes } });
     }
   }
+  const vehicleId = plan?.vehicle ? (vehicles.find((v) => v.name.toLowerCase() === plan!.vehicle!.trim().toLowerCase())?.id ?? null) : null;
   if (plan?.houseRelated) {
     if (plan.project?.title.trim()) {
       const title = plan.project.title.trim().slice(0, 120);
@@ -125,10 +135,11 @@ export async function answerTransaction(user: HouseholdUser, transactionId: stri
           amount: Math.abs(txn.amount),
           amountNote: null,
           transactionId,
+          ...(vehicleId && { assetId: vehicleId }),
         },
       });
     }
-    if (plan.equipment) {
+    if (plan.equipment && plan.equipment.kind !== "vehicle") {
       const f = AssetFields.safeParse({
         name: plan.equipment.name.trim().slice(0, 80),
         kind: plan.equipment.kind,
@@ -147,6 +158,7 @@ export async function answerTransaction(user: HouseholdUser, transactionId: stri
         estimatedCost: task.estimatedCost != null && task.estimatedCost >= 0 ? Math.round(task.estimatedCost * 100) / 100 : null,
         recurrenceDays: task.repeatEveryDays && task.repeatEveryDays >= 1 && task.repeatEveryDays <= 3650 ? task.repeatEveryDays : null,
         notes: scrubReferenceText(task.notes ?? "", legal).slice(0, 1000) || null,
+        ...(vehicleId && { assetId: vehicleId, area: "Vehicles" }),
       });
       if (f.success) drafts.add({ entity: "upkeep_task", op: "create", key: null, label: `${f.data.title} (due ${f.data.dueDate})`, before: null, after: f.data });
     }

@@ -12,18 +12,27 @@ import { notDone } from "./large";
  * where the audit's guesses and last run are kept. Visible accounts only.
  */
 
-export type HouseQuestionKind = "cash" | "uncategorized" | "house";
+export type HouseQuestionKind = "cash" | "car" | "uncategorized" | "house";
 
 /** Home categories whose spending belongs in the house history. */
 const HOME_SUBCATEGORIES = ["Home Improvement", "Repairs & Maintenance", "Furnishings", "Appliances", "Lawn & Garden", "Home Services", "Security"];
 /** Merchants that are almost always about the house. */
 export const HOME_VENDOR_PATTERN =
   "(home depot|lowe'?s|menards|ace hardware|true value|sherwin|benjamin moore|plumb|hvac|heating|cooling|roof|gutter|electric(al)? contract|landscap|lawn|tree (service|removal|care)|pest|exterminat|appliance|abc supply|floor|carpet|tile|window|siding|paving|masonry|handyman|septic|chimney|water heater|pool|fence)";
+/**
+ * Car upkeep: shops, parts stores, dealers' service, inspections and the DMV.
+ * Fuel, parking, tolls and car washes are left out on purpose: too many and
+ * never maintenance.
+ */
+export const CAR_VENDOR_PATTERN =
+  "(jiffy lube|valvoline|midas|meineke|pep boys|firestone|goodyear|discount tire|tire (kingdom|rack|discounters)|mavis|monro|caliber collision|maaco|safelite|autozone|advance auto|napa auto|o'?reilly auto|auto (repair|service|body|parts)|collision|body shop|oil change|lube|penndot|dmv|motor vehicle|emissions|state inspection|car ?care)";
+const CAR_SUBCATEGORIES = ["Service & Parts", "Registration & DMV"];
 const CASH_PATTERN = "(atm|cash withdrawal|withdrawal|cash advance)";
 
 const accountName = sql<string>`coalesce(${financeAccounts.displayName}, ${financeAccounts.bankName})`;
 
 const isCash = or(eq(t.subcategory, "Cash & ATM"), sql`${t.description} ~* ${CASH_PATTERN}`, sql`${t.merchant} ~* ${CASH_PATTERN}`)!;
+const isCar = or(and(eq(t.category, "Auto & Transport"), inArray(t.subcategory, CAR_SUBCATEGORIES)), sql`${t.merchant} ~* ${CAR_VENDOR_PATTERN}`)!;
 const isHouse = or(
   and(eq(t.category, "Home"), inArray(t.subcategory, HOME_SUBCATEGORIES)),
   sql`${t.merchant} ~* ${HOME_VENDOR_PATTERN}`,
@@ -32,13 +41,14 @@ const isHouse = or(
 function kindOf(r: { category: string | null; subcategory: string | null; merchant: string; description: string }): HouseQuestionKind {
   const cash = new RegExp(CASH_PATTERN, "i");
   if (r.subcategory === "Cash & ATM" || cash.test(r.description) || cash.test(r.merchant)) return "cash";
+  if ((r.category === "Auto & Transport" && CAR_SUBCATEGORIES.includes(r.subcategory ?? "")) || new RegExp(CAR_VENDOR_PATTERN, "i").test(r.merchant)) return "car";
   if (!r.category) return "uncategorized";
   return "house";
 }
 
 /**
  * Open questionable transactions, newest first: cash withdrawals, spending
- * with no category, and likely house expenses. Leaves out anything already
+ * with no category, likely house expenses and car upkeep. Leaves out anything already
  * answered or skipped, transfers, and transactions already in the house
  * history (`linkedIds`).
  */
@@ -49,7 +59,7 @@ export async function houseQuestions(viewer: Viewer, opts: { linkedIds?: string[
     eq(t.pending, false),
     lte(t.amount, -(opts.minAmount ?? 20)),
     notDone!,
-    or(isCash, isNull(t.category), isHouse)!,
+    or(isCash, isNull(t.category), isHouse, isCar)!,
   ];
   if (opts.linkedIds?.length) where.push(notInArray(t.id, opts.linkedIds));
   const base = db()

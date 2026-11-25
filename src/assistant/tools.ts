@@ -124,6 +124,13 @@ function queued(env: ToolEnv, changed: number) {
 
 const ACTION = z.enum(["create", "update", "delete"]);
 
+/** Turns a `vehicleRef` argument into the record's assetId (null unlinks). */
+function withAssetId<T extends Fields>(args: T, env: ToolEnv): T {
+  if (args.vehicleRef === undefined) return args;
+  const { vehicleRef, ...rest } = args;
+  return { ...rest, assetId: vehicleRef == null ? null : env.refs.resolve(String(vehicleRef), "upkeep_asset") } as unknown as T;
+}
+
 const ResearchAnswer = z.object({
   answer: z.string(),
   recommendations: z.array(z.object({ item: z.string(), interval: z.string().nullable(), note: z.string().nullable() })),
@@ -250,12 +257,19 @@ export const TOOLS: AssistantTool[] = [
         parts: t.parts,
         lastDoneOn: t.lastDoneOn,
         notes: t.notes,
+        ...(t.assetId && { vehicleOrEquipmentRef: refs.ref("upkeep_asset", t.assetId) }),
+        ...((t.dueMileage || t.recurrenceMiles || t.lastDoneMileage) && {
+          dueAtMiles: t.dueMileage,
+          repeatsEveryMiles: t.recurrenceMiles,
+          lastDoneAtMiles: t.lastDoneMileage,
+        }),
       }));
     },
   },
   {
     name: "home_equipment",
-    description: "The house's equipment and big-ticket parts (HVAC, roof, water heater, appliances): kind, location, installed or bought date, cost, notes. Each has a ref for edit_home_equipment.",
+    description:
+      "The house's equipment and big-ticket parts (HVAC, roof, water heater, appliances) and the household's cars (kind vehicle, with make, model, year and last odometer reading): kind, location, installed or bought date, cost, notes. Each has a ref for edit_home_equipment, and a car's ref links upkeep tasks and history to it.",
     input: {},
     kind: "read",
     scrub: "reference",
@@ -268,6 +282,7 @@ export const TOOLS: AssistantTool[] = [
         installedOn: a.installedOn,
         cost: a.cost,
         notes: a.notes,
+        ...(a.kind === "vehicle" && { make: a.make, model: a.model, year: a.year, mileage: a.mileage, mileageOn: a.mileageOn }),
       }));
     },
   },
@@ -289,6 +304,7 @@ export const TOOLS: AssistantTool[] = [
         amount: p.amount,
         amountNote: p.amountNote,
         paymentLinked: Boolean(p.transactionId),
+        ...(p.assetId && { vehicleOrEquipmentRef: refs.ref("upkeep_asset", p.assetId) }),
       }));
     },
   },
@@ -593,11 +609,14 @@ export const TOOLS: AssistantTool[] = [
       area: z.string().max(60).nullable().optional().describe("e.g. Water filtration, HVAC & heating, Exterior & stormwater"),
       parts: z.string().max(300).nullable().optional().describe("Parts or supplies needed"),
       lastDoneOn: z.iso.date().nullable().optional(),
+      vehicleRef: z.string().max(12).nullable().optional().describe("Ref of the car (or equipment) from home_equipment this is for; null to unlink"),
+      dueMileage: z.number().int().min(0).nullable().optional().describe("Cars: due at this odometer reading"),
+      recurrenceMiles: z.number().int().min(1).max(200000).nullable().optional().describe("Cars: repeat every this many miles (with or instead of days)"),
     },
     kind: "edit",
     scrub: "reference",
     async run(args, env) {
-      const { action, ref, ...rest } = args as { action: string; ref?: string } & Fields;
+      const { action, ref, ...rest } = withAssetId(args as { action: string; ref?: string } & Fields, env);
       if (action === "create") {
         const f = UpkeepFields.parse({ estimatedCost: null, recurrenceDays: null, notes: null, ...rest });
         env.drafts.add({ entity: "upkeep_task", op: "create", key: null, label: `${f.title} (due ${f.dueDate})`, before: null, after: f });
@@ -613,7 +632,8 @@ export const TOOLS: AssistantTool[] = [
   },
   {
     name: "edit_home_equipment",
-    description: "Add, update or delete a piece of home equipment (furnace, roof, fridge). update/delete need the ref from home_equipment. Never put serial, model-registration or account numbers in notes.",
+    description:
+      "Add, update or delete a piece of home equipment (furnace, roof, fridge) or a car (kind vehicle). update/delete need the ref from home_equipment. Never put serial, VIN, plate, model-registration or account numbers anywhere.",
     input: {
       action: ACTION,
       ref: z.string().max(12).optional(),
@@ -623,6 +643,11 @@ export const TOOLS: AssistantTool[] = [
       installedOn: z.iso.date().nullable().optional(),
       cost: z.number().min(0).nullable().optional(),
       notes: z.string().max(500).nullable().optional(),
+      make: z.string().max(40).nullable().optional().describe("Cars only"),
+      model: z.string().max(60).nullable().optional().describe("Cars only"),
+      year: z.number().int().min(1950).max(2100).nullable().optional().describe("Cars only: model year"),
+      mileage: z.number().int().min(0).nullable().optional().describe("Cars only: odometer reading"),
+      mileageOn: z.iso.date().nullable().optional(),
     },
     kind: "edit",
     scrub: "reference",
@@ -654,11 +679,12 @@ export const TOOLS: AssistantTool[] = [
       description: z.string().max(1000).nullable().optional(),
       amount: z.number().min(0).nullable().optional(),
       amountNote: z.string().max(60).nullable().optional(),
+      vehicleRef: z.string().max(12).nullable().optional().describe("Ref of the car (or equipment) from home_equipment this is for; null to unlink"),
     },
     kind: "edit",
     scrub: "reference",
     async run(args, env) {
-      const { action, ref, ...rest } = args as { action: string; ref?: string } & Fields;
+      const { action, ref, ...rest } = withAssetId(args as { action: string; ref?: string } & Fields, env);
       if (action === "create") {
         const f = ProjectFields.parse({ date: null, period: null, vendor: null, description: null, amount: null, amountNote: null, ...rest });
         env.drafts.add({ entity: "house_project", op: "create", key: null, label: f.title, before: null, after: f });

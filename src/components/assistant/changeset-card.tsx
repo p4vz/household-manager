@@ -48,6 +48,10 @@ const FIELD: Record<string, string> = {
   installedOn: "Installed",
   amountNote: "Amount note",
   lastDoneOn: "Last done",
+  dueMileage: "Due at (miles)",
+  recurrenceMiles: "Repeats every (miles)",
+  lastDoneMileage: "Mileage when last done",
+  mileageOn: "Mileage as of",
   dueDate: "Due",
   estimatedCost: "Estimated cost",
   recurrenceDays: "Repeats every (days)",
@@ -81,7 +85,7 @@ function fieldLabel(k: string) {
 }
 
 /** Internal links (ids) that mean nothing on screen. */
-const HIDDEN = new Set(["transactionId"]);
+const HIDDEN = new Set(["transactionId", "assetId"]);
 
 function Diff({ c }: { c: ChangeRow }) {
   if (c.op === "create") {

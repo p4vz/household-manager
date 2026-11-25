@@ -32,14 +32,14 @@ const Guess = z.object({
       id: z.number().int(),
       houseRelated: z.boolean(),
       title: z.string().nullable().describe("Short name for the house work or purchase, e.g. 'Gutter repair'"),
-      area: z.string().nullable().describe("e.g. HVAC & heating, Plumbing, Exterior & stormwater, Appliances, Yard"),
+      area: z.string().nullable().describe("e.g. HVAC & heating, Plumbing, Exterior & stormwater, Appliances, Yard, or Vehicles for car upkeep"),
       confidence: z.enum(["high", "medium", "low"]),
     }),
   ),
 });
 
 const GUESS_SYSTEM =
-  "You help a household keep a history of work done on their house. For each transaction, decide whether it was spending on the house itself: repairs, maintenance, renovation, appliances, yard, utilities work, contractors, hardware stores. Groceries, dining, shopping for people, travel and subscriptions are not. Use only the merchant, amount, date and category given.";
+  "You help a household keep a history of work done on their house. For each transaction, decide whether it was spending on the house itself: repairs, maintenance, renovation, appliances, yard, utilities work, contractors, hardware stores. Car upkeep counts too (area Vehicles): oil changes, repairs, tires, parts, inspections, registration and DMV fees; fuel, parking, tolls, car washes, insurance and car payments do not. Groceries, dining, shopping for people, travel and subscriptions are not. Use only the merchant, amount, date and category given.";
 
 export type AuditResult = { matched: number; unmatched: string[]; guessed: number; houseLike: number; cashOpen: number; note: string };
 
@@ -132,10 +132,12 @@ export async function runHouseAuditIfDue(now = new Date()) {
 // ------------------------------------------------- tracker answers ----
 
 /** Adds a transaction to the house history as a project (undoable in Ask Claude history). */
-export async function addTransactionToHouse(user: HouseholdUser, transactionId: string, title: string, now = new Date()) {
+export async function addTransactionToHouse(user: HouseholdUser, transactionId: string, title: string, now = new Date(), vehicleId: string | null = null) {
   const ctx = contextFor(user, now);
   const txn = await finance.reviewTransaction(ctx.viewer, transactionId);
   const name = title.trim().slice(0, 120) || txn.merchant;
+  const vehicle = vehicleId ? await maintenance.getAsset(vehicleId) : null;
+  if (vehicleId && vehicle?.kind !== "vehicle") throw new Error("Car not found");
   const drafts = new DraftBook();
   drafts.add({
     entity: "house_project",
@@ -143,10 +145,20 @@ export async function addTransactionToHouse(user: HouseholdUser, transactionId: 
     key: null,
     label: `${name} (${txn.date})`,
     before: null,
-    after: { date: txn.date, period: null, title: name, vendor: txn.merchant, description: txn.notes, amount: Math.abs(txn.amount), amountNote: null, transactionId },
+    after: {
+      date: txn.date,
+      period: null,
+      title: name,
+      vendor: txn.merchant,
+      description: txn.notes,
+      amount: Math.abs(txn.amount),
+      amountNote: null,
+      transactionId,
+      ...(vehicle && { assetId: vehicle.id }),
+    },
   });
-  const changesetId = await recordChangeset(ctx, null, `House history: ${name}`, drafts.drafts);
-  const summary = `Added "${name}" to the house history.`;
+  const changesetId = await recordChangeset(ctx, null, `${vehicle ? `${vehicle.name} history` : "House history"}: ${name}`, drafts.drafts);
+  const summary = vehicle ? `Added "${name}" to ${vehicle.name}'s service history.` : `Added "${name}" to the house history.`;
   await finance.recordLargePurchaseAnswer(ctx.viewer, transactionId, "answered", null, { summary, changesetId });
   return summary;
 }

@@ -4,12 +4,13 @@ import { Badge } from "@/components/ui/badge";
 import { requireUserOrRedirect } from "@/core/auth/guard";
 import { householdToday, relativeDue, shortDate } from "@/modules/family/ui/dates";
 import { allChoices, formatPair, houseAuditState, houseQuestions, viewerFromLabel, type HouseQuestionKind } from "@/modules/finance/api";
-import { ASSET_KINDS, ASSET_KIND_LABELS, UPKEEP_AREAS, everyLabel, listAssets, listOpenTasks, listProjects } from "@/modules/maintenance/api";
+import { ASSET_KINDS, ASSET_KIND_LABELS, UPKEEP_AREAS, listAssets, listOpenTasks, listProjects, scheduleLabel, type RecallHit } from "@/modules/maintenance/api";
 import {
   addAssetFormAction,
   addProjectFormAction,
   addTaskFormAction,
   addToHouseFormAction,
+  addVehicleFormAction,
   answerQuestionFormAction,
   categorizeQuestionFormAction,
   checkRecallsFormAction,
@@ -17,12 +18,15 @@ import {
   deleteAssetFormAction,
   deleteProjectFormAction,
   deleteTaskFormAction,
+  deleteVehicleFormAction,
   linkToProjectFormAction,
   runAuditFormAction,
   skipQuestionFormAction,
   unlinkProjectFormAction,
   updateProjectFormAction,
+  updateMileageFormAction,
   updateTaskFormAction,
+  updateVehicleFormAction,
 } from "./actions";
 
 const input = "min-h-10 rounded-lg border bg-transparent px-2";
@@ -32,7 +36,8 @@ const PAGE_SIZE = 20;
 const money = (n: number) => `$${Math.abs(n).toLocaleString("en-US", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
 const fullDate = (iso: string) =>
   new Intl.DateTimeFormat("en-US", { timeZone: "UTC", month: "short", day: "numeric", year: "numeric" }).format(new Date(`${iso}T00:00:00Z`));
-const KIND_LABEL: Record<HouseQuestionKind, string> = { cash: "Cash withdrawal", uncategorized: "Uncategorized", house: "Possible house expense" };
+const KIND_LABEL: Record<HouseQuestionKind, string> = { cash: "Cash withdrawal", car: "Car upkeep", uncategorized: "Uncategorized", house: "Possible house expense" };
+const miles = (n: number) => `${n.toLocaleString("en-US")} mi`;
 const REPEAT_CHOICES: [number, string][] = [
   [30, "monthly"],
   [90, "every 3 months"],
@@ -43,8 +48,33 @@ const REPEAT_CHOICES: [number, string][] = [
 ];
 
 type Task = Awaited<ReturnType<typeof listOpenTasks>>[number];
+type Vehicle = Awaited<ReturnType<typeof listAssets>>[number];
 
-function TaskFields({ t, today }: { t?: Task; today: string }) {
+function RecallList({ checkedAt, recalls, note }: { checkedAt: Date | null; recalls: RecallHit[] | null; note: string }) {
+  if (!checkedAt) return null;
+  if (!recalls?.length) return <p className="text-xs opacity-60">No recalls found ({checkedAt.toLocaleDateString("en-US")}).</p>;
+  return (
+    <ul className="space-y-1 rounded-lg bg-muted p-2">
+      {recalls.map((r, i) => (
+        <li key={i}>
+          {r.url ? (
+            <a className="underline" href={r.url} target="_blank" rel="noreferrer">
+              {r.title}
+            </a>
+          ) : (
+            r.title
+          )}
+          {r.date ? ` (${r.date})` : ""}
+          {r.hazard ? <span className="opacity-70"> · {r.hazard}</span> : null}
+          {r.remedy ? <span className="opacity-70"> · Remedy: {r.remedy}</span> : null}
+        </li>
+      ))}
+      <li className="text-xs opacity-60">{note}</li>
+    </ul>
+  );
+}
+
+function TaskFields({ t, today, vehicles }: { t?: Task; today: string; vehicles: Vehicle[] }) {
   return (
     <>
       <label className="grid gap-1 text-sm sm:col-span-2">
@@ -75,6 +105,31 @@ function TaskFields({ t, today }: { t?: Task; today: string }) {
         Estimated cost ($)
         <input name="estimatedCost" type="number" min={0} step="0.01" defaultValue={t?.estimatedCost ?? ""} className={input} />
       </label>
+      {vehicles.length > 0 && (
+        <>
+          <label className="grid gap-1 text-sm">
+            Car (for car upkeep)
+            <select name="assetId" defaultValue={t?.assetId && vehicles.some((v) => v.id === t.assetId) ? t.assetId : ""} className={input}>
+              <option value="">None</option>
+              {vehicles.map((v) => (
+                <option key={v.id} value={v.id}>
+                  {v.name}
+                </option>
+              ))}
+            </select>
+          </label>
+          <label className="grid gap-1 text-sm">
+            Due at (miles)
+            <input name="dueMileage" type="number" min={0} defaultValue={t?.dueMileage ?? ""} className={input} />
+          </label>
+          <label className="grid gap-1 text-sm">
+            Repeat every (miles)
+            <input name="recurrenceMiles" type="number" min={1} max={200000} defaultValue={t?.recurrenceMiles ?? ""} className={input} />
+          </label>
+        </>
+      )}
+      {/* Keep a car link on items of a car that is not listed (never silently unlink). */}
+      {vehicles.length === 0 && t?.assetId ? <input type="hidden" name="assetId" value={t.assetId} /> : null}
       <label className="grid gap-1 text-sm sm:col-span-2">
         Notes
         <input name="notes" maxLength={1000} defaultValue={t?.notes ?? ""} className={input} />
@@ -95,8 +150,12 @@ export default async function MaintenancePage({ searchParams }: PageProps<"/main
   const message = typeof sp.m === "string" ? sp.m : null;
   const page = Math.max(0, Number(typeof sp.qp === "string" ? sp.qp : 0) || 0);
   const today = householdToday();
-  const [tasks, assets, projects, audit] = await Promise.all([listOpenTasks(), listAssets(), listProjects(), houseAuditState(viewer)]);
-  const linked = projects.map((p) => p.transactionId).filter((x): x is string => Boolean(x));
+  const [tasks, allAssets, allProjects, audit] = await Promise.all([listOpenTasks(), listAssets(), listProjects(), houseAuditState(viewer)]);
+  const vehicles = allAssets.filter((a) => a.kind === "vehicle");
+  const vehicleIds = new Set(vehicles.map((v) => v.id));
+  const assets = allAssets.filter((a) => a.kind !== "vehicle");
+  const projects = allProjects.filter((p) => !p.assetId || !vehicleIds.has(p.assetId));
+  const linked = allProjects.map((p) => p.transactionId).filter((x): x is string => Boolean(x));
   const questions = await houseQuestions(viewer, { linkedIds: linked, limit: PAGE_SIZE, offset: page * PAGE_SIZE });
   const unpaid = projects.filter((p) => !p.transactionId);
   const areas = [...new Set(tasks.map((t) => t.area ?? "Other"))].sort();
@@ -109,6 +168,7 @@ export default async function MaintenancePage({ searchParams }: PageProps<"/main
         <h1 className="text-2xl font-semibold">Home maintenance</h1>
         <nav className="flex flex-wrap gap-3 text-sm">
           <a className="underline" href="#items">Action items ({tasks.length})</a>
+          <a className="underline" href="#vehicles">Cars ({vehicles.length})</a>
           <a className="underline" href="#questions">Questionable transactions ({questions.count})</a>
           <a className="underline" href="#history">House history ({projects.length})</a>
           <a className="underline" href="#equipment">Equipment ({assets.length})</a>
@@ -148,23 +208,28 @@ export default async function MaintenancePage({ searchParams }: PageProps<"/main
               {tasks
                 .filter((t) => (t.area ?? "Other") === area)
                 .map((t) => {
-                  const late = t.dueDate < today;
+                  const car = t.assetId ? vehicles.find((v) => v.id === t.assetId) : undefined;
+                  const late = t.dueDate < today || (t.dueMileage != null && car?.mileage != null && car.mileage >= t.dueMileage);
                   return (
                     <li key={t.id} className={`space-y-2 rounded-xl border p-4 ${late ? "border-red-500" : ""}`}>
                       <div className="flex flex-wrap items-baseline justify-between gap-2">
                         <span className="font-medium">{t.title}</span>
                         <span className={`text-sm ${late ? "font-semibold text-red-600" : "opacity-70"}`}>
                           Next: {shortDate(t.dueDate)} ({relativeDue(today, t.dueDate)})
+                          {t.dueMileage != null ? ` or at ${miles(t.dueMileage)}` : ""}
                         </span>
                       </div>
                       <dl className="grid gap-x-4 text-sm sm:grid-cols-2">
                         <div>
                           <dt className="inline opacity-60">How often: </dt>
-                          <dd className="inline">{everyLabel(t.recurrenceDays)}</dd>
+                          <dd className="inline">{scheduleLabel(t.recurrenceDays, t.recurrenceMiles)}</dd>
                         </div>
                         <div>
                           <dt className="inline opacity-60">Last done: </dt>
-                          <dd className="inline">{t.lastDoneOn ? fullDate(t.lastDoneOn) : "not recorded"}</dd>
+                          <dd className="inline">
+                            {t.lastDoneOn ? fullDate(t.lastDoneOn) : "not recorded"}
+                            {t.lastDoneMileage != null ? ` at ${miles(t.lastDoneMileage)}` : ""}
+                          </dd>
                         </div>
                         {t.parts ? (
                           <div className="sm:col-span-2">
@@ -185,6 +250,17 @@ export default async function MaintenancePage({ searchParams }: PageProps<"/main
                           <input type="hidden" name="taskId" value={t.id} />
                           <input type="date" name="date" defaultValue={today} className={`${input} text-sm`} aria-label="Done on" />
                           <input type="number" name="actualCost" min={0} step="0.01" placeholder="Cost $" className={`${input} w-24 text-sm`} />
+                          {car ? (
+                            <input
+                              type="number"
+                              name="mileage"
+                              min={0}
+                              placeholder="Odometer"
+                              defaultValue={car.mileage ?? ""}
+                              className={`${input} w-28 text-sm`}
+                              aria-label="Odometer reading"
+                            />
+                          ) : null}
                           <SubmitButton className="min-h-10 rounded-lg bg-emerald-600 px-4 text-sm text-white">Mark complete</SubmitButton>
                         </form>
                         <form action={deleteTaskFormAction}>
@@ -196,7 +272,7 @@ export default async function MaintenancePage({ searchParams }: PageProps<"/main
                         <summary className="cursor-pointer text-sm underline">Edit</summary>
                         <form action={updateTaskFormAction} className="grid gap-3 pt-2 sm:grid-cols-2">
                           <input type="hidden" name="taskId" value={t.id} />
-                          <TaskFields t={t} today={today} />
+                          <TaskFields t={t} today={today} vehicles={vehicles} />
                           <SubmitButton className={`${primary} sm:col-span-2`}>Save</SubmitButton>
                         </form>
                       </details>
@@ -209,11 +285,132 @@ export default async function MaintenancePage({ searchParams }: PageProps<"/main
         <details className="rounded-xl border p-4">
           <summary className="cursor-pointer font-medium">Add an action item</summary>
           <form action={addTaskFormAction} className="grid gap-3 pt-3 sm:grid-cols-2">
-            <TaskFields today={today} />
+            <TaskFields today={today} vehicles={vehicles} />
             <SubmitButton className={`${primary} sm:col-span-2`}>Add item</SubmitButton>
           </form>
         </details>
-        <p className="text-xs opacity-60">Marking an item complete records today as its last-done date and schedules the next one from it.</p>
+        <p className="text-xs opacity-60">
+          Marking an item complete records its last-done date (and odometer for car items) and schedules the next one from it.
+        </p>
+      </section>
+
+      {/* ---------------------------------------------------------------- cars */}
+      <section id="vehicles" className="space-y-4 scroll-mt-4">
+        <h2 className="text-xl font-semibold">Cars</h2>
+        <p className="text-sm opacity-70">
+          Oil changes, inspections, registrations and other car upkeep are action items above (area Vehicles), due by date or mileage, whichever
+          comes first. Shop, parts-store and DMV payments show up in the questionable transactions to add to a car&apos;s history; fuel, parking
+          and tolls don&apos;t. The app never keeps a VIN or plate number.
+        </p>
+        {vehicles.length === 0 ? <p className="text-sm">No cars yet. Add both below.</p> : null}
+        <ul className="space-y-3">
+          {vehicles.map((v) => {
+            const items = tasks.filter((t) => t.assetId === v.id);
+            const history = allProjects.filter((p) => p.assetId === v.id);
+            return (
+              <li key={v.id} className="space-y-3 rounded-xl border p-4 text-sm">
+                <div className="flex flex-wrap items-baseline justify-between gap-2">
+                  <span>
+                    <span className="text-base font-medium">{v.name}</span>
+                    <span className="opacity-70"> · {[v.year, v.make, v.model].filter(Boolean).join(" ") || "make and model not set"}</span>
+                  </span>
+                  <span className="opacity-80">
+                    {v.mileage != null ? `${miles(v.mileage)}${v.mileageOn ? ` (as of ${fullDate(v.mileageOn)})` : ""}` : "Mileage not recorded"}
+                  </span>
+                </div>
+                <form action={updateMileageFormAction} className="flex flex-wrap items-center gap-2">
+                  <input type="hidden" name="id" value={v.id} />
+                  <input name="mileage" type="number" min={0} required placeholder="Odometer now" className={`${input} w-36`} aria-label="Odometer now" />
+                  <SubmitButton className={button}>Update mileage</SubmitButton>
+                </form>
+                {items.length > 0 && (
+                  <ul className="space-y-1">
+                    {items.map((t) => (
+                      <li key={t.id}>
+                        <span className="font-medium">{t.title.replace(`: ${v.name}`, "")}</span>
+                        <span className="opacity-70">
+                          {" "}
+                          · next {shortDate(t.dueDate)}
+                          {t.dueMileage != null ? ` or ${miles(t.dueMileage)}` : ""} · {scheduleLabel(t.recurrenceDays, t.recurrenceMiles)}
+                        </span>
+                      </li>
+                    ))}
+                  </ul>
+                )}
+                <div className="space-y-1">
+                  <h3 className="font-medium opacity-80">Service history</h3>
+                  {history.length === 0 ? (
+                    <p className="opacity-60">Nothing recorded yet.</p>
+                  ) : (
+                    <ul className="space-y-1">
+                      {history.map((p) => (
+                        <li key={p.id}>
+                          {p.date ? fullDate(p.date) : (p.period ?? "no date")} · {p.title}
+                          {p.vendor ? <span className="opacity-70"> · {p.vendor}</span> : null}
+                          {p.amount != null ? <span className="opacity-70"> · {money(p.amount)}</span> : null}
+                          {p.transactionId ? <span className="opacity-70"> · payment found</span> : null}
+                        </li>
+                      ))}
+                    </ul>
+                  )}
+                </div>
+                <div className="flex flex-wrap gap-2">
+                  <form action={checkRecallsFormAction}>
+                    <input type="hidden" name="id" value={v.id} />
+                    <input type="hidden" name="anchor" value="vehicles" />
+                    <SubmitButton className={button} pending="Checking…">
+                      Check recalls
+                    </SubmitButton>
+                  </form>
+                  <form action={deleteVehicleFormAction}>
+                    <input type="hidden" name="id" value={v.id} />
+                    <SubmitButton className={button}>Remove car</SubmitButton>
+                  </form>
+                </div>
+                <RecallList checkedAt={v.recallCheckedAt} recalls={v.recalls} note="NHTSA safety recalls for this make, model and year. Your dealer can confirm which apply to your car." />
+                <details>
+                  <summary className="cursor-pointer underline">Add a service record</summary>
+                  <form action={addProjectFormAction} className="grid gap-2 pt-2 sm:grid-cols-2">
+                    <input type="hidden" name="assetId" value={v.id} />
+                    <input name="title" required maxLength={120} placeholder="e.g. Oil change, New tires" className={`${input} sm:col-span-2`} />
+                    <input name="date" type="date" defaultValue={today} className={input} aria-label="Date" />
+                    <input name="vendor" maxLength={120} placeholder="Shop" className={input} />
+                    <input name="amount" type="number" min={0} step="0.01" placeholder="Amount $" className={input} />
+                    <input name="description" maxLength={1000} placeholder="Notes" className={input} />
+                    <SubmitButton className={`${primary} sm:col-span-2`}>Add</SubmitButton>
+                  </form>
+                </details>
+                <details>
+                  <summary className="cursor-pointer underline">Edit car</summary>
+                  <form action={updateVehicleFormAction} className="grid gap-2 pt-2 sm:grid-cols-2">
+                    <input type="hidden" name="id" value={v.id} />
+                    <input name="name" required maxLength={80} defaultValue={v.name} className={input} aria-label="Nickname" />
+                    <input name="year" type="number" min={1950} max={2100} defaultValue={v.year ?? ""} placeholder="Year" className={input} />
+                    <input name="make" maxLength={40} defaultValue={v.make ?? ""} placeholder="Make" className={input} />
+                    <input name="model" maxLength={60} defaultValue={v.model ?? ""} placeholder="Model" className={input} />
+                    <input name="mileage" type="number" min={0} defaultValue={v.mileage ?? ""} placeholder="Mileage" className={input} />
+                    <SubmitButton className={`${primary} sm:col-span-2`}>Save</SubmitButton>
+                  </form>
+                </details>
+              </li>
+            );
+          })}
+        </ul>
+        <details className="rounded-xl border p-4" open={vehicles.length === 0}>
+          <summary className="cursor-pointer font-medium">Add a car</summary>
+          <form action={addVehicleFormAction} className="grid gap-2 pt-3 sm:grid-cols-2">
+            <input name="name" required maxLength={80} placeholder="Nickname, e.g. Pavel's car" className={`${input} sm:col-span-2`} />
+            <input name="year" type="number" min={1950} max={2100} placeholder="Year" className={input} />
+            <input name="make" maxLength={40} placeholder="Make, e.g. Toyota" className={input} />
+            <input name="model" maxLength={60} placeholder="Model, e.g. RAV4" className={input} />
+            <input name="mileage" type="number" min={0} placeholder="Current mileage" className={input} />
+            <label className="flex items-center gap-2 text-sm sm:col-span-2">
+              <input type="checkbox" name="standardItems" defaultChecked /> Add oil change (5,000 mi or 6 months), state inspection, registration
+              renewal and tire rotation (7,500 mi) items
+            </label>
+            <SubmitButton className={`${primary} sm:col-span-2`}>Add car</SubmitButton>
+          </form>
+        </details>
       </section>
 
       {/* -------------------------------------------- questionable transactions */}
@@ -280,11 +477,27 @@ export default async function MaintenancePage({ searchParams }: PageProps<"/main
                   <form action={addToHouseFormAction} className="flex flex-wrap gap-2">
                     <input type="hidden" name="id" value={q.id} />
                     <input name="title" defaultValue={q.suggestion?.title ?? q.merchant} maxLength={120} className={`${input} text-sm`} aria-label="Project title" />
-                    <SubmitButton className={button}>Add to house history</SubmitButton>
+                    {q.kind === "car" && vehicles.length > 0 ? (
+                      <>
+                        <select name="vehicleId" required defaultValue={vehicles.length === 1 ? vehicles[0].id : ""} className={`${input} text-sm`} aria-label="Car">
+                          <option value="" disabled>
+                            Which car?
+                          </option>
+                          {vehicles.map((v) => (
+                            <option key={v.id} value={v.id}>
+                              {v.name}
+                            </option>
+                          ))}
+                        </select>
+                        <SubmitButton className={button}>Add to car history</SubmitButton>
+                      </>
+                    ) : (
+                      <SubmitButton className={button}>Add to house history</SubmitButton>
+                    )}
                   </form>
                   <form action={skipQuestionFormAction}>
                     <input type="hidden" name="id" value={q.id} />
-                    <SubmitButton className={button}>Not a house expense</SubmitButton>
+                    <SubmitButton className={button}>{q.kind === "car" ? "Not upkeep" : "Not a house expense"}</SubmitButton>
                   </form>
                 </div>
                 <details className="text-sm">
@@ -438,29 +651,7 @@ export default async function MaintenancePage({ searchParams }: PageProps<"/main
                 </span>
               </div>
               {a.notes ? <p className="opacity-70">{a.notes}</p> : null}
-              {a.recallCheckedAt ? (
-                a.recalls?.length ? (
-                  <ul className="space-y-1 rounded-lg bg-muted p-2">
-                    {a.recalls.map((r, i) => (
-                      <li key={i}>
-                        {r.url ? (
-                          <a className="underline" href={r.url} target="_blank" rel="noreferrer">
-                            {r.title}
-                          </a>
-                        ) : (
-                          r.title
-                        )}
-                        {r.date ? ` (${r.date})` : ""}
-                        {r.hazard ? <span className="opacity-70"> · {r.hazard}</span> : null}
-                        {r.remedy ? <span className="opacity-70"> · Remedy: {r.remedy}</span> : null}
-                      </li>
-                    ))}
-                    <li className="text-xs opacity-60">Check whether your model is listed before acting.</li>
-                  </ul>
-                ) : (
-                  <p className="text-xs opacity-60">No recalls found ({a.recallCheckedAt.toLocaleDateString("en-US")}).</p>
-                )
-              ) : null}
+              <RecallList checkedAt={a.recallCheckedAt} recalls={a.recalls} note="Check whether your model is listed before acting." />
             </li>
           ))}
         </ul>
@@ -469,7 +660,7 @@ export default async function MaintenancePage({ searchParams }: PageProps<"/main
           <form action={addAssetFormAction} className="grid gap-2 pt-3 sm:grid-cols-2">
             <input name="name" required maxLength={80} placeholder="Brand and type, e.g. Rheem water heater" className={`${input} sm:col-span-2`} />
             <select name="kind" defaultValue="appliance" className={input} aria-label="Kind">
-              {ASSET_KINDS.map((k) => (
+              {ASSET_KINDS.filter((k) => k !== "vehicle").map((k) => (
                 <option key={k} value={k}>
                   {ASSET_KIND_LABELS[k]}
                 </option>

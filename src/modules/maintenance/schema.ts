@@ -12,6 +12,12 @@ export const maintenanceTasks = pgTable("maintenance_tasks", {
   notes: text("notes"),
   /** The task this one was scheduled from when its predecessor was completed. */
   previousTaskId: uuid("previous_task_id"),
+  /** The equipment or vehicle this is for (optional). */
+  assetId: uuid("asset_id"),
+  /** Mileage-based schedule for vehicles: due at this odometer reading, repeats every so many miles. */
+  dueMileage: integer("due_mileage"),
+  recurrenceMiles: integer("recurrence_miles"),
+  lastDoneMileage: integer("last_done_mileage"),
   /** Area of the house: "Water filtration", "HVAC & heating", "Exterior & stormwater". */
   area: text("area"),
   /** What to buy or have on hand, e.g. "GE MWF filter". */
@@ -21,7 +27,7 @@ export const maintenanceTasks = pgTable("maintenance_tasks", {
   createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
 });
 
-export const ASSET_KINDS = ["hvac", "roof", "appliance", "plumbing", "electrical", "exterior", "yard", "other"] as const;
+export const ASSET_KINDS = ["hvac", "roof", "appliance", "plumbing", "electrical", "exterior", "yard", "vehicle", "other"] as const;
 export type AssetKind = (typeof ASSET_KINDS)[number];
 
 export const ASSET_KIND_LABELS: Record<AssetKind, string> = {
@@ -32,6 +38,7 @@ export const ASSET_KIND_LABELS: Record<AssetKind, string> = {
   electrical: "Electrical",
   exterior: "Exterior",
   yard: "Yard",
+  vehicle: "Vehicle",
   other: "Other",
 };
 
@@ -48,6 +55,15 @@ export const maintenanceAssets = pgTable("maintenance_assets", {
   installedOn: date("installed_on"),
   cost: numeric("cost", { precision: 12, scale: 2, mode: "number" }),
   notes: text("notes"),
+  /**
+   * Vehicles: make, model, year and the last odometer reading. Never a VIN
+   * or plate number: there is deliberately no column for either.
+   */
+  make: text("make"),
+  model: text("model"),
+  year: integer("year"),
+  mileage: integer("mileage"),
+  mileageOn: date("mileage_on"),
   /** Last product-recall check (CPSC), newest results first. */
   recallCheckedAt: timestamp("recall_checked_at", { withTimezone: true }),
   recalls: jsonb("recalls").$type<RecallHit[]>(),
@@ -75,5 +91,7 @@ export const maintenanceProjects = pgTable("maintenance_projects", {
   /** For amounts that aren't one number: "~$600 – $800", "Included in scope". */
   amountNote: text("amount_note"),
   transactionId: uuid("transaction_id"),
+  /** The equipment or vehicle the work was on (vehicle service history). */
+  assetId: uuid("asset_id"),
   createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
 });

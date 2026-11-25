@@ -678,6 +678,7 @@ export {
   saveHouseSuggestions,
   houseAuditState,
   setHouseAuditState,
+  CAR_VENDOR_PATTERN,
   HOME_VENDOR_PATTERN,
   type HouseQuestion,
   type HouseQuestionKind,

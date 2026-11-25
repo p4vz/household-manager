@@ -195,3 +195,101 @@ describe("recalls", () => {
     expect(env.drafts.size).toBe(1);
   });
 });
+
+describe("cars", () => {
+  async function addTxn(merchant: string, amount: number, category: string | null = null, subcategory: string | null = null) {
+    const [r] = await db
+      .insert(financeTransactions)
+      .values({ accountId: joint, source: "csv", externalId: `x${n++}`, postedDate: "2026-11-20", amount, merchant, description: merchant, category, subcategory })
+      .returning({ id: financeTransactions.id });
+    return r.id;
+  }
+
+  it("tracks oil changes by date or mileage, whichever comes first", async () => {
+    const car = await maintenance.addVehicle({ name: "Blue car", make: "Toyota", model: "RAV4", year: 2019, mileage: 40000 }, { standardItems: true, today: "2026-11-25" });
+    const items = (await maintenance.listOpenTasks()).filter((t) => t.assetId === car);
+    expect(items.map((t) => t.title).sort()).toEqual([
+      "Oil change: Blue car",
+      "Registration renewal: Blue car",
+      "State safety inspection: Blue car",
+      "Tire rotation: Blue car",
+    ]);
+    const oil = items.find((t) => t.title.startsWith("Oil"))!;
+    expect(oil).toMatchObject({ area: "Vehicles", dueMileage: 45000, recurrenceMiles: 5000, recurrenceDays: 182 });
+
+    const { nextTaskId } = await maintenance.completeTask(oil.id, { date: "2026-12-01", mileage: 41200 });
+    expect(await maintenance.getTask(nextTaskId!)).toMatchObject({ dueDate: "2027-06-01", dueMileage: 46200, lastDoneMileage: 41200, assetId: car });
+    expect(await maintenance.getAsset(car)).toMatchObject({ mileage: 41200, mileageOn: "2026-12-01" });
+
+    // Mileage-only items still get a yearly date.
+    const tires = items.find((t) => t.title.startsWith("Tire"))!;
+    const next = await maintenance.getTask((await maintenance.completeTask(tires.id, { date: "2026-12-02", mileage: 41000 })).nextTaskId!);
+    expect(next).toMatchObject({ dueDate: "2027-12-02", dueMileage: 48500 });
+    // A lower reading doesn't roll the odometer back.
+    expect((await maintenance.getAsset(car))?.mileage).toBe(41200);
+    expect(maintenance.scheduleLabel(182, 5000)).toBe("every 6 months or 5,000 miles");
+    expect(maintenance.scheduleLabel(null, 7500)).toBe("every 7,500 miles");
+
+    // Removing the car takes its open items with it.
+    await maintenance.deleteAsset(car);
+    expect((await maintenance.listOpenTasks()).filter((t) => t.title.includes("Blue car"))).toEqual([]);
+  });
+
+  it("puts shop and DMV payments, not fuel, in the tracker and files them under the car", async () => {
+    const car = await maintenance.addVehicle({ name: "Blue car", make: "Toyota", model: "RAV4", year: 2019 }, { today: "2026-11-25" });
+    const lube = await addTxn("JIFFY LUBE #123", -89.99, "Auto & Transport", "Service & Parts");
+    const dmv = await addTxn("PennDOT Online", -45, null, null);
+    await addTxn("Shell Oil 5551", -52, "Auto & Transport", "Gas & Fuel");
+    const q = await finance.houseQuestions("user1");
+    const kinds = Object.fromEntries(q.rows.map((r) => [r.merchant, r.kind]));
+    expect(kinds["JIFFY LUBE #123"]).toBe("car");
+    expect(kinds["PennDOT Online"]).toBe("car");
+    expect(kinds["Shell Oil 5551"]).toBeUndefined();
+
+    expect(await audit.addTransactionToHouse(PAVEL, lube, "Oil change", NOW, car)).toMatch(/Blue car's service history/);
+    expect((await maintenance.listProjects()).find((p) => p.title === "Oil change")).toMatchObject({ assetId: car, transactionId: lube });
+
+    // Claude files an explained payment under the named car, given only nickname, make, model, year and mileage.
+    runStructured.mockImplementation(async (opts: { payload: { vehicles: unknown[] } }) => {
+      expect(opts.payload.vehicles).toEqual([{ name: "Blue car", make: "Toyota", model: "RAV4", year: 2019, mileage: null }]);
+      return {
+        summary: "Recorded the registration renewal.",
+        note: "Registration renewal",
+        houseRelated: true,
+        vehicle: "blue car",
+        project: { title: "Registration renewal", description: null },
+        equipment: null,
+        tasks: [{ title: "Registration renewal: Blue car", firstDueDate: "2027-11-01", repeatEveryDays: 365, estimatedCost: 45, notes: null }],
+      };
+    });
+    await answerTransaction(PAVEL, dmv, "renewed the registration", NOW);
+    expect((await maintenance.listProjects()).find((p) => p.title === "Registration renewal")).toMatchObject({ assetId: car, amount: 45 });
+    expect((await maintenance.listOpenTasks()).find((t) => t.title === "Registration renewal: Blue car")).toMatchObject({ assetId: car, area: "Vehicles" });
+  });
+
+  it("checks NHTSA recalls by make, model and year only", async () => {
+    const car = await maintenance.addVehicle({ name: "Blue car", make: "Toyota", model: "RAV4", year: 2019 }, { today: "2026-11-25" });
+    outbound.mockImplementation(
+      async () =>
+        new Response(
+          JSON.stringify({
+            Count: 2,
+            results: [
+              { NHTSACampaignNumber: "19V123000", Component: "AIR BAGS", Consequence: "Increased risk of injury.", Remedy: "Dealers will replace." },
+              { NHTSACampaignNumber: "23V456000", Component: "FUEL SYSTEM", Summary: "Leak.", Remedy: "Free repair." },
+            ],
+          }),
+        ),
+    );
+    const hits = await maintenance.checkAssetRecalls(car, NOW);
+    const url = new URL(String(outbound.mock.calls[0][0]));
+    expect(url.hostname).toBe("api.nhtsa.gov");
+    expect(Object.fromEntries(url.searchParams)).toEqual({ make: "Toyota", model: "RAV4", modelYear: "2019" });
+    expect(hits.map((h) => [h.title, h.date, h.url])).toEqual([
+      ["FUEL SYSTEM", "2023", "https://www.nhtsa.gov/recalls?nhtsaId=23V456000"],
+      ["AIR BAGS", "2019", "https://www.nhtsa.gov/recalls?nhtsaId=19V123000"],
+    ]);
+    const bare = await maintenance.addVehicle({ name: "Red car" }, { today: "2026-11-25" });
+    await expect(maintenance.checkAssetRecalls(bare, NOW)).rejects.toThrow(/make, model and year/);
+  });
+});
