@@ -16,7 +16,7 @@ export default async function FinancePage() {
           {` · ${totals?.n ?? 0} transactions`}
         </span>
         {!connection.connected ? (
-          <Link href="/finance/connect" className="text-sm underline">Connect SimpleFIN</Link>
+          <Link href="/settings#bank-sync" className="text-sm underline">Connect SimpleFIN</Link>
         ) : null}
       </div>
       {last?.messages?.length ? (

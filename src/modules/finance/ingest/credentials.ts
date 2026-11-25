@@ -1,6 +1,6 @@
 import "server-only";
 import { open, seal } from "@/core/secrets/secret-box";
-import { getSetting, setSetting } from "@/core/settings/store";
+import { deleteSetting, getSetting, setSetting } from "@/core/settings/store";
 
 const KEY = "finance.simplefin";
 
@@ -19,6 +19,11 @@ export async function getAccessUrl(): Promise<string | null> {
 
 export async function storeAccessUrl(accessUrl: string): Promise<void> {
   await setSetting(KEY, { sealedAccessUrl: seal(accessUrl), linkedAt: new Date().toISOString() } satisfies Stored);
+}
+
+/** Forget the stored access URL. Synced accounts and transactions stay. */
+export async function clearAccessUrl(): Promise<void> {
+  await deleteSetting(KEY);
 }
 
 export async function connectionInfo(): Promise<{ connected: boolean; via: "env" | "setup" | null; linkedAt: string | null }> {

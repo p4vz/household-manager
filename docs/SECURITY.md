@@ -263,9 +263,13 @@ never in the repo (`.env*` is git-ignored except `.env.example`).
 
 The SimpleFIN access URL is the one secret the app obtains at runtime. If
 `SIMPLEFIN_ACCESS_URL` is set it is used as is; otherwise the URL claimed on
-the setup screen is stored in `core_settings` encrypted with AES-256-GCM
+Settings → Bank sync is stored in `core_settings` encrypted with AES-256-GCM
 under a key derived from `AUTH_SECRET` (HKDF). It is never sent to the
-browser. Rotating `AUTH_SECRET` means reconnecting SimpleFIN.
+browser or logged: the Settings page gets only status (connected, how,
+last sync, counts). The setup token is posted once through an allowlisted
+server action, claimed from the server, and not kept. Disconnect deletes the
+stored URL (synced data stays); an env-provided URL can only be removed on
+the server. Rotating `AUTH_SECRET` means reconnecting SimpleFIN.
 
 ## Google Calendar sync
 
@@ -298,10 +302,11 @@ any extra calendars in `GOOGLE_CALENDARS`.
 
 ## Bank sync limits
 
-SimpleFIN is contacted at most twice a day. Railway cron calls
+Scheduled syncs contact SimpleFIN at most twice a day. Railway cron calls
 `/api/cron/simplefin-sync` hourly; the handler only proceeds in the 7 AM and
-7 PM hours of `HOUSEHOLD_TIMEZONE`, and refuses to run again within 4 hours
-of the last run whatever the trigger.
+7 PM hours of `HOUSEHOLD_TIMEZONE`, and refuses to run within 4 hours of the
+last run. "Sync now" in Settings waits at least 15 minutes after the last
+run, and no sync starts while another is running.
 
 ## Card catalog refresh limits
 

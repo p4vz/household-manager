@@ -6,7 +6,7 @@ import { financeAccounts, financeSyncRuns, financeTransactions } from "../schema
 import { loadRules } from "./categorize";
 import { getAccessUrl } from "./credentials";
 import { guessAccountKind, looksLikeTransfer, normalizeMerchant } from "./merchant";
-import { MIN_SYNC_INTERVAL_MS } from "./schedule";
+import { MIN_MANUAL_SYNC_INTERVAL_MS, MIN_SYNC_INTERVAL_MS, STALE_RUN_MS } from "./schedule";
 import { fetchAccounts, type SimplefinAccountSet } from "./simplefin";
 
 const INITIAL_LOOKBACK_DAYS = 89;
@@ -18,12 +18,20 @@ export type SyncResult =
   | { status: "ok"; inserted: number; accounts: number; messages: string[] }
   | { status: "error"; error: string };
 
+const MIN_INTERVAL: Record<"cron" | "setup" | "manual", number> = {
+  cron: MIN_SYNC_INTERVAL_MS,
+  manual: MIN_MANUAL_SYNC_INTERVAL_MS,
+  // A fresh connection always syncs (unless a run is already in flight).
+  setup: 0,
+};
+
 /**
  * Pull accounts + transactions from SimpleFIN and upsert them. One HTTP
- * request per run. Refuses to run more often than MIN_SYNC_INTERVAL_MS.
+ * request per run. Scheduled runs are at least MIN_SYNC_INTERVAL_MS apart,
+ * "Sync now" at least MIN_MANUAL_SYNC_INTERVAL_MS after the last run.
  */
 export async function syncSimplefin(opts: {
-  trigger: "cron" | "setup";
+  trigger: "cron" | "setup" | "manual";
   now?: Date;
   fetcher?: typeof fetchAccounts;
 }): Promise<SyncResult> {
@@ -37,8 +45,16 @@ export async function syncSimplefin(opts: {
     .where(inArray(financeSyncRuns.status, ["ok", "running"]))
     .orderBy(desc(financeSyncRuns.startedAt))
     .limit(1);
-  if (last && now.getTime() - last.startedAt.getTime() < MIN_SYNC_INTERVAL_MS) {
-    return { status: "skipped", reason: "Synced recently" };
+  if (last) {
+    const age = now.getTime() - last.startedAt.getTime();
+    if (last.status === "running" && age < STALE_RUN_MS) return { status: "skipped", reason: "A sync is already running" };
+    if (age < MIN_INTERVAL[opts.trigger]) {
+      const wait = Math.ceil((MIN_INTERVAL[opts.trigger] - age) / 60_000);
+      return {
+        status: "skipped",
+        reason: opts.trigger === "manual" ? `Synced a few minutes ago. Try again in ${wait} min.` : "Synced recently",
+      };
+    }
   }
 
   const [lastOk] = await db()

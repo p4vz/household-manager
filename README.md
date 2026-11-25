@@ -49,7 +49,7 @@ npm run lint && npm run typecheck && npm test && npm run build
 ## First run
 
 1. Sign in with one of the two allowlisted Google accounts.
-2. Finance → Connect SimpleFIN: paste a setup token from SimpleFIN Bridge.
+2. Settings → Bank sync (SimpleFIN): paste a setup token from SimpleFIN Bridge.
 3. Finance → Accounts: give each card a display name, owner and type.
 4. Finance → Import Simplifi history: drop the Simplifi CSV export.
 5. Finance → Rewards: link each card to its catalog entry (fills in fee,

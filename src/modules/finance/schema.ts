@@ -87,7 +87,7 @@ export const financeCategoryRules = pgTable("finance_category_rules", {
 
 export const financeSyncRuns = pgTable("finance_sync_runs", {
   id: uuid("id").primaryKey().defaultRandom(),
-  trigger: text("trigger", { enum: ["cron", "setup"] }).notNull(),
+  trigger: text("trigger", { enum: ["cron", "setup", "manual"] }).notNull(),
   status: text("status", { enum: ["running", "ok", "error", "skipped"] }).notNull(),
   startedAt: timestamp("started_at", { withTimezone: true }).notNull().defaultNow(),
   finishedAt: timestamp("finished_at", { withTimezone: true }),
