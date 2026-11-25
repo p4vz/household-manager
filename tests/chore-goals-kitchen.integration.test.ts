@@ -1,17 +1,37 @@
 import { beforeAll, describe, expect, it, vi } from "vitest";
 import { freshDb } from "./helpers/db";
 
-/** Claude is never called for real: capture what would be sent. */
-const sent: { system: string; task: string; payload: unknown }[] = [];
-vi.mock("@/core/ai/run", () => ({
-  runStructured: vi.fn(async (opts: { system: string; task: string; payload: unknown }) => {
-    sent.push(opts);
-    return { answer: "Leo still has to brush teeth." };
-  }),
-}));
+/**
+ * Claude is never called for real. The fake turn records what it was given
+ * and, when asked to, uses the tools it was handed the way the model would.
+ */
+type Turn = import("@/assistant/agent").TurnOptions;
+const sent: Turn[] = [];
+let script: ((opts: Turn) => Promise<void>) | null = null;
+vi.mock("@/assistant/agent", async () => {
+  const { DraftBook } = await import("@/assistant/changesets");
+  return {
+    runAssistantTurn: vi.fn(async (opts: Turn) => {
+      sent.push(opts);
+      const drafts = new DraftBook();
+      if (script) {
+        const env = { ctx: opts.ctx, refs: opts.refs, drafts };
+        const call = async (name: string, args: unknown) => {
+          const t = opts.tools!.find((x) => x.name === name);
+          if (!t) return { error: `no tool ${name}` };
+          const { runTool } = await import("@/assistant/tools");
+          return JSON.parse(await runTool(t, args, env));
+        };
+        (opts as Turn & { call: typeof call }).call = call;
+        await script(opts);
+      }
+      return { reply: "Leo still has to brush teeth.", drafts };
+    }),
+  };
+});
 
 const family = await import("@/modules/family/api");
-const { askKitchen, kitchenSnapshot } = await import("@/assistant/kitchen");
+const { askKitchen, kitchenChange, kitchenSnapshot } = await import("@/assistant/kitchen");
 
 // Noon household time on consecutive days.
 const at = (day: string) => new Date(`${day}T17:00:00Z`);
@@ -79,13 +99,74 @@ describe("Ask Claude on the kitchen screen", () => {
     expect(text).not.toContain("QR code");
   });
 
-  it("asks with no tools and keeps it to kitchen topics", async () => {
-    const answer = await askKitchen([{ role: "user", text: "hi" }], "Who still has chores?", at("2026-11-14"));
+  it("keeps it to kitchen topics and kitchen tools", async () => {
+    const { answer, changes } = await askKitchen([{ role: "user", text: "hi" }], "Who still has chores?", at("2026-11-14"));
     expect(answer).toBe("Leo still has to brush teeth.");
+    expect(changes).toBeNull();
     const call = sent.at(-1)!;
     expect(call.system).toMatch(/only know what is on the kitchen screen/);
     expect(call.system).toMatch(/money, bank or card accounts/);
-    expect(call.task).toContain("Who still has chores?");
-    expect(JSON.stringify(call.payload)).not.toMatch(/ORD-55821|account|balance/i);
+    expect(call.userText).toContain("Who still has chores?");
+    expect(call.tier).toBe("fast");
+    const names = call.tools!.map((t) => t.name).sort();
+    expect(names).toEqual(
+      [
+        "calendar",
+        "chore_goals",
+        "chores",
+        "edit_calendar_event",
+        "edit_chore",
+        "edit_chore_goal",
+        "edit_purchase_return",
+        "edit_shopping_item",
+        "edit_shopping_list",
+        "edit_shopping_template",
+        "edit_upkeep_task",
+        "purchase_returns",
+        "shopping_list",
+        "shopping_lists",
+        "upkeep_tasks",
+      ].sort(),
+    );
+    expect(call.system).not.toMatch(/ORD-55821|balance/i);
+    expect(() => call.ctx.viewer).toThrow(/not available on the kitchen screen/);
+  });
+
+  it("adds a chore with a goal from the screen, with undo; deletes other than events are refused", async () => {
+    type WithCall = Turn & { call: (name: string, args: unknown) => Promise<Record<string, unknown>> };
+    script = async (opts) => {
+      const { call } = opts as WithCall;
+      await call("edit_chore", { action: "create", kid: "leo", title: "Feed the cat", icon: "🐱", recurrence: "daily" });
+      await call("edit_chore_goal", { action: "create", kid: "Leo", chore: "Feed the cat", kind: "count", target: 5, reward: "Ice cream" });
+    };
+    const { changes } = await askKitchen([], "Add a daily feed the cat chore for Leo, ice cream after 5 times", at("2026-11-14"), "Card 4111 1111 1111 1111 flyer");
+    expect(sent.at(-1)!.userText).toContain("PHOTO TEXT");
+    expect(sent.at(-1)!.userText).not.toContain("4111 1111 1111 1111");
+    expect(changes!.status).toBe("applied");
+    expect(changes!.changes.map((c) => c.entity)).toEqual(["chore", "chore_goal"]);
+    const board = await family.choreBoard(at("2026-11-14"));
+    expect(board[0].chores.map((c) => c.title)).toContain("Feed the cat");
+    expect((await family.listGoals(at("2026-11-14"))).map((g) => g.reward)).toContain("Ice cream");
+
+    // Undo from the screen takes both back.
+    const after = await kitchenChange("undo", changes!.id, changes!.id);
+    expect(after!.status).toBe("undone");
+    expect((await family.choreBoard(at("2026-11-14")))[0].chores.map((c) => c.title)).not.toContain("Feed the cat");
+
+    // A member sees the kitchen's changesets in their own history.
+    const { listChangesets } = await import("@/assistant/changesets");
+    const member = { email: "one@example.com", owner: "User 1" as const, viewer: "user1" as const, now: at("2026-11-14") };
+    expect((await listChangesets(member)).map((c) => c.id)).toContain(changes!.id);
+
+    let refused: unknown = null;
+    script = async (opts) => {
+      const { call } = opts as WithCall;
+      const [kid] = await call("chores", {}) as unknown as { chores: { ref: string }[] }[];
+      refused = await call("edit_chore", { action: "archive", ref: kid.chores[0].ref });
+    };
+    const r = await askKitchen([], "Archive a chore", at("2026-11-14"));
+    expect(r.changes).toBeNull();
+    expect(JSON.stringify(refused)).toMatch(/phone app/);
+    script = null;
   });
 });

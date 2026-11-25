@@ -1,7 +1,7 @@
 import "server-only";
 import { and, asc, desc, eq, inArray } from "drizzle-orm";
 import { db } from "@/core/db/client";
-import { adapterFor, sameFields, type AssistantCtx, type Fields } from "./entities";
+import { adapterFor, KITCHEN_DELETABLE, KITCHEN_ENTITIES, KITCHEN_OWNER, sameFields, type AssistantCtx, type Fields } from "./entities";
 import { needsApproval } from "./policy";
 import { assistantChanges, assistantChangesets, type ChangeOp, type ChangeStatus, type ChangesetStatus } from "./schema";
 
@@ -99,11 +99,24 @@ export async function recordChangeset(
   return set.id;
 }
 
+/** A member sees their own changesets and the kitchen screen's; the kitchen screen only its own. */
+function owners(ctx: AssistantCtx): string[] {
+  return ctx.surface === "kitchen" ? [KITCHEN_OWNER] : [ctx.email, KITCHEN_OWNER];
+}
+
+/** The kitchen screen may only touch its own modules, and delete only calendar events. */
+export function kitchenRefusal(ctx: AssistantCtx, entity: string, op: string): string | null {
+  if (ctx.surface !== "kitchen") return null;
+  if (!KITCHEN_ENTITIES.has(entity)) return "Not available on the kitchen screen";
+  if (op === "delete" && !KITCHEN_DELETABLE.has(entity)) return "Deleting this is done in the phone app, not on the kitchen screen";
+  return null;
+}
+
 async function ownSet(ctx: AssistantCtx, id: string) {
   const [set] = await db()
     .select()
     .from(assistantChangesets)
-    .where(and(eq(assistantChangesets.id, id), eq(assistantChangesets.ownerEmail, ctx.email)));
+    .where(and(eq(assistantChangesets.id, id), inArray(assistantChangesets.ownerEmail, owners(ctx))));
   if (!set) throw new Error("Changeset not found");
   return set;
 }
@@ -125,6 +138,11 @@ export async function applyChangeset(ctx: AssistantCtx, id: string) {
   if (set.status !== "proposed") throw new Error("This changeset was already decided");
   for (const c of await changesOf(id)) {
     if (c.status !== "proposed") continue;
+    const refused = kitchenRefusal(ctx, c.entity, c.op);
+    if (refused) {
+      await setChange(c.id, { status: "failed", error: refused });
+      continue;
+    }
     const a = adapterFor(c.entity);
     try {
       if (c.op === "create") {
@@ -170,7 +188,9 @@ async function undoOne(ctx: AssistantCtx, c: typeof assistantChanges.$inferSelec
       return;
     }
     const current = await a.get(ctx, c.targetKey!);
-    if (!current || !sameFields(current.fields, c.after ?? {})) {
+    // A create can carry inputs the row doesn't keep (a list's template); compare what it keeps.
+    const expected = c.op === "create" && current ? Object.fromEntries(Object.entries(c.after ?? {}).filter(([k]) => k in current.fields)) : (c.after ?? {});
+    if (!current || !sameFields(current.fields, expected)) {
       await setChange(c.id, {
         status: "undo_conflict",
         error: current ? "Changed again since, so it was left as it is" : "No longer exists",
@@ -219,7 +239,7 @@ export async function listChangesets(ctx: AssistantCtx, opts: { ids?: string[]; 
     .from(assistantChangesets)
     .where(
       and(
-        eq(assistantChangesets.ownerEmail, ctx.email),
+        inArray(assistantChangesets.ownerEmail, owners(ctx)),
         opts.ids ? inArray(assistantChangesets.id, opts.ids.length ? opts.ids : ["00000000-0000-0000-0000-000000000000"]) : undefined,
       ),
     )

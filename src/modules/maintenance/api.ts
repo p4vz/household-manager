@@ -1,5 +1,5 @@
 import "server-only";
-import { and, asc, desc, eq, gte, isNull, lte, or, sql } from "drizzle-orm";
+import { and, asc, desc, eq, gte, isNotNull, isNull, lte, or, sql } from "drizzle-orm";
 import { bus } from "@/core/bus";
 import { searchRecalls, searchVehicleRecalls } from "./recalls";
 import { db } from "@/core/db/client";
@@ -114,6 +114,31 @@ export async function completeTask(
     previousTaskId: task.id,
   });
   return { nextTaskId };
+}
+
+/**
+ * Undoes completeTask: the task is open again (no done date or cost), and the
+ * next occurrence it scheduled is removed if nobody has done it yet. Mileage
+ * readings stay, since the odometer was really read.
+ */
+export async function reopenTask(taskId: string): Promise<void> {
+  const [task] = await db()
+    .update(maintenanceTasks)
+    .set({ completedOn: null, actualCost: null })
+    .where(and(eq(maintenanceTasks.id, taskId), isNotNull(maintenanceTasks.completedOn)))
+    .returning();
+  if (!task) return;
+  const followUps = await db()
+    .select({ id: maintenanceTasks.id })
+    .from(maintenanceTasks)
+    .where(and(eq(maintenanceTasks.previousTaskId, taskId), isNull(maintenanceTasks.completedOn)));
+  for (const f of followUps) await deleteTask(f.id);
+  await bus.publish("maintenance", "maintenance.taskScheduled", {
+    taskId: task.id,
+    title: task.title,
+    dueDate: task.dueDate,
+    estimatedCost: task.estimatedCost,
+  });
 }
 
 export async function listOpenTasks() {

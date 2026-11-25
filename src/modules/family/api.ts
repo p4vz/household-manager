@@ -246,6 +246,10 @@ export async function choreBoard(now = new Date()): Promise<BoardKid[]> {
 export {
   archiveGoal,
   choreHistory,
+  getGoal,
+  unarchiveGoal,
+  unmarkRewardGiven,
+  updateGoal,
   givePrize,
   listStarPrizes,
   prizeHistory,
@@ -280,6 +284,7 @@ export {
   deleteList,
   deleteShoppingItem,
   deleteTemplate,
+  getList,
   getShoppingItem,
   listShoppingItems,
   listTemplates,
@@ -290,12 +295,15 @@ export {
   renameList,
   reorderLists,
   reorderStores,
+  restoreList,
   saveListAsTemplate,
+  saveTemplate,
   setShoppingChecked,
   shoppingBoard,
   shoppingRevision,
   storeItemsToBuy,
   updateShoppingItem,
+  updateTemplate,
   ShoppingNotFoundError,
   type ShoppingBoard,
   type ShoppingItem,
@@ -447,6 +455,19 @@ export async function getChore(id: string, now = new Date()): Promise<ChoreSnaps
     archived: c.archivedAt != null,
     done: Boolean(done),
   };
+}
+
+/** Renames a chore or changes its icon, how often it repeats or its stars. History stays as it was. */
+export async function updateChore(id: string, patch: { title?: string; icon?: string; recurrence?: Recurrence; stars?: number }) {
+  await db()
+    .update(familyChores)
+    .set({
+      ...(patch.title !== undefined && { title: patch.title.trim().slice(0, 60) }),
+      ...(patch.icon !== undefined && { icon: patch.icon.slice(0, 8) || "✅" }),
+      ...(patch.recurrence !== undefined && { recurrence: patch.recurrence }),
+      ...(patch.stars !== undefined && { stars: Math.min(5, Math.max(1, Math.round(patch.stars))) }),
+    })
+    .where(eq(familyChores.id, id));
 }
 
 /** Puts an archived chore back on the board. */

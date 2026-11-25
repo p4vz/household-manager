@@ -163,9 +163,10 @@ describe("external surface", () => {
     expect(imports).toEqual(["next/cache", "zod", "@/core/actions/kiosk-action", "@/modules/calendar/api"]);
     expect(src).not.toMatch(/\b(delete\w*|remove\w*)\(/i);
     expect(src).not.toMatch(/deleteGoogleEvent/);
-    // Events are deleted only by a member, or on the kitchen screen in adult mode (adult PIN).
+    // Events are deleted only by a member, or on the kitchen screen in adult mode (adult PIN),
+    // by hand or through Ask Claude's changesets (assistant/entities.ts; Apply first, with Undo).
     const users = files.filter((f) => /deleteGoogleEvent\b/.test(readFileSync(f, "utf8"))).map(rel).sort();
-    expect(users).toEqual(["app/(app)/family/actions.ts", "app/kiosk/adult-actions.ts", "modules/calendar/api.ts", "modules/calendar/google.ts"]);
+    expect(users).toEqual(["app/(app)/family/actions.ts", "app/kiosk/adult-actions.ts", "assistant/entities.ts", "modules/calendar/api.ts", "modules/calendar/google.ts"]);
     expect(readFileSync(join(SRC, "app/(app)/family/actions.ts"), "utf8")).toMatch(/export const deleteEventAction = authedAction\(/);
   });
 
@@ -181,9 +182,10 @@ describe("external surface", () => {
       "deleteEventAdultAction:calendar.delete",
       "removeEventPhotoAdultAction:calendar.photo.remove",
       "askKitchenAction:assistant.kitchen",
+      "kitchenChangeAction:assistant.kitchen",
       "exitKitchenModeAction:kiosk.exit",
     ]);
-    // Ask Claude on the screen is the kitchen-only one: a snapshot and no tools.
+    // Ask Claude on the screen is the kitchen-only one: a snapshot and the kitchen's own tools.
     expect(imports.filter((i) => i.startsWith("@/assistant/"))).toEqual(["@/assistant/kitchen"]);
     expect(src.match(/^export /gm)?.length).toBe(declared.length + 1); // + the UnlockResult type
   });

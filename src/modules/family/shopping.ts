@@ -490,6 +490,72 @@ export async function deleteTemplate(id: string) {
   await bump();
 }
 
+/** One list with its stores and items (active or put off), or null. */
+export async function getList(id: string, now = new Date()): Promise<ShoppingList | null> {
+  const board = await shoppingBoard(now);
+  return [...board.lists, ...board.deferred].find((l) => l.id === id) ?? null;
+}
+
+/** Recreates a deleted list from what it held (the assistant's undo). Returns the new id. */
+export async function restoreList(snapshot: { name: string; deferredUntil: string | null; stores: ShoppingTemplateStore[]; checked?: string[] }): Promise<string> {
+  const [list] = await db()
+    .insert(familyShoppingLists)
+    .values({ name: clean(snapshot.name, 60) || "Shopping", deferredUntil: snapshot.deferredUntil, sortOrder: await nextListOrder() })
+    .returning({ id: familyShoppingLists.id });
+  const checked = new Set((snapshot.checked ?? []).map(itemKey));
+  for (const [si, s] of snapshot.stores.entries()) {
+    const [sec] = await db().insert(familyShoppingSections).values({ listId: list.id, store: clean(s.store, 40) || "Store", sortOrder: si }).returning({ id: familyShoppingSections.id });
+    if (s.items.length)
+      await db()
+        .insert(familyShoppingItems)
+        .values(s.items.map((i, n) => ({ sectionId: sec.id, name: clean(i.name, 80), quantity: cleanQty(i.quantity), sortOrder: n, checked: checked.has(itemKey(i.name)) })));
+  }
+  await bump();
+  return list.id;
+}
+
+function templateRows(templateId: string, stores: ShoppingTemplateStore[]) {
+  return stores.flatMap((s, si) =>
+    s.items
+      .filter((i) => clean(i.name, 80))
+      .map((i, ii) => ({ templateId, store: clean(s.store, 40) || "Store", storeOrder: si, name: clean(i.name, 80), quantity: cleanQty(i.quantity), sortOrder: ii })),
+  );
+}
+
+/** Creates a template from stores and items (or replaces the one with that name). Returns its id. */
+export async function saveTemplate(name: string, stores: ShoppingTemplateStore[]): Promise<string> {
+  const n = clean(name, 60);
+  if (!n) throw new Error("Template name is required");
+  const [existing] = await db().select({ id: familyShoppingTemplates.id }).from(familyShoppingTemplates).where(eq(familyShoppingTemplates.name, n));
+  let templateId: string;
+  if (existing) {
+    templateId = existing.id;
+    await db().delete(familyShoppingTemplateItems).where(eq(familyShoppingTemplateItems.templateId, templateId));
+  } else {
+    [{ id: templateId }] = await db().insert(familyShoppingTemplates).values({ name: n }).returning({ id: familyShoppingTemplates.id });
+  }
+  const rows = templateRows(templateId, stores);
+  if (rows.length) await db().insert(familyShoppingTemplateItems).values(rows);
+  await bump();
+  return templateId;
+}
+
+/** Renames a template and/or replaces its stores and items. */
+export async function updateTemplate(id: string, patch: { name?: string; stores?: ShoppingTemplateStore[] }) {
+  const [t] = await db().select({ id: familyShoppingTemplates.id }).from(familyShoppingTemplates).where(eq(familyShoppingTemplates.id, id));
+  if (!t) throw new ShoppingNotFoundError("Template");
+  if (patch.name !== undefined) {
+    const n = clean(patch.name, 60);
+    if (n) await db().update(familyShoppingTemplates).set({ name: n }).where(eq(familyShoppingTemplates.id, id));
+  }
+  if (patch.stores !== undefined) {
+    await db().delete(familyShoppingTemplateItems).where(eq(familyShoppingTemplateItems.templateId, id));
+    const rows = templateRows(id, patch.stores);
+    if (rows.length) await db().insert(familyShoppingTemplateItems).values(rows);
+  }
+  await bump();
+}
+
 // -------------------------------------------------------- housekeeping ----
 
 /**

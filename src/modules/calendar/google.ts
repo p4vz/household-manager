@@ -11,6 +11,7 @@ import {
   findCalendarByName,
   mirrorWindow,
   toGoogleBody,
+  toEventInput,
   toStoredEvent,
   type CalendarListEntry,
   type CalendarSource,
@@ -302,14 +303,16 @@ async function failure(res: Response, what: string): Promise<never> {
   throw new CalendarWriteError(`Google couldn't ${what} (HTTP ${res.status}). Try again.`);
 }
 
-async function saveMirror(sourceKey: string, event: GoogleEvent) {
+async function saveMirror(sourceKey: string, event: GoogleEvent): Promise<string | null> {
   const stored = toStoredEvent(event);
-  if (!stored) return;
+  if (!stored) return null;
   const row = { ...stored, calendarKey: sourceKey, lastSyncedAt: new Date() };
-  await db()
+  const [saved] = await db()
     .insert(calendarGoogleEvents)
     .values(row)
-    .onConflictDoUpdate({ target: [calendarGoogleEvents.calendarKey, calendarGoogleEvents.googleEventId], set: row });
+    .onConflictDoUpdate({ target: [calendarGoogleEvents.calendarKey, calendarGoogleEvents.googleEventId], set: row })
+    .returning({ id: calendarGoogleEvents.id });
+  return saved?.id ?? null;
 }
 
 function bodyOf(input: EventInput, patch: boolean) {
@@ -321,8 +324,8 @@ function bodyOf(input: EventInput, patch: boolean) {
   }
 }
 
-/** Adds an event to the family calendar (events.insert) and to the local mirror. */
-export async function createGoogleEvent(input: EventInput): Promise<void> {
+/** Adds an event to the family calendar (events.insert) and to the local mirror. Returns the mirror id. */
+export async function createGoogleEvent(input: EventInput): Promise<string | null> {
   const body = bodyOf(input, false);
   const { source, id } = await writableCalendar();
   const res = await google(`/calendars/${encodeURIComponent(id)}/events`, {
@@ -331,7 +334,14 @@ export async function createGoogleEvent(input: EventInput): Promise<void> {
     body: JSON.stringify(body),
   });
   if (!res.ok) await failure(res, "add the event");
-  await saveMirror(source.key, (await res.json()) as GoogleEvent);
+  return saveMirror(source.key, (await res.json()) as GoogleEvent);
+}
+
+/** A family-calendar event as its edit form sees it, or null when it is gone or not on the family calendar. */
+export async function familyEventForEdit(eventId: string): Promise<(EventInput & { id: string; recurring: boolean }) | null> {
+  const row = await mirroredFamilyEvent(eventId).catch(() => null);
+  if (!row) return null;
+  return { id: row.id, recurring: Boolean(row.recurring), ...toEventInput(row, householdTimeZone()) };
 }
 
 export async function mirroredFamilyEvent(eventId: string) {

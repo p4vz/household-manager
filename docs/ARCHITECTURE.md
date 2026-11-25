@@ -306,12 +306,38 @@ data. Page: `/assistant`, history at `/assistant/history`.
   Undo works per change or per batch and leaves rows that changed again.
   Batches are capped at 200 changes.
 - **What can change** (`entities.ts`): transaction category, subcategory,
-  notes and transfer flag; merchant category rules; upkeep tasks; home
-  equipment; shopping
-  items; store returns; ticking or archiving chores. Deletes are soft where
-  the module has it (chores archive) and otherwise restorable from the
-  snapshot. Nothing moves money, edits amounts, accounts, bank connections,
-  keys, settings or assistant permissions. Calendar and trips are read-only.
+  notes and transfer flag; merchant category rules; upkeep tasks for the
+  house and cars (create, edit, mark done with cost and odometer, reopen;
+  marking done schedules the next one and reopening removes it); home
+  equipment; house projects; home binder entries (no files: those are added
+  on the binder page, and entries with a file are not deleted from here);
+  shopping items, whole lists (create, from a template, rename, put off,
+  delete) and list templates; store returns; chores (create one-time or
+  repeating per kid by name, edit, tick, archive) and chore goals with
+  rewards; events on the family Google calendar (create, edit, delete;
+  repeating events stay in Google Calendar). Deletes are soft where the
+  module has it (chores and goals archive) and otherwise restorable from
+  the snapshot (a deleted list comes back with its stores and items).
+  Things created in one reply can be referred to by name in the same reply
+  (a new list's items, a new chore's goal), since changes apply in order.
+  Nothing moves money, edits amounts, accounts, bank connections, keys,
+  settings or assistant permissions. Trips are read-only apart from linking
+  charges.
+- **Voice and photos** (`components/assistant/voice-photo.tsx`): a mic
+  button types speech into the message box with the browser's own speech
+  recognition (Web Speech API; hidden where the browser has none), and a
+  photo button reads a picture's text on the device (tesseract.js, as on
+  the home page upload). The text is shown for checking; only it is sent,
+  and the server scrubs it (`withPhotoText` in `inbox.ts`) and marks it as
+  data. No audio or picture reaches the app or Claude.
+- **Kitchen screen** (`kitchen.ts`, adult mode only): the same agent with
+  the fast model, a snapshot of the screen, and only the kitchen's tools
+  (`KITCHEN_TOOLS`: calendar, chores and goals, shopping, returns, upkeep).
+  Its context has no finance viewer (reading it throws), and
+  `kitchenRefusal()` refuses any other entity, and any delete except a
+  calendar event, when a change is drafted or applied. Its changesets are
+  owned by the kitchen screen and also appear, undoable, in each member's
+  history. The conversation itself is kept only on the screen.
 - Conversations and changesets belong to the member who had them.
 
 ## Finance review (one-time cleanup)

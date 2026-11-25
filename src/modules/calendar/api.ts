@@ -10,6 +10,7 @@ import {
   CalendarWriteError,
   createGoogleEvent,
   deleteGoogleEvent,
+  familyEventForEdit,
   googleCalendarConfigured,
   googleSyncState,
   storedGoogleEvents,
@@ -32,7 +33,7 @@ export { addEventPhoto, eventPhotos, eventPhotosConfigured, removeEventPhoto, MA
  * updates the local mirror. Failures throw CalendarWriteError with a message
  * that is safe to show on screen.
  */
-export { syncGoogleCalendars, createGoogleEvent, updateGoogleEvent, deleteGoogleEvent, CalendarWriteError };
+export { syncGoogleCalendars, createGoogleEvent, updateGoogleEvent, deleteGoogleEvent, familyEventForEdit, CalendarWriteError };
 
 /**
  * Calendar module public API. Other modules call these functions directly

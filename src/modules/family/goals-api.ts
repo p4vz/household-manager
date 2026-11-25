@@ -212,6 +212,38 @@ export async function archiveGoal(id: string, now = new Date()): Promise<void> {
   await db().update(familyChoreGoals).set({ archivedAt: now }).where(eq(familyChoreGoals.id, id));
 }
 
+/** Changes a goal's target or reward. A new target counts the progress again from the start date. */
+export async function updateGoal(id: string, patch: { target?: number; reward?: string; rewardEmoji?: string }): Promise<void> {
+  const set: Partial<typeof familyChoreGoals.$inferInsert> = {};
+  if (patch.target !== undefined) {
+    if (!Number.isInteger(patch.target) || patch.target < 2 || patch.target > MAX_GOAL_TARGET) throw new GoalError(`Pick a target from 2 to ${MAX_GOAL_TARGET}.`);
+    set.target = patch.target;
+    set.achievedOn = null;
+  }
+  if (patch.reward !== undefined) {
+    const reward = patch.reward.trim().slice(0, 80);
+    if (!reward) throw new GoalError("Say what the reward is.");
+    assertNoCardNumber(reward);
+    set.reward = reward;
+  }
+  if (patch.rewardEmoji !== undefined) set.rewardEmoji = patch.rewardEmoji.slice(0, 8) || "🎁";
+  if (Object.keys(set).length) await db().update(familyChoreGoals).set(set).where(eq(familyChoreGoals.id, id));
+}
+
+/** One goal with progress, including reached and rewarded ones; null when archived or gone. */
+export async function getGoal(id: string, now = new Date()): Promise<GoalView | null> {
+  return (await listGoals(now, { includeDone: true })).find((g) => g.id === id) ?? null;
+}
+
+/** Undoes "reward given": the goal shows as reached again. */
+export async function unmarkRewardGiven(id: string): Promise<void> {
+  await db().update(familyChoreGoals).set({ rewardGivenAt: null }).where(eq(familyChoreGoals.id, id));
+}
+
+export async function unarchiveGoal(id: string): Promise<void> {
+  await db().update(familyChoreGoals).set({ archivedAt: null }).where(eq(familyChoreGoals.id, id));
+}
+
 export type ChoreHistory = {
   kidId: string;
   kidName: string;

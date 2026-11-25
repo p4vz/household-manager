@@ -5,6 +5,7 @@ import { runAssistantTurn } from "./agent";
 import { listChangesets, recordChangeset } from "./changesets";
 import { createConversation, getConversation, RefBook, saveConversation } from "./conversations";
 import type { AssistantCtx } from "./entities";
+import { withPhotoText } from "./inbox";
 import type { ChatMessage } from "./schema";
 
 /** Entry points for the Ask Claude page (server actions call these). */
@@ -15,11 +16,13 @@ export function contextFor(user: HouseholdUser, now = new Date()): AssistantCtx 
 
 export const MAX_MESSAGE_CHARS = 4000;
 
-export async function sendMessage(user: HouseholdUser, conversationId: string | null, text: string) {
+export async function sendMessage(user: HouseholdUser, conversationId: string | null, text: string, photoText: string | null = null) {
   const ctx = contextFor(user);
-  const userText = text.trim().slice(0, MAX_MESSAGE_CHARS);
-  if (!userText) throw new Error("Type a message first");
-  const convo = conversationId ? await getConversation(user.email, conversationId) : await createConversation(user.email, userText);
+  const typed = text.trim().slice(0, MAX_MESSAGE_CHARS);
+  if (!typed) throw new Error("Type a message first");
+  // Text read from an attached photo goes in scrubbed, and stays in the conversation for later turns.
+  const userText = withPhotoText(typed, photoText);
+  const convo = conversationId ? await getConversation(user.email, conversationId) : await createConversation(user.email, typed);
   if (!convo) throw new Error("Conversation not found");
 
   const refs = new RefBook({ ...convo.refs }, convo.nextRef);

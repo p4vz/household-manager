@@ -157,8 +157,8 @@ account. Pavel chose a paired device token (2026-11-23):
   can try one. `startAdultMode()` (`core/kiosk/adult.ts`) is separate from
   the PIN check so a fingerprint or face passkey can replace the PIN later.
 - **Never on the kiosk, even in adult mode.** Finance, trips, settings,
-  Ask Claude and the assistant (MCP) are member-only `authedAction`s and
-  pages; the proxy keeps the screen off them. Deleting anything else
+  the full Ask Claude and the assistant (MCP) are member-only `authedAction`s and
+  pages (the kitchen screen's own Ask Claude, below, is limited to its modules); the proxy keeps the screen off them. Deleting anything else
   (shopping items, stores, lists, templates, chores), adding kids or
   recurring chores stay member-only too.
   `tests/kiosk-lockdown.integration.test.ts` calls every server action in
@@ -600,6 +600,24 @@ retried for a day.
   Deletes and batches over 10 changes need the member's Apply.
 - No tool moves money, edits amounts or accounts, or touches bank
   connections, keys, settings or assistant permissions.
+- **Photos**: only text read on the device is sent, after the member has
+  seen it; the server scrubs it like an upload (card, account and phone
+  numbers, emails, legal names) and wraps it as data, not instructions.
+- **Voice**: the browser's speech recognition fills in the message box for
+  the member to check. In Chrome and Safari the recognition runs on
+  Google's or Apple's speech service, as with keyboard dictation; nothing
+  goes to this app until the member sends the text. `Permissions-Policy`
+  allows the microphone for this site only (`microphone=(self)`); camera
+  stays off (the photo button uses the phone's camera app through a file
+  input, not the camera API).
+- **Kitchen screen** (adult PIN only, `assistant.kitchen`): the kitchen's
+  modules only. Its tools are a fixed list (`KITCHEN_TOOLS`), its context
+  has no finance viewer, and `kitchenRefusal()` re-checks every change when
+  it is drafted and applied: kitchen entities only, and the only delete is
+  a calendar event, matching the screen's own buttons. Through Claude an
+  adult on the screen can also add repeating chores and goals, which the
+  kid-safe buttons can't. Every change is logged and can be undone on the
+  screen or from either member's history.
 
 ## What the AI providers see
 
