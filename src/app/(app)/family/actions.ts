@@ -3,7 +3,7 @@
 import { revalidatePath } from "next/cache";
 import { z } from "zod";
 import { authedAction } from "@/core/actions/authed-action";
-import { CalendarWriteError, deleteGoogleEvent } from "@/modules/calendar/api";
+import { CalendarWriteError, deleteGoogleEvent, removeEventPhoto } from "@/modules/calendar/api";
 import {
   CHORE_ICONS,
   KID_COLORS,
@@ -171,4 +171,11 @@ export const extractReturnAction = authedAction(z.object({ text: z.string().trim
     console.warn(`[returns] extract failed: ${err instanceof Error ? err.name : "error"}`);
     return { fields: null, error: "The AI could not read it. Check Settings → AI configuration, or fill it in by hand." };
   }
+});
+
+/** Takes a picture off a calendar event. Members only, like deleting events. */
+export const removeEventPhotoAction = authedAction(z.object({ id }), async ({ id: photoId }) => {
+  await removeEventPhoto(photoId);
+  refresh();
+  return { error: null as string | null };
 });

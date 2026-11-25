@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 import { buildAgenda } from "@/modules/calendar/agenda";
 import {
+  plainDescription,
   allCalendarSources,
   EventInputError,
   familyCalendarSource,
@@ -66,6 +67,18 @@ describe("events to and from Google", () => {
       start: { dateTime: "2026-12-01T09:30:00", timeZone: NY, date: null },
       end: { dateTime: "2026-12-01T10:15:00", timeZone: NY, date: null },
     });
+  });
+
+  it("sends notes as the description, and turns Google's HTML descriptions into plain text", () => {
+    const body = toGoogleBody({ title: "Party", allDay: true, startDate: "2026-12-05", endDate: "2026-12-05", notes: "  Bring a gift  " }, "America/New_York");
+    expect(body.description).toBe("Bring a gift");
+    expect(toGoogleBody({ title: "Party", allDay: true, startDate: "2026-12-05", endDate: "2026-12-05", notes: "" }, "America/New_York", { patch: true }).description).toBeNull();
+    expect("description" in toGoogleBody({ title: "Party", allDay: true, startDate: "2026-12-05", endDate: "2026-12-05" }, "America/New_York")).toBe(true);
+    expect(toGoogleBody({ title: "Party", allDay: true, startDate: "2026-12-05", endDate: "2026-12-05" }, "America/New_York").description).toBeUndefined();
+    expect(plainDescription("<p>Line one</p><ul><li>a</li><li>b</li></ul>Tom &amp; Jerry&nbsp;<a href='x'>link</a>")).toBe("Line one\n• a\n• b\nTom & Jerry link");
+    expect(plainDescription("   ")).toBeNull();
+    expect(plainDescription(undefined)).toBeNull();
+    expect(plainDescription("x".repeat(5000))?.length).toBe(4000);
   });
 
   it("refuses empty titles and events that end before they start", () => {

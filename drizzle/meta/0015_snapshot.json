@@ -1,5 +1,5 @@
 {
-  "id": "41487ea1-b17b-437e-a90e-fe3ff0dabefe",
+  "id": "86ead1cd-348c-4dcc-9512-5554ee7ed7e3",
   "prevId": "8716b9af-6fcb-4adc-b8f3-120daa152f53",
   "version": "7",
   "dialect": "postgresql",
@@ -561,12 +561,6 @@
         },
         "official_name": {
           "name": "official_name",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": false
-        },
-        "last4": {
-          "name": "last4",
           "type": "text",
           "primaryKey": false,
           "notNull": false
@@ -1608,6 +1602,103 @@
       "checkConstraints": {},
       "isRLSEnabled": false
     },
+    "public.calendar_event_photos": {
+      "name": "calendar_event_photos",
+      "schema": "",
+      "columns": {
+        "id": {
+          "name": "id",
+          "type": "uuid",
+          "primaryKey": true,
+          "notNull": true,
+          "default": "gen_random_uuid()"
+        },
+        "calendar_key": {
+          "name": "calendar_key",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "google_event_id": {
+          "name": "google_event_id",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "mime_type": {
+          "name": "mime_type",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "cipher_text": {
+          "name": "cipher_text",
+          "type": "bytea",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "iv": {
+          "name": "iv",
+          "type": "bytea",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "auth_tag": {
+          "name": "auth_tag",
+          "type": "bytea",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "bytes": {
+          "name": "bytes",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "added_by": {
+          "name": "added_by",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "created_at": {
+          "name": "created_at",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "now()"
+        }
+      },
+      "indexes": {
+        "calendar_event_photos_event_idx": {
+          "name": "calendar_event_photos_event_idx",
+          "columns": [
+            {
+              "expression": "calendar_key",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            },
+            {
+              "expression": "google_event_id",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": false,
+          "concurrently": false,
+          "method": "btree",
+          "with": {}
+        }
+      },
+      "foreignKeys": {},
+      "compositePrimaryKeys": {},
+      "uniqueConstraints": {},
+      "policies": {},
+      "checkConstraints": {},
+      "isRLSEnabled": false
+    },
     "public.calendar_events": {
       "name": "calendar_events",
       "schema": "",
@@ -1750,6 +1841,12 @@
         },
         "location": {
           "name": "location",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "notes": {
+          "name": "notes",
           "type": "text",
           "primaryKey": false,
           "notNull": false

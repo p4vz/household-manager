@@ -114,6 +114,7 @@ export type GoogleEvent = {
   status?: string;
   summary?: string;
   location?: string;
+  description?: string;
   updated?: string;
   recurringEventId?: string;
   start?: { date?: string; dateTime?: string };
@@ -127,6 +128,7 @@ export type StoredGoogleEvent = {
   recurring: boolean;
   title: string;
   location: string | null;
+  notes: string | null;
   allDay: boolean;
   startsAt: Date | null;
   endsAt: Date | null;
@@ -134,11 +136,38 @@ export type StoredGoogleEvent = {
   endDate: string | null;
 };
 
-/** Keeps only what the kiosk shows: title, time range and location (plus etag and updated time for safe edits). */
+export const MAX_NOTES = 4000;
+
+/**
+ * Google's description as plain text. Descriptions typed in Google Calendar
+ * on the web can carry simple HTML (line breaks, bold, links); the app shows
+ * and edits plain text.
+ */
+export function plainDescription(raw: string | undefined | null): string | null {
+  if (!raw) return null;
+  const text = raw
+    .replace(/<br\s*\/?>/gi, "\n")
+    .replace(/<\/(p|div|li|h\d)>/gi, "\n")
+    .replace(/<li[^>]*>/gi, "• ")
+    .replace(/<[^>]+>/g, "")
+    .replace(/&nbsp;/g, " ")
+    .replace(/&lt;/g, "<")
+    .replace(/&gt;/g, ">")
+    .replace(/&quot;/g, '"')
+    .replace(/&#39;/g, "'")
+    .replace(/&amp;/g, "&")
+    .replace(/[ \t]+\n/g, "\n")
+    .replace(/\n{3,}/g, "\n\n")
+    .trim();
+  return text ? text.slice(0, MAX_NOTES) : null;
+}
+
+/** Keeps only what the kiosk shows: title, time range, location and notes (plus etag and updated time for safe edits). */
 export function toStoredEvent(e: GoogleEvent): StoredGoogleEvent | null {
   if (!e.id || e.status === "cancelled" || !e.start) return null;
   const title = (e.summary ?? "").trim().slice(0, 200) || "Busy";
   const location = e.location?.trim().slice(0, 200) || null;
+  const notes = plainDescription(e.description);
   const updated = e.updated ? new Date(e.updated) : null;
   const base = {
     googleEventId: e.id,
@@ -147,6 +176,7 @@ export function toStoredEvent(e: GoogleEvent): StoredGoogleEvent | null {
     recurring: Boolean(e.recurringEventId),
     title,
     location,
+    notes,
   };
   if (e.start.date) {
     return { ...base, allDay: true, startsAt: null, endsAt: null, startDate: e.start.date, endDate: e.end?.date ?? null };
@@ -166,6 +196,8 @@ export function toStoredEvent(e: GoogleEvent): StoredGoogleEvent | null {
 export type EventInput = {
   title: string;
   location?: string | null;
+  /** Plain text; goes to Google as the event's description. */
+  notes?: string | null;
   allDay: boolean;
   startDate: string;
   endDate: string;
@@ -181,10 +213,12 @@ export function toGoogleBody(input: EventInput, tz: string, opts: { patch?: bool
   if (!title) throw new EventInputError("Give the event a name.");
   if (input.endDate < input.startDate) throw new EventInputError("The event ends before it starts.");
   const location = input.location?.trim().slice(0, 200) || (opts.patch ? null : undefined);
+  const description = input.notes === undefined ? undefined : input.notes?.trim().slice(0, MAX_NOTES) || (opts.patch ? null : undefined);
   if (input.allDay) {
     return {
       summary: title,
       location,
+      description,
       // Google's all-day end date is exclusive.
       start: { date: input.startDate, ...(opts.patch ? { dateTime: null, timeZone: null } : {}) },
       end: { date: addDays(input.endDate, 1), ...(opts.patch ? { dateTime: null, timeZone: null } : {}) },
@@ -200,6 +234,7 @@ export function toGoogleBody(input: EventInput, tz: string, opts: { patch?: bool
   return {
     summary: title,
     location,
+    description,
     start: { dateTime: `${input.startDate}T${input.startTime}:00`, timeZone: tz, ...(opts.patch ? { date: null } : {}) },
     end: { dateTime: `${input.endDate}T${input.endTime}:00`, timeZone: tz, ...(opts.patch ? { date: null } : {}) },
   };
@@ -212,14 +247,14 @@ const hhmm = (at: Date, tz: string) => {
 
 /** The edit form's starting values for a stored event. */
 export function toEventInput(
-  e: Pick<StoredGoogleEvent, "title" | "location" | "allDay" | "startsAt" | "endsAt" | "startDate" | "endDate">,
+  e: Pick<StoredGoogleEvent, "title" | "location" | "allDay" | "startsAt" | "endsAt" | "startDate" | "endDate"> & { notes?: string | null },
   tz: string,
 ): EventInput {
   if (e.allDay && e.startDate) {
     const last = e.endDate && e.endDate > e.startDate ? addDays(e.endDate, -1) : e.startDate;
-    return { title: e.title, location: e.location, allDay: true, startDate: e.startDate, endDate: last, startTime: null, endTime: null };
+    return { title: e.title, location: e.location, notes: e.notes ?? null, allDay: true, startDate: e.startDate, endDate: last, startTime: null, endTime: null };
   }
   const start = hhmm(e.startsAt ?? new Date(), tz);
   const end = hhmm(e.endsAt ?? e.startsAt ?? new Date(), tz);
-  return { title: e.title, location: e.location, allDay: false, startDate: start.date, endDate: end.date, startTime: start.time, endTime: end.time };
+  return { title: e.title, location: e.location, notes: e.notes ?? null, allDay: false, startDate: start.date, endDate: end.date, startTime: start.time, endTime: end.time };
 }
