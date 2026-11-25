@@ -191,6 +191,30 @@ What changed in the move:
   yet, because each needs new OAuth scopes: Google Photos, Drive backup and
   the Calendar mirror. The offline service worker is also not ported yet.
 
+## Trip spending (bank charges on trips)
+
+Charges are tied to things in other modules through one finance table,
+`finance_transaction_links` (one row per transaction per module: `module`,
+`target_id`, optional `detail_id`, `status` linked/dismissed, `source`
+auto/manual/assistant). Finance owns it so every read goes through the same
+privacy rule as the transaction (`finance/links.ts`, viewer first). Other
+modules can reuse it with their own `module` name (an upkeep task, say).
+
+- `trips/spend.ts` (pure): matching rules and plan vs actual. Strong matches:
+  the company on an itinerary step at about its cost (or during the trip, or
+  a refund), or charged in a trip town during the trip. Possible: trip-like
+  categories during the trip, travel bookings in the 180 days before, the
+  step's company at a different amount.
+- After every `finance.transactionsSynced`, trips links strong matches for
+  recent and upcoming trips (`autoLinkTripCharges`). It never overrides a
+  link a person made or dismissed, and skips charges two trips both claim.
+- `/trips/[slug]/spend` shows plan vs actual, flags, suggestions, linked
+  charges (per step) and rewards earned vs the best card. Totals count only
+  charges the signed-in member can see.
+- A step with a linked charge counts as paid in `tripCardPlan`.
+- Ask Claude: `trip_spending`, `link_trip_charges` (undoable, entity
+  `trip_charge`), `trip_card_plan`, `best_card_for_purchases`.
+
 ## Card catalog
 
 A stored, kept-current copy of each card product's published terms, so the
@@ -271,12 +295,82 @@ data. Page: `/assistant`, history at `/assistant/history`.
   Undo works per change or per batch and leaves rows that changed again.
   Batches are capped at 200 changes.
 - **What can change** (`entities.ts`): transaction category, subcategory,
-  notes and transfer flag; merchant category rules; upkeep tasks; shopping
+  notes and transfer flag; merchant category rules; upkeep tasks; home
+  equipment; shopping
   items; store returns; ticking or archiving chores. Deletes are soft where
   the module has it (chores archive) and otherwise restorable from the
   snapshot. Nothing moves money, edits amounts, accounts, bank connections,
   keys, settings or assistant permissions. Calendar and trips are read-only.
 - Conversations and changesets belong to the member who had them.
+
+## Finance review (one-time cleanup)
+
+`/finance/review`, run by each member over joint accounts and their own.
+
+1. **Reconcile** (`finance/review/reconcile.ts`, plain code): imported
+   CSV-only accounts are matched by name to linked SimpleFIN accounts and
+   can be merged (rows the bank feed already has, same amount within 3
+   days, are dropped); CSV/bank duplicates on one account; tidier nicknames
+   and account types; stale balances, gaps between the import and bank
+   sync, empty months, quiet unlinked accounts.
+2. **Categories** (`finance/review/taxonomy.ts`, `categories.ts`): one
+   category set (parents = `DEFAULT_CATEGORIES`, with subcategories). Mint
+   and Simplifi names map through a built-in alias list; Claude suggests the
+   rest via `runStructured` (category names and example merchants only).
+   Applying remaps visible transactions and the shared merchant rules.
+3. **Large purchases** (`finance/review/large.ts`): spending at or above a
+   per-member threshold (default $500; not transfers, income, mortgage, loan
+   or card payments) is listed until answered or skipped.
+4. **House upkeep** (`src/assistant/review.ts`): an answer goes to Claude
+   with the purchase's date, merchant, amount and category (scrubbed); the
+   resulting note, home equipment (`maintenance_assets`) and upkeep tasks
+   are recorded as an Ask Claude changeset, so they apply under the usual
+   policy and are undone from its history.
+
+Steps 1 and 2 log each fix in `finance_review_actions` with what is needed
+to undo it; undo leaves rows that were changed again since.
+
+## House upkeep and the house audit
+
+`/maintenance` holds four things: **action items** (`maintenance_tasks`
+with area, parts, last-done and next-due dates and a repeat interval;
+completing one records the date and schedules the next), the **house
+project history** (`maintenance_projects`, optionally linked to the bank
+transaction that paid for it), **home equipment** (`maintenance_assets`,
+with CPSC recall checks), and the **questionable transactions** tracker.
+
+The **house audit** (`src/assistant/house-audit.ts`) runs on demand ("Run
+audit now") and weekly per member after the 7 AM / 7 PM bank sync (the
+`simplefin-sync` cron route; no extra Railway job). It links each dated
+project to its payment (same amount within $1 and 60 days, vendor name
+breaking ties), then sends open questionable transactions (date, merchant,
+amount, category only) to Claude, whose guesses wait in the tracker for the
+member. Cash withdrawals are always asked. Answers in the tracker go
+through `review.ts`, which can add a house project, equipment and upkeep in
+one undoable Ask Claude changeset.
+
+Ask Claude also gets `house_projects`, `questionable_transactions`,
+`check_recalls` (CPSC, `www.saferproducts.gov`) and `maintenance_research`
+(the provider's own web search, no new host).
+
+Migration 0018 seeds Pavel's maintenance schedule, equipment and project
+history (2026-11-25), without invoice/order numbers or individuals' names.
+
+### Cars
+
+Cars are `maintenance_assets` of kind `vehicle` with a nickname, make, model,
+year and the last odometer reading (migration 0019). There is deliberately no
+VIN or plate column, so neither can reach the AI, MCP or logs. Action items
+can belong to a car (`asset_id`) and be due by date or mileage, whichever
+comes first (`due_mileage`, `recurrence_miles`); completing one with an
+odometer reading records it on the car and schedules the next by both. Adding
+a car can seed oil change, state inspection, registration and tire rotation
+items. House history entries with an `asset_id` are that car's service
+history. In the questionable-transactions tracker, shop, parts-store and
+DMV/PennDOT payments come up as "Car upkeep" (fuel, parking, tolls and car
+washes don't) and can be filed under a car; Claude's plan for an explained
+payment gets the cars' nicknames, make, model, year and mileage. Car recalls
+come from NHTSA (`api.nhtsa.gov`, keyless) by make, model and year.
 
 ## Kitchen kiosk and family hub
 

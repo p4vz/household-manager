@@ -1,47 +1,9 @@
 {
-  "id": "9f78077b-65d0-441c-9107-3bd1be35e2d4",
+  "id": "4b05db62-ef7b-4230-a37c-6e8773c9d33f",
   "prevId": "86ead1cd-348c-4dcc-9512-5554ee7ed7e3",
   "version": "7",
   "dialect": "postgresql",
   "tables": {
-    "public.core_kiosk_adult_pin": {
-      "name": "core_kiosk_adult_pin",
-      "schema": "",
-      "columns": {
-        "id": {
-          "name": "id",
-          "type": "text",
-          "primaryKey": true,
-          "notNull": true
-        },
-        "pin_hash": {
-          "name": "pin_hash",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": true
-        },
-        "updated_by": {
-          "name": "updated_by",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": true
-        },
-        "updated_at": {
-          "name": "updated_at",
-          "type": "timestamp with time zone",
-          "primaryKey": false,
-          "notNull": true,
-          "default": "now()"
-        }
-      },
-      "indexes": {},
-      "foreignKeys": {},
-      "compositePrimaryKeys": {},
-      "uniqueConstraints": {},
-      "policies": {},
-      "checkConstraints": {},
-      "isRLSEnabled": false
-    },
     "public.core_kiosk_devices": {
       "name": "core_kiosk_devices",
       "schema": "",
@@ -86,25 +48,6 @@
         },
         "revoked_at": {
           "name": "revoked_at",
-          "type": "timestamp with time zone",
-          "primaryKey": false,
-          "notNull": false
-        },
-        "adult_until": {
-          "name": "adult_until",
-          "type": "timestamp with time zone",
-          "primaryKey": false,
-          "notNull": false
-        },
-        "pin_failures": {
-          "name": "pin_failures",
-          "type": "integer",
-          "primaryKey": false,
-          "notNull": true,
-          "default": 0
-        },
-        "pin_locked_until": {
-          "name": "pin_locked_until",
           "type": "timestamp with time zone",
           "primaryKey": false,
           "notNull": false
@@ -618,6 +561,12 @@
         },
         "official_name": {
           "name": "official_name",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "last4": {
+          "name": "last4",
           "type": "text",
           "primaryKey": false,
           "notNull": false

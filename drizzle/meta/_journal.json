@@ -117,8 +117,36 @@
     {
       "idx": 16,
       "version": "7",
-      "when": 1795635359175,
-      "tag": "0016_kiosk_adult_mode",
+      "when": 1795635348069,
+      "tag": "0016_account_last4",
+      "breakpoints": true
+    },
+    {
+      "idx": 17,
+      "version": "7",
+      "when": 1795635842005,
+      "tag": "0017_trip_transaction_links",
+      "breakpoints": true
+    },
+    {
+      "idx": 18,
+      "version": "7",
+      "when": 1795636202245,
+      "tag": "0018_house_review",
+      "breakpoints": true
+    },
+    {
+      "idx": 19,
+      "version": "7",
+      "when": 1795636377870,
+      "tag": "0019_vehicles",
+      "breakpoints": true
+    },
+    {
+      "idx": 20,
+      "version": "7",
+      "when": 1795639249165,
+      "tag": "0020_kiosk_adult_mode",
       "breakpoints": true
     }
   ]

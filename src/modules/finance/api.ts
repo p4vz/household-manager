@@ -5,6 +5,7 @@ import { aiConfigured } from "@/core/ai/keys";
 import { db } from "@/core/db/client";
 import { HiddenAccountError, VIEWERS, canSeeOwner, visibleTo, type Viewer } from "./access";
 import { cardImagesConfigured, loadAccountImages, removeAccountImage, storeAccountImage } from "./accounts/images";
+import { CardPhotoError, addCardFromPhoto as addFromPhoto, type NewCardInput } from "./accounts/from-photo";
 import { categorizeUncategorized, setMerchantCategory } from "./ai/categorize";
 import { applyFilters, cashFlow, categoryBreakdown, rangeMonths, topMerchants, type OwnerFilter, type RangeKey } from "./analytics/compute";
 import { isIncome, loadCategoryFacts, loadMerchantFacts } from "./analytics/load";
@@ -168,8 +169,10 @@ export async function listAccounts(viewer: Viewer) {
       institution: financeAccounts.institution,
       displayName: financeAccounts.displayName,
       officialName: financeAccounts.officialName,
+      last4: financeAccounts.last4,
       owner: financeAccounts.owner,
       kind: financeAccounts.kind,
+      catalogProductId: financeCardProfiles.catalogProductId,
       active: financeAccounts.active,
       balance: financeAccounts.balance,
       currency: financeAccounts.currency,
@@ -182,10 +185,12 @@ export async function listAccounts(viewer: Viewer) {
     .leftJoin(financeCardCatalog, eq(financeCardCatalog.id, financeCardProfiles.catalogProductId))
     .orderBy(asc(financeAccounts.owner), asc(financeAccounts.bankName));
   const images = await loadAccountImages(rows.map((a) => a.id));
-  return rows.map(({ linked, balance, ...a }) => {
+  return rows.map(({ linked, balance, last4, ...a }) => {
     const visible = canSeeOwner(viewer, a.owner);
     return {
       ...a,
+      /** Shown only to members who can see the account. */
+      last4: visible ? last4 : null,
       /** Product name: what was entered, else the linked catalog card, else the bank's name. */
       officialNameShown: a.officialName ?? a.catalogProduct ?? a.bankName,
       /** False = CSV history only: the card still needs adding to the SimpleFIN connection. */
@@ -201,6 +206,8 @@ export async function listAccounts(viewer: Viewer) {
 export type AccountPatch = {
   displayName: string | null;
   officialName: string | null;
+  /** Exactly four digits, or null to clear. */
+  last4: string | null;
   owner: Owner;
   kind: AccountKind;
   active: boolean;
@@ -209,6 +216,7 @@ export type AccountPatch = {
 /** Only joint accounts and the viewer's own can be changed. Names never keep digit runs. */
 export async function updateAccount(viewer: Viewer, id: string, patch: AccountPatch) {
   await assertVisibleAccount(viewer, id);
+  if (patch.last4 != null && !/^\d{4}$/.test(patch.last4)) throw new Error("Last 4 must be four digits");
   await db()
     .update(financeAccounts)
     .set({ ...patch, displayName: cleanTypedName(patch.displayName), officialName: cleanTypedName(patch.officialName) })
@@ -220,6 +228,43 @@ export { cardImagesConfigured };
 export async function setAccountImage(viewer: Viewer, accountId: string, bytes: Buffer) {
   await assertVisibleAccount(viewer, accountId);
   await storeAccountImage(accountId, bytes, viewer);
+}
+
+/**
+ * A card just opened, from a photo of its front with the number covered:
+ * the AI reads issuer and product, the card is created (before the bank
+ * sync knows it), linked to the catalog and keeps the photo. A catalog card
+ * without terms yet is looked up in the background.
+ */
+export async function addCardFromPhoto(viewer: Viewer, input: Omit<NewCardInput, "viewer">) {
+  if (!(await aiConfigured())) throw new CardPhotoError("Add an AI key in Settings first: it reads the card's name from the photo.");
+  const result = await addFromPhoto({ ...input, viewer });
+  if (!result.hasTerms) {
+    void refreshCatalogProduct(result.productId).catch((err) =>
+      console.error(`[finance] catalog lookup for a new card failed: ${err instanceof Error ? err.message : err}`),
+    );
+  }
+  return result;
+}
+
+export { CardPhotoError };
+
+/**
+ * Last 4 digits of the accounts this member can see, by account id, for
+ * Finance pages only. Kept out of the card and account lists that the AI
+ * advisor, the in-app assistant and MCP read.
+ */
+export async function visibleAccountLast4(viewer: Viewer): Promise<Record<string, string>> {
+  const rows = await db()
+    .select({ id: financeAccounts.id, last4: financeAccounts.last4 })
+    .from(financeAccounts)
+    .where(and(visibleTo(viewer), isNotNull(financeAccounts.last4)));
+  return Object.fromEntries(rows.map((r) => [r.id, r.last4!]));
+}
+
+/** Card pictures (data: URLs) of the accounts this member can see, for Finance pages. */
+export async function visibleAccountImages(viewer: Viewer): Promise<Record<string, string>> {
+  return Object.fromEntries(await loadAccountImages([...(await visibleAccountIds(viewer))]));
 }
 
 export async function deleteAccountImage(viewer: Viewer, accountId: string) {
@@ -241,6 +286,7 @@ export async function listRecentTransactions(viewer: Viewer, limit = 100) {
       pending: financeTransactions.pending,
       isTransfer: financeTransactions.isTransfer,
       source: financeTransactions.source,
+      accountId: financeTransactions.accountId,
       account: financeAccounts.displayName,
       bankName: financeAccounts.bankName,
       owner: financeAccounts.owner,
@@ -265,6 +311,7 @@ export async function dashboardData(viewer: Viewer, today = new Date()) {
       .select({
         id: financeAccounts.id,
         name: sql<string>`coalesce(${financeAccounts.displayName}, ${financeAccounts.bankName})`,
+        last4: financeAccounts.last4,
         owner: financeAccounts.owner,
       })
       .from(financeAccounts)
@@ -478,6 +525,34 @@ export type { PlannedPurchase, PurchasePlan, BonusStatus } from "./rewards/bonus
  */
 export { planCardsForPurchases };
 
+export {
+  autoLinkTransactions,
+  clearTransactionLinks,
+  householdLinkCandidates,
+  linkCandidates,
+  linkedTransactions,
+  setTransactionLinks,
+  transactionsWithLinks,
+  type LinkableTransaction,
+  type TransactionLink,
+} from "./links";
+export { LINK_STATUSES, LINK_SOURCES, type LinkStatus, type LinkSource } from "./schema";
+
+/**
+ * Rewards on specific transactions (a trip's charges): what each earned on
+ * the card used and what the best household card would have earned, from
+ * the same deterministic audit as Finance → Rewards. Only cards and charges
+ * this member can see.
+ */
+export async function rewardsForTransactions(viewer: Viewer, ids: string[], fromDate: string) {
+  if (!ids.length) return { rows: [], earned: 0, missed: 0 };
+  const { audit } = await runRewardsAudit(viewer, fromDate);
+  const wanted = new Set(ids);
+  const rows = (audit?.rows ?? []).filter((r) => wanted.has(r.txnId));
+  const sum = (f: (r: (typeof rows)[number]) => number) => Math.round(rows.reduce((s, r) => s + f(r), 0)) / 100;
+  return { rows, earned: sum((r) => r.actualCents), missed: sum((r) => r.missedCents) };
+}
+
 /**
  * Active household credit cards, for "paid with" pickers in other modules.
  * Lists every card by nickname and owner (both members know each card
@@ -567,3 +642,45 @@ export {
   type TransactionEditable,
   type MerchantRule,
 } from "./assistant";
+
+// ---------- one-time Finance review (/finance/review) ----------
+
+export {
+  reconcileReport,
+  mergeImportedAccount,
+  removeDuplicateCopies,
+  renameAccountForReview,
+  deactivateAccountForReview,
+  type ReconcileReport,
+  type ImportedMatch,
+  type DuplicatePair,
+  type NameFix,
+  type CoverageNote,
+} from "./review/reconcile";
+export { categoryReview, proposeCategoriesWithAi, applyCategoryMapping, type CategoryReviewRow, type CategoryMapping } from "./review/categories";
+export { TAXONOMY, PARENTS, allChoices, formatPair, parsePair, type CategoryPair } from "./review/taxonomy";
+export {
+  DEFAULT_LARGE_THRESHOLD,
+  largeThreshold,
+  setLargeThreshold,
+  largePurchases,
+  reviewTransaction,
+  recordLargePurchaseAnswer,
+  dismissLargePurchasesAt,
+  reopenLargePurchase,
+  type LargePurchase,
+} from "./review/large";
+export { listReviewActions, undoReviewAction } from "./review/log";
+export {
+  houseQuestions,
+  paymentsNear,
+  paymentsMatching,
+  saveHouseSuggestions,
+  houseAuditState,
+  setHouseAuditState,
+  CAR_VENDOR_PATTERN,
+  HOME_VENDOR_PATTERN,
+  type HouseQuestion,
+  type HouseQuestionKind,
+} from "./review/house";
+export type { HouseSuggestion } from "./schema";

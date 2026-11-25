@@ -6,6 +6,7 @@ import { formatDateRange } from "@/modules/trips/ui/format";
 const TABS = [
   ["", "Overview"],
   ["/itinerary", "Itinerary"],
+  ["/spend", "Spend"],
   ["/cards", "Which card"],
   ["/packing", "Packing"],
   ["/dining", "Gluten-free dining"],

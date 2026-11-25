@@ -16,6 +16,8 @@ import {
   rewardsAudit,
   signupBonusOverview,
   viewerFromLabel,
+  visibleAccountImages,
+  visibleAccountLast4,
 } from "@/modules/finance/api";
 import { AdvisorButton } from "@/modules/finance/ui/advisor-button";
 import { changeLines, daysAgo } from "@/modules/finance/ui/catalog-format";
@@ -44,6 +46,7 @@ export default async function RewardsPage() {
     listCatalogChanges({ limit: 40 }),
     signupBonusOverview(viewer),
   ]);
+  const [images, last4] = await Promise.all([visibleAccountImages(viewer), visibleAccountLast4(viewer)]);
   const driftByCard = new Map(drift.map((d) => [d.accountId, d]));
   const toReview = changes.filter((c) => c.status === "pending" || !c.seen).length;
 
@@ -234,7 +237,13 @@ export default async function RewardsPage() {
           <Card key={c.accountId}>
             <CardHeader>
               <CardTitle className="flex items-center gap-2">
-                {c.name} <Badge variant="outline">{OWNER_LABELS[c.owner]}</Badge>
+                {images[c.accountId] ? (
+                  // eslint-disable-next-line @next/next/no-img-element
+                  <img src={images[c.accountId]} alt="" className="aspect-[1.586] h-12 rounded-md border object-cover" />
+                ) : null}
+                {c.name}
+                {last4[c.accountId] ? <span className="font-mono text-sm font-normal text-muted-foreground">•••• {last4[c.accountId]}</span> : null}
+                <Badge variant="outline">{OWNER_LABELS[c.owner]}</Badge>
                 {!c.profile ? <Badge variant="warning">Not set up</Badge> : null}
               </CardTitle>
             </CardHeader>

@@ -71,9 +71,20 @@ annual-fee reminders on the shared calendar name the card and fee.
 Card pictures are encrypted with DOC_VAULT_KEY like trip documents, are
 re-encoded in the browser first (dropping photo metadata), are limited to
 600 KB of JPEG, PNG or WebP (checked by file signature), and are only
-decrypted to render the Accounts page. They never reach an AI provider or an
-assistant. Account and card numbers, even masked ones, are stripped from
-bank names and typed names before they are stored.
+decrypted to render Finance pages for members who can see the account. The
+one exception to "never sent to an AI provider": "Add a card you just
+opened" on the Accounts page sends that one photo (number covered) to the
+configured provider to read the issuer and product name. If the model reports
+a readable card number, nothing is stored. Assistants (MCP, in-app) never get
+pictures.
+
+Account and card numbers, even masked ones, are stripped from bank names and
+typed names before they are stored. Only the last 4 digits are kept, in their
+own column (`finance_accounts.last4`, Pavel's choice, 2026-11-25), so people
+can tell similar accounts apart. They are shown on Finance pages to members
+who can see the account, and are left out of everything sent to an AI
+provider, the in-app assistant and MCP (those read lists that never select
+the column, and the outbound sanitizers strip 4-digit runs as well).
 
 ## Kitchen kiosk
 
@@ -329,6 +340,8 @@ fails if `fetch(` is used anywhere else.
 | `geocoding-api.open-meteo.com`, `api.open-meteo.com` | trips: place lookup and weather forecast; home weather on the kiosk and home page (coordinates from `HOME_WEATHER` only; keyless) |
 | `en.wikipedia.org` | trips: article summary that grounds generated trivia (keyless) |
 | `overpass-api.de` | trips: gluten-free venues tagged in OpenStreetMap (keyless) |
+| `www.saferproducts.gov` | house upkeep: U.S. CPSC product-recall search for listed home equipment (keyless; only a product phrase such as "GE refrigerator" is sent, digit runs of 5+ removed) |
+| `api.nhtsa.gov` | car upkeep: NHTSA vehicle safety-recall search (keyless; only make, model and model year are sent, never a VIN or plate, which the app doesn't store) |
 
 The trips hosts receive only a place name or coordinates. No household
 data, names or credentials are sent to them.

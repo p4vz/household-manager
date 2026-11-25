@@ -35,13 +35,23 @@ const ENTITY: Record<string, string> = {
   transaction: "Transaction",
   merchant_rule: "Category rule",
   upkeep_task: "Upkeep task",
+  upkeep_asset: "Home equipment",
+  house_project: "House project",
   shopping_item: "Shopping item",
   purchase_return: "Return",
   chore: "Chore",
+  trip_charge: "Trip charge",
 };
 
 const FIELD: Record<string, string> = {
   isTransfer: "Transfer",
+  installedOn: "Installed",
+  amountNote: "Amount note",
+  lastDoneOn: "Last done",
+  dueMileage: "Due at (miles)",
+  recurrenceMiles: "Repeats every (miles)",
+  lastDoneMileage: "Mileage when last done",
+  mileageOn: "Mileage as of",
   dueDate: "Due",
   estimatedCost: "Estimated cost",
   recurrenceDays: "Repeats every (days)",
@@ -50,6 +60,7 @@ const FIELD: Record<string, string> = {
   returnDeadline: "Return by",
   done: "Done",
   merchant: "Merchant",
+  link: "Trip link",
 };
 
 const STATUS: Record<string, { text: string; variant: "default" | "secondary" | "warning" | "destructive" | "outline" }> = {
@@ -73,12 +84,15 @@ function fieldLabel(k: string) {
   return FIELD[k] ?? k.charAt(0).toUpperCase() + k.slice(1);
 }
 
+/** Internal links (ids) that mean nothing on screen. */
+const HIDDEN = new Set(["transactionId", "assetId"]);
+
 function Diff({ c }: { c: ChangeRow }) {
   if (c.op === "create") {
     return (
       <ul className="text-xs opacity-80">
         {Object.entries(c.after ?? {})
-          .filter(([, v]) => v !== null && v !== "" && v !== false)
+          .filter(([k, v]) => v !== null && v !== "" && v !== false && !HIDDEN.has(k))
           .map(([k, v]) => (
             <li key={k}>
               {fieldLabel(k)}: <span className="text-green-700">{show(v)}</span>

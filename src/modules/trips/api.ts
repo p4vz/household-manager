@@ -2,7 +2,7 @@ import "server-only";
 import { and, asc, count, desc, eq, inArray, lte, or, sql } from "drizzle-orm";
 import { bus } from "@/core/bus";
 import { db } from "@/core/db/client";
-import { listCreditCards, planCardsForPurchases, type Viewer } from "@/modules/finance/api";
+import { linkedTransactions, listCreditCards, planCardsForPurchases, type Viewer } from "@/modules/finance/api";
 import {
   aiConfigured,
   generateAllergyCards,
@@ -396,7 +396,14 @@ export async function outstandingBookings(on = today()) {
  * bonus progress never show up here.
  */
 export async function tripCardPlan(viewer: Viewer, tripId: string, now = new Date()) {
-  const items = await listItinerary(tripId);
+  // A step with a bank charge linked to it is paid, whatever the step says.
+  const [listed, linked] = await Promise.all([listItinerary(tripId), linkedTransactions(viewer, "trips", [tripId])]);
+  const chargedWith = new Map<string, { accountId: string; account: string }>();
+  for (const t of linked) if (t.link?.detailId && t.amount < 0) chargedWith.set(t.link.detailId, { accountId: t.accountId, account: t.account });
+  const items = listed.map((i) => {
+    const c = chargedWith.get(i.id);
+    return c && !i.paidWithAccountId ? { ...i, paidWithAccountId: c.accountId, chargedOn: c.account } : { ...i, chargedOn: null as string | null };
+  });
   const purchases = toPlannedPurchases(items, now.toISOString().slice(0, 10));
   const [plan, cards] = await Promise.all([planCardsForPurchases(viewer, purchases, now), listCreditCards()]);
   const byRef = new Map(plan.purchases.map((p) => [p.ref, p]));
@@ -415,7 +422,7 @@ export async function tripCardPlan(viewer: Viewer, tripId: string, now = new Dat
         cost: i.cost!,
         chargeDate: purchases.find((p) => p.ref === i.id)?.date ?? i.chargeDate,
         bookingStatus: i.bookingStatus,
-        paidWith: i.paidWithAccountId ? (cardName.get(i.paidWithAccountId) ?? "a card that is no longer active") : null,
+        paidWith: i.chargedOn ?? (i.paidWithAccountId ? (cardName.get(i.paidWithAccountId) ?? "a card that is no longer active") : null),
         plan: byRef.get(i.id) ?? null,
       })),
   };
@@ -954,3 +961,20 @@ export async function expiringDocuments(before: string) {
     .where(and(sql`${tripsDocuments.expiresOn} is not null`, lte(tripsDocuments.expiresOn, before)))
     .orderBy(asc(tripsDocuments.expiresOn));
 }
+
+// ---------------------------------------------------------------------------
+// Expenses: bank charges linked to trips (see ./expenses.ts)
+// ---------------------------------------------------------------------------
+
+export {
+  autoLinkTripCharges,
+  dismissTripCharges,
+  linkTripCharges,
+  resolveTripStep,
+  tripChargeLink,
+  tripLinkInfo,
+  tripNames,
+  tripSpend,
+  unlinkTripCharges,
+  type TripSpend,
+} from "./expenses";

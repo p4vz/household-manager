@@ -68,6 +68,13 @@ export const financeAccounts = pgTable(
     bankName: text("bank_name").notNull(),
     displayName: text("display_name"),
     officialName: text("official_name"),
+    /**
+     * Last four digits of the card or account, kept so people can tell
+     * similar accounts apart (Pavel, 2026-11-25). Shown only in the app to
+     * members who can see the account; never sent to an AI provider, an
+     * assistant or the logs (the outbound sanitizers strip digit runs too).
+     */
+    last4: text("last4"),
     owner: text("owner", { enum: OWNERS }).notNull().default("joint"),
     kind: text("kind", { enum: ACCOUNT_KINDS }).notNull().default("other"),
     active: boolean("active").notNull().default(true),
@@ -107,6 +114,42 @@ export const financeTransactions = pgTable(
   (t) => [
     uniqueIndex("finance_txn_external_uq").on(t.accountId, t.source, t.externalId),
     index("finance_txn_date_idx").on(t.postedDate),
+  ],
+);
+
+/**
+ * Ties a bank transaction to something in another module: a trip (and,
+ * optionally, one of its itinerary steps), or an upkeep task. Finance owns
+ * the table so every module links charges the same way, and so reads go
+ * through the same privacy rule as the transaction itself: a member only
+ * ever sees links on transactions from joint accounts or their own.
+ *
+ * One link per transaction per module. `dismissed` records "not this one"
+ * so automatic matching never suggests it again for that target.
+ */
+export const LINK_STATUSES = ["linked", "dismissed"] as const;
+export const LINK_SOURCES = ["auto", "manual", "assistant"] as const;
+export type LinkStatus = (typeof LINK_STATUSES)[number];
+export type LinkSource = (typeof LINK_SOURCES)[number];
+
+export const financeTransactionLinks = pgTable(
+  "finance_transaction_links",
+  {
+    transactionId: uuid("transaction_id")
+      .notNull()
+      .references(() => financeTransactions.id, { onDelete: "cascade" }),
+    module: text("module").notNull(),
+    /** The trip id, upkeep task id, ... in the other module. */
+    targetId: text("target_id").notNull(),
+    /** A finer target inside it, such as an itinerary step id. */
+    detailId: text("detail_id"),
+    status: text("status", { enum: LINK_STATUSES }).notNull().default("linked"),
+    source: text("source", { enum: LINK_SOURCES }).notNull(),
+    createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+  },
+  (t) => [
+    primaryKey({ columns: [t.transactionId, t.module] }),
+    index("finance_txn_links_target_idx").on(t.module, t.targetId),
   ],
 );
 
@@ -304,4 +347,62 @@ export const financeAdvisorReports = pgTable("finance_advisor_reports", {
   trigger: text("trigger", { enum: ["manual", "monthly"] }).notNull(),
   provider: text("provider").notNull(),
   report: jsonb("report").notNull(),
+});
+
+/**
+ * One-time Finance review (/finance/review): every change it makes is logged
+ * here with what is needed to undo it, per member. Kinds: merging an
+ * imported (CSV) account into its linked one, removing duplicate CSV copies,
+ * renaming or deactivating an account, and remapping categories.
+ */
+export const REVIEW_ACTION_KINDS = ["merge_account", "remove_duplicates", "rename_account", "deactivate_account", "map_categories"] as const;
+export type ReviewActionKind = (typeof REVIEW_ACTION_KINDS)[number];
+
+export const financeReviewActions = pgTable(
+  "finance_review_actions",
+  {
+    id: uuid("id").primaryKey().defaultRandom(),
+    viewer: text("viewer", { enum: ["user1", "user2"] }).notNull(),
+    kind: text("kind", { enum: REVIEW_ACTION_KINDS }).notNull(),
+    summary: text("summary").notNull(),
+    /** Kind-specific record of what changed (row ids, old values, snapshots of removed rows). */
+    undo: jsonb("undo").notNull(),
+    status: text("status", { enum: ["applied", "undone"] }).notNull().default("applied"),
+    createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+    undoneAt: timestamp("undone_at", { withTimezone: true }),
+  },
+  (t) => [index("finance_review_actions_viewer_idx").on(t.viewer, t.createdAt)],
+);
+
+/** Per member: the large-purchase threshold and the saved category proposal. */
+export const financeReviewState = pgTable("finance_review_state", {
+  viewer: text("viewer", { enum: ["user1", "user2"] }).primaryKey(),
+  largeThreshold: money("large_threshold").notNull().default(500),
+  /** Category mapping proposal (see review/categories.ts), kept until applied or rebuilt. */
+  categoryProposal: jsonb("category_proposal"),
+  /** Last house audit (expenses matched to house history, new ones classified), and what it found. */
+  houseAuditAt: timestamp("house_audit_at", { withTimezone: true }),
+  houseAuditNote: text("house_audit_note"),
+  updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
+});
+
+/**
+ * Transactions the review or the house audit asked about: answered ("What
+ * was this for?") or dismissed, and the audit's open guesses (suggested).
+ * An answered or dismissed transaction is not asked about again.
+ */
+export type HouseSuggestion = { houseRelated: boolean; title: string | null; area: string | null; confidence: "high" | "medium" | "low" };
+
+export const financeReviewQuestions = pgTable("finance_review_questions", {
+  transactionId: uuid("transaction_id")
+    .primaryKey()
+    .references(() => financeTransactions.id, { onDelete: "cascade" }),
+  viewer: text("viewer", { enum: ["user1", "user2"] }).notNull(),
+  /** suggested = the house audit's guess, still open for the member to confirm. */
+  status: text("status", { enum: ["suggested", "answered", "dismissed"] }).notNull(),
+  answer: text("answer"),
+  suggestion: jsonb("suggestion").$type<HouseSuggestion>(),
+  /** What came of the answer: a short summary and the Ask Claude changeset holding the edits. */
+  outcome: jsonb("outcome").$type<{ summary: string; changesetId: string | null }>(),
+  answeredAt: timestamp("answered_at", { withTimezone: true }).notNull().defaultNow(),
 });
