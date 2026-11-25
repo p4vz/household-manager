@@ -167,12 +167,14 @@ describe("external surface", () => {
     expect(users).toEqual(["app/kiosk/pair/actions.ts", "core/kiosk/devices.ts", "core/kiosk/pairing.ts", "proxy.ts"]);
   });
 
-  it("only core/net/outbound.ts calls fetch (plus the kiosk watchdog's same-origin ping)", () => {
+  it("only core/net/outbound.ts calls fetch (plus two same-origin client reads)", () => {
     // The watchdog is a client hook that pings a static file on this app's own
     // origin to tell "offline" from "stuck"; it carries no credentials.
     const CLIENT_PING = "modules/family/ui/use-kiosk-watchdog.ts";
+    // The phone app's update check reads the static build id, also without credentials.
+    const VERSION_CHECK = "components/pwa/app-version.ts";
     const offenders = files
-      .filter((f) => rel(f) !== "core/net/outbound.ts" && rel(f) !== CLIENT_PING)
+      .filter((f) => rel(f) !== "core/net/outbound.ts" && rel(f) !== CLIENT_PING && rel(f) !== VERSION_CHECK)
       .filter((f) => /(^|[^\w.])fetch\(/.test(readFileSync(f, "utf8")))
       .map(rel);
     expect(offenders).toEqual([]);
@@ -181,6 +183,11 @@ describe("external surface", () => {
     expect([...ping.matchAll(/fetch\(([^,]+),/g)].map((m) => m[1].trim())).toEqual(["`${PING_URL}?ping=${Date.now()}`"]);
     expect(ping).toMatch(/const PING_URL = "\/kiosk\.webmanifest";/);
     expect(ping).toMatch(/credentials: "omit"/);
+    const version = readFileSync(join(SRC, VERSION_CHECK), "utf8");
+    expect(version.startsWith('"use client";')).toBe(true);
+    expect([...version.matchAll(/fetch\(([^,]+),/g)].map((m) => m[1].trim())).toEqual(["VERSION_URL"]);
+    expect(version).toMatch(/const VERSION_URL = "\/version\.json";/);
+    expect(version).toMatch(/credentials: "omit"/);
   });
 
   it("no secret is exposed through NEXT_PUBLIC_", () => {

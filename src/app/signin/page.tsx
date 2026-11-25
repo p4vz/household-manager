@@ -1,6 +1,7 @@
 import { redirect } from "next/navigation";
 import { signIn } from "@/core/auth/config";
 import { currentUser } from "@/core/auth/guard";
+import { InstallAppButton } from "@/components/pwa/install-app-button";
 
 export default async function SignInPage({ searchParams }: PageProps<"/signin">) {
   const { error, callbackUrl } = await searchParams;
@@ -26,6 +27,7 @@ export default async function SignInPage({ searchParams }: PageProps<"/signin">)
         <button type="submit" className="w-full rounded-lg bg-foreground px-4 py-2 text-background">
           Sign in with Google
         </button>
+        <InstallAppButton />
         <p className="text-center text-xs opacity-60">
           <a className="underline" href="/privacy">
             Privacy policy

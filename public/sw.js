@@ -7,7 +7,7 @@
  * no household data) are stored on the device. Everything else always goes
  * to the network, exactly as without a service worker.
  */
-const CACHE = "household-static-v2";
+const CACHE = "household-static-v3";
 const PRECACHE = ["/offline.html", "/kiosk-offline.html", "/icons/icon-192.png", "/manifest.webmanifest"];
 
 self.addEventListener("install", (event) => {
@@ -53,4 +53,9 @@ self.addEventListener("fetch", (event) => {
       ),
     );
   }
+});
+
+// "Update app" (src/components/pwa/app-version.ts) asks a waiting worker to take over.
+self.addEventListener("message", (event) => {
+  if (event.data && event.data.type === "SKIP_WAITING") self.skipWaiting();
 });

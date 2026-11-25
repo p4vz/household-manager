@@ -1,12 +1,12 @@
 {
   "name": "Household",
   "short_name": "Household",
-  "description": "Family calendar, chores, shopping, returns and house upkeep",
+  "description": "Family calendar, chores, shopping, finances, trips and house upkeep",
   "id": "/family",
-  "start_url": "/family",
+  "start_url": "/",
   "scope": "/",
   "display": "standalone",
-  "orientation": "any",
+  "orientation": "portrait",
   "background_color": "#ffffff",
   "theme_color": "#0d9488",
   "icons": [
@@ -14,8 +14,11 @@
     { "src": "/icons/icon-512.png", "sizes": "512x512", "type": "image/png", "purpose": "any" },
     { "src": "/icons/maskable-512.png", "sizes": "512x512", "type": "image/png", "purpose": "maskable" }
   ],
+  "related_applications": [{ "platform": "webapp", "url": "/manifest.webmanifest" }],
   "shortcuts": [
-    { "name": "Calendar", "url": "/family" },
-    { "name": "Kitchen screen", "url": "/kiosk" }
+    { "name": "Family", "url": "/family" },
+    { "name": "Finance", "url": "/finance" },
+    { "name": "Trips", "url": "/trips" },
+    { "name": "Settings", "url": "/settings" }
   ]
 }
