@@ -1,3 +1,4 @@
+import { randomBytes } from "node:crypto";
 import { beforeAll, describe, expect, it, vi } from "vitest";
 import { freshDb } from "./helpers/db";
 import { zonedMidnight } from "@/core/time/zoned";
@@ -6,7 +7,7 @@ import { zonedMidnight } from "@/core/time/zoned";
  * A fake Google Calendar behind outboundFetch: one "Pavel + Raisa" calendar
  * the credential can write to and one read-only "Kids" calendar.
  */
-type Ev = { id: string; etag: string; summary: string; location?: string; updated: string; start: Record<string, string>; end: Record<string, string> };
+type Ev = { id: string; etag: string; summary: string; location?: string; description?: string; updated: string; start: Record<string, string>; end: Record<string, string> };
 const store = new Map<string, Map<string, Ev>>([
   ["fam@group", new Map()],
   ["kids@group", new Map()],
@@ -68,6 +69,7 @@ vi.mock("@/core/net/outbound", () => ({
       const body = JSON.parse(String(init.body));
       const next: Ev = { ...ev, ...body, start: withOffset(body.start), end: withOffset(body.end), etag: `"${++seq}"`, updated: new Date().toISOString() };
       if (body.location === null) delete next.location;
+      if (body.description === null) delete next.description;
       cal.set(ev.id, next);
       return json(next);
     }
@@ -141,6 +143,51 @@ describe("two-way family calendar", () => {
     expect(store.get("fam@group")!.get(ev.id)?.summary).toBe("Pickup at 3");
     // The refresh after the conflict brought the newer version in.
     expect((await agendaItems()).some((i) => i.title === "Pickup at 3")).toBe(true);
+  });
+
+  it("keeps notes in Google's description and pictures in the app", async () => {
+    vi.stubEnv("DOC_VAULT_KEY", randomBytes(32).toString("base64"));
+    await api.createGoogleEvent({ title: "Party", allDay: true, startDate: day(3), endDate: day(3), location: "12 Oak St", notes: "Bring a gift" });
+    const fam = store.get("fam@group")!;
+    const ev = [...fam.values()].find((e) => e.summary === "Party")!;
+    expect(ev.description).toBe("Bring a gift");
+    let party = (await agendaItems()).find((i) => i.title === "Party")!;
+    expect(party).toMatchObject({ notes: "Bring a gift", location: "12 Oak St", photos: 0 });
+    expect(party.edit?.notes).toBe("Bring a gift");
+
+    // Notes typed in Google Calendar on the web arrive as simple HTML.
+    fam.set(ev.id, { ...ev, description: "Gate <b>4521</b><br>Park &amp; walk", etag: '"web"' });
+    await api.syncGoogleCalendars({ force: true });
+    party = (await agendaItems()).find((i) => i.title === "Party")!;
+    expect(party.notes).toBe("Gate 4521\nPark & walk");
+
+    // Changing only the title leaves Google's formatted description alone.
+    await api.updateGoogleEvent(party.edit!.id, { ...party.edit!, title: "Party!" });
+    expect(fam.get(ev.id)).toMatchObject({ summary: "Party!", description: "Gate <b>4521</b><br>Park &amp; walk" });
+    party = (await agendaItems()).find((i) => i.title === "Party!")!;
+    await api.updateGoogleEvent(party.edit!.id, { ...party.edit!, notes: "" });
+    expect(fam.get(ev.id)?.description).toBeUndefined();
+
+    const jpeg = Buffer.from([0xff, 0xd8, 0xff, 0xe0, 1, 2, 3, 4]);
+    await api.addEventPhoto(party.edit!.id, jpeg, "User 1");
+    await expect(api.addEventPhoto(party.edit!.id, Buffer.from("not a picture"), "Kiosk")).rejects.toThrow(/JPEG/);
+    party = (await agendaItems()).find((i) => i.title === "Party!")!;
+    expect(party.photos).toBe(1);
+    const photos = await api.eventPhotos(party.edit!.id);
+    expect(photos).toHaveLength(1);
+    expect(photos[0].url).toBe(`data:image/jpeg;base64,${jpeg.toString("base64")}`);
+    // Pictures are stored encrypted.
+    const { db } = await import("@/core/db/client");
+    const { calendarEventPhotos } = await import("@/modules/calendar/schema");
+    const [row] = await db().select().from(calendarEventPhotos);
+    expect(Buffer.from(row.cipherText).equals(jpeg)).toBe(false);
+
+    // Read-only calendars can't get pictures; deleting the event removes its pictures.
+    const soccer = (await agendaItems()).find((i) => i.title === "Soccer")!;
+    await expect(api.addEventPhoto(soccer.key.split(":")[1], jpeg, "User 1")).rejects.toThrow(api.CalendarWriteError);
+    await api.deleteGoogleEvent(party.edit!.id);
+    expect(await db().select().from(calendarEventPhotos)).toHaveLength(0);
+    vi.unstubAllEnvs();
   });
 
   it("refuses to change events on read-only calendars", async () => {
