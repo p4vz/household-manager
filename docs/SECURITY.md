@@ -295,6 +295,7 @@ fails if `fetch(` is used anywhere else.
 | `en.wikipedia.org` | trips: article summary that grounds generated trivia (keyless) |
 | `overpass-api.de` | trips: gluten-free venues tagged in OpenStreetMap (keyless) |
 | `www.saferproducts.gov` | house upkeep: U.S. CPSC product-recall search for listed home equipment (keyless; only a product phrase such as "GE refrigerator" is sent, digit runs of 5+ removed) |
+| `api.nhtsa.gov` | car upkeep: NHTSA vehicle safety-recall search (keyless; only make, model and model year are sent, never a VIN or plate, which the app doesn't store) |
 
 The trips hosts receive only a place name or coordinates. No household
 data, names or credentials are sent to them.

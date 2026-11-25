@@ -41,6 +41,7 @@ export type EntityAdapter = {
 const text = (max: number) => z.string().trim().min(1).max(max);
 const optText = (max: number) => z.string().trim().max(max).nullable();
 const day = z.iso.date();
+const miles = z.number().int().min(0).max(2_000_000).nullable();
 
 // ----------------------------------------------------------- finance ----
 
@@ -112,8 +113,12 @@ export const UpkeepFields = z
     area: optText(60),
     parts: optText(300),
     lastDoneOn: day.nullable(),
+    assetId: z.uuid().nullable(),
+    dueMileage: miles,
+    recurrenceMiles: miles,
+    lastDoneMileage: miles,
   })
-  .partial({ area: true, parts: true, lastDoneOn: true })
+  .partial({ area: true, parts: true, lastDoneOn: true, assetId: true, dueMileage: true, recurrenceMiles: true, lastDoneMileage: true })
   .strict();
 
 const upkeepTask: EntityAdapter = {
@@ -132,6 +137,10 @@ const upkeepTask: EntityAdapter = {
         area: t.area,
         parts: t.parts,
         lastDoneOn: t.lastDoneOn,
+        assetId: t.assetId,
+        dueMileage: t.dueMileage,
+        recurrenceMiles: t.recurrenceMiles,
+        lastDoneMileage: t.lastDoneMileage,
       },
       label: `${t.title} (due ${t.dueDate}${t.completedOn ? `, done ${t.completedOn}` : ""})`,
     };
@@ -160,7 +169,13 @@ export const AssetFields = z
     installedOn: day.nullable(),
     cost: z.number().min(0).max(1_000_000).nullable(),
     notes: optText(500),
+    make: optText(40),
+    model: optText(60),
+    year: z.number().int().min(1950).max(2100).nullable(),
+    mileage: miles,
+    mileageOn: day.nullable(),
   })
+  .partial({ make: true, model: true, year: true, mileage: true, mileageOn: true })
   .strict();
 
 const upkeepAsset: EntityAdapter = {
@@ -170,7 +185,19 @@ const upkeepAsset: EntityAdapter = {
     const a = await maintenance.getAsset(key);
     if (!a) return null;
     return {
-      fields: { name: a.name, kind: a.kind, location: a.location, installedOn: a.installedOn, cost: a.cost, notes: a.notes },
+      fields: {
+        name: a.name,
+        kind: a.kind,
+        location: a.location,
+        installedOn: a.installedOn,
+        cost: a.cost,
+        notes: a.notes,
+        make: a.make,
+        model: a.model,
+        year: a.year,
+        mileage: a.mileage,
+        mileageOn: a.mileageOn,
+      },
       label: a.name,
     };
   },
@@ -197,7 +224,9 @@ export const ProjectFields = z
     description: optText(1000),
     amount: z.number().min(0).max(10_000_000).nullable(),
     amountNote: optText(60),
+    assetId: z.uuid().nullable(),
   })
+  .partial({ assetId: true })
   .strict();
 
 /** House project and expense history. The linked transaction is kept as is and never shown here. */
@@ -208,7 +237,16 @@ const houseProject: EntityAdapter = {
     const p = await maintenance.getProject(key);
     if (!p) return null;
     return {
-      fields: { date: p.date, period: p.period, title: p.title, vendor: p.vendor, description: p.description, amount: p.amount, amountNote: p.amountNote },
+      fields: {
+        date: p.date,
+        period: p.period,
+        title: p.title,
+        vendor: p.vendor,
+        description: p.description,
+        amount: p.amount,
+        amountNote: p.amountNote,
+        assetId: p.assetId,
+      },
       label: `${p.title}${p.date ? ` (${p.date})` : p.period ? ` (${p.period})` : ""}`,
     };
   },

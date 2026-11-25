@@ -75,3 +75,52 @@ export async function searchRecalls(product: string): Promise<RecallHit[]> {
   if (!rest.length) return [];
   return query({ Manufacturer: brand, ProductName: rest.join(" ") });
 }
+
+// ---------- vehicles (NHTSA) ----------
+
+const NHTSA = "https://api.nhtsa.gov/recalls/recallsByVehicle";
+
+type NhtsaRecall = { NHTSACampaignNumber?: string; Component?: string; Summary?: string; Consequence?: string; Remedy?: string };
+
+/** NHTSA campaign numbers start with the year: "23V123000" is from 2023. */
+function campaignYear(id: string | undefined): string | null {
+  const m = id?.match(/^(\d{2})[A-Z]/);
+  return m ? `20${m[1]}` : null;
+}
+
+export function toVehicleHits(raw: unknown): RecallHit[] {
+  const results = (raw as { results?: unknown } | null)?.results;
+  if (!Array.isArray(results)) return [];
+  return (results as NhtsaRecall[])
+    .map((r) => {
+      const id = r.NHTSACampaignNumber && /^[0-9A-Z]{6,12}$/.test(r.NHTSACampaignNumber) ? r.NHTSACampaignNumber : null;
+      return {
+        title: clean(r.Component, 200) ?? "Recall",
+        date: campaignYear(id ?? undefined),
+        url: id ? `https://www.nhtsa.gov/recalls?nhtsaId=${id}` : null,
+        hazard: clean(r.Consequence ?? r.Summary),
+        remedy: clean(r.Remedy),
+      };
+    })
+    .sort((a, b) => (b.date ?? "").localeCompare(a.date ?? ""))
+    .slice(0, MAX_HITS);
+}
+
+/**
+ * Vehicle safety recalls from NHTSA's public API (keyless), by make, model
+ * and model year only. Never a VIN or plate: the app doesn't store either.
+ */
+export async function searchVehicleRecalls(v: { make: string; model: string; year: number }): Promise<RecallHit[]> {
+  const make = recallQuery(v.make);
+  const model = recallQuery(v.model);
+  if (!make || !model || !(v.year >= 1950 && v.year <= 2100)) return [];
+  const url = new URL(NHTSA);
+  url.searchParams.set("make", make);
+  url.searchParams.set("model", model);
+  url.searchParams.set("modelYear", String(v.year));
+  const res = await outboundFetch(url, { headers: { accept: "application/json" }, signal: AbortSignal.timeout(20_000) });
+  // NHTSA answers 400 for a make/model it doesn't know.
+  if (res.status === 400) return [];
+  if (!res.ok) throw new Error(`Recall lookup failed (${res.status})`);
+  return toVehicleHits(await res.json());
+}

@@ -356,6 +356,22 @@ Ask Claude also gets `house_projects`, `questionable_transactions`,
 Migration 0018 seeds Pavel's maintenance schedule, equipment and project
 history (2026-11-25), without invoice/order numbers or individuals' names.
 
+### Cars
+
+Cars are `maintenance_assets` of kind `vehicle` with a nickname, make, model,
+year and the last odometer reading (migration 0019). There is deliberately no
+VIN or plate column, so neither can reach the AI, MCP or logs. Action items
+can belong to a car (`asset_id`) and be due by date or mileage, whichever
+comes first (`due_mileage`, `recurrence_miles`); completing one with an
+odometer reading records it on the car and schedules the next by both. Adding
+a car can seed oil change, state inspection, registration and tire rotation
+items. House history entries with an `asset_id` are that car's service
+history. In the questionable-transactions tracker, shop, parts-store and
+DMV/PennDOT payments come up as "Car upkeep" (fuel, parking, tolls and car
+washes don't) and can be filed under a car; Claude's plan for an explained
+payment gets the cars' nicknames, make, model, year and mileage. Car recalls
+come from NHTSA (`api.nhtsa.gov`, keyless) by make, model and year.
+
 ## Kitchen kiosk and family hub
 
 `/kiosk` is a single 1920x1080 touch screen (no page scroll): calendar on
