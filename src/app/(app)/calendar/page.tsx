@@ -6,8 +6,8 @@ import { CalendarPanel } from "@/modules/family/ui/calendar-panel";
 import { householdToday } from "@/modules/family/ui/dates";
 import { LiveRefresh } from "@/modules/family/ui/live-refresh";
 import { syncCalendarAction } from "../../kiosk/actions";
-import { createEventAction, updateEventAction } from "../../kiosk/calendar-actions";
-import { deleteEventAction } from "../family/actions";
+import { addEventPhotoAction, createEventAction, eventPhotosAction, updateEventAction } from "../../kiosk/calendar-actions";
+import { deleteEventAction, removeEventPhotoAction } from "../family/actions";
 
 export const metadata = { title: "Calendar" };
 
@@ -41,7 +41,12 @@ export default async function CalendarPage() {
         sync={syncCalendarAction.bind(null, {})}
         today={today}
         writableLabel={calendar.writableLabel}
-        eventActions={{ create: createEventAction, update: updateEventAction, remove: deleteEventAction }}
+        eventActions={{
+          create: createEventAction,
+          update: updateEventAction,
+          remove: deleteEventAction,
+          photos: { list: eventPhotosAction, add: addEventPhotoAction, remove: removeEventPhotoAction },
+        }}
       />
       <LiveRefresh />
     </section>

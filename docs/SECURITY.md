@@ -112,9 +112,17 @@ account. Pavel chose a paired device token (2026-11-23):
   from a template) and stores, reorder, rename, put a list off until a
   date and save a list as a template; add a return or move
   its status, mark an upkeep task done, refresh the calendar, and add or
-  edit events on the family Google calendar. Kids use the screen, so
-  deleting a calendar event is member-only (the phone app; Google keeps
+  edit events on the family Google calendar (title, time, address and
+  notes) and add pictures to them. Kids use the screen, so deleting a
+  calendar event or a picture is member-only (the phone app; Google keeps
   deleted events for 30 days), and the kiosk has no way back into the app.
+- **Event notes and pictures.** Notes are the Google event's description,
+  stored as plain text in the mirror. They are left out of what the in-app
+  assistant reads. Pictures can't live in Google, so they stay in the app:
+  shrunk and re-encoded in the browser (dropping location and camera data),
+  checked by file signature, limited to 1 MB and 8 per event, encrypted with
+  `DOC_VAULT_KEY`, and decrypted only when someone opens that event. They
+  are deleted with the event.
   Deleting anything else (including shopping items, stores, lists and
   templates), adding kids or recurring chores, and every finance, trips and
   settings page stay member-only. `tests/boundaries.test.ts` checks this.
