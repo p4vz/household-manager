@@ -62,6 +62,16 @@ describe("star prizes", () => {
     expect(await family.listStarPrizes()).toHaveLength(3);
   });
 
+  it("changes a chore's stars for later ticks only", async () => {
+    const read = await family.addChore({ kidId, title: "Read 30 min", recurrence: "daily", stars: 1 }, at("2026-11-07"));
+    await family.completeChore(read, at("2026-11-07"));
+    await family.setChoreStars(read, 5);
+    await family.completeChore(read, at("2026-11-08"));
+    const before = (await family.starBanks()).get(kidId)!.lifetime;
+    expect(before).toBe(30 + 1 + 5);
+    await expect(family.setChoreStars(read, 9)).rejects.toThrow(/1 to 5/);
+  });
+
   it("adds starter chores once", async () => {
     const leo = await family.addKid({ name: "Leo" });
     await family.addStarterChores(leo);

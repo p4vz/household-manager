@@ -28,6 +28,7 @@ import {
   extractReturnAction,
   markSuggestionReturnedAction,
   archiveChoreAction,
+  setChoreStarsAction,
   deleteEventAction,
   removeEventPhotoAction,
   deleteReturnAction,
@@ -91,6 +92,7 @@ export default async function FamilyPage() {
           addStarterChores: addStarterChoresAction,
           addChore: addChoreAction,
           archiveChore: archiveChoreAction,
+          setChoreStars: setChoreStarsAction,
           deleteReturn: deleteReturnAction,
           memberReturns: {
             suggestions,
