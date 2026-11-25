@@ -205,10 +205,10 @@ function Setup({ kids, icons, actions }: { kids: BoardKidView[]; icons: readonly
               {k.chores.map((c) => (
                 <div key={c.id} className="flex items-center gap-2 rounded-lg border px-2">
                   <span className="text-2xl">{c.icon}</span>
-                  <span className="flex-1">{c.title}</span>
-                  <span className="text-xs uppercase opacity-60">{c.recurrence}</span>
+                  <span className="min-w-0 flex-1 truncate">{c.title}</span>
+                  <span className="text-[10px] uppercase opacity-60">{c.recurrence}</span>
                   <select
-                    className={`${field} w-16 px-1`}
+                    className={`${field} w-[4.5rem] shrink-0 px-1.5`}
                     aria-label={`Stars for ${c.title}`}
                     value={c.stars}
                     onChange={(e) => {

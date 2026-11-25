@@ -70,6 +70,7 @@ describe("chore stats", () => {
     expect(s.starsWeek).toBe(1);
     // Week so far: 2 daily expected today + 1 weekly; 1 done.
     expect(s.weekPercent).toBe(33);
+    expect([s.weekDone, s.weekTotal]).toEqual([1, 3]);
   });
 
   it("a missed day breaks the streak", () => {

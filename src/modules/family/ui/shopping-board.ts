@@ -117,3 +117,30 @@ export function plusDays(iso: string, n: number): string {
 export function dayLabel(iso: string): string {
   return new Intl.DateTimeFormat("en-US", { timeZone: "UTC", weekday: "short", month: "short", day: "numeric" }).format(new Date(`${iso}T00:00:00Z`));
 }
+
+/** Lists named "Weekly …" get a "Dismiss for this week" button. */
+export function isWeeklyList(name: string): boolean {
+  return /^weekly\b/i.test(name.trim());
+}
+
+/** The Monday after `today` (chore and shopping weeks start on Monday). */
+export function nextWeekStart(today: string): string {
+  const weekday = new Date(`${today}T00:00:00Z`).getUTCDay(); // 0 = Sunday
+  return plusDays(today, ((8 - weekday) % 7) || 7);
+}
+
+/**
+ * Title for a list with a single store, shown without the nested store
+ * header: "Weekly Sam's" + "Sam's Club" → "Weekly Sam's Club"; a list
+ * name that already names the store is kept; otherwise "List · Store".
+ */
+export function flatListTitle(list: string, store: string): string {
+  const norm = (v: string) => v.toLowerCase().replace(/[^a-z0-9]+/g, " ").trim();
+  const l = norm(list);
+  const s = norm(store);
+  if (!s || l.includes(s)) return list;
+  const prefix = list.match(/^weekly\s+/i)?.[0] ?? "";
+  const rest = norm(list.slice(prefix.length));
+  if (prefix && rest && s.startsWith(rest)) return `${prefix}${store}`;
+  return `${list} · ${store}`;
+}

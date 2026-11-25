@@ -25,6 +25,9 @@ export type KidStats = {
   todayDone: number;
   todayTotal: number;
   weekPercent: number;
+  /** Chores done / due so far this chore week (same counting as weekPercent). */
+  weekDone: number;
+  weekTotal: number;
   streak: number;
   starsWeek: number;
   starsTotal: number;
@@ -84,6 +87,8 @@ export function computeKidStats(input: {
     todayDone: input.todayDone,
     todayTotal: input.todayTotal,
     weekPercent: expected ? Math.round((achieved / expected) * 100) : 0,
+    weekDone: achieved,
+    weekTotal: expected,
     streak,
     starsWeek,
     starsTotal: input.starsTotal,
