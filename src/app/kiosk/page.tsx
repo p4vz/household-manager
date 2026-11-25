@@ -2,7 +2,7 @@ import { redirect } from "next/navigation";
 import { after } from "next/server";
 import { requireKioskOrMember } from "@/core/actions/kiosk-action";
 import { syncGoogleCalendarsIfStale } from "@/modules/calendar/api";
-import { CHORE_ICONS } from "@/modules/family/api";
+import { CHORE_ICONS, openItemCount } from "@/modules/family/api";
 import { CalendarPanel } from "@/modules/family/ui/calendar-panel";
 import { ChoreBoard } from "@/modules/family/ui/chore-board";
 import { HubTabs } from "@/modules/family/ui/hub-tabs";
@@ -14,16 +14,14 @@ import { UpkeepPanel } from "@/modules/family/ui/upkeep-panel";
 import {
   addOneTimeChoreAction,
   addReturnAction,
-  addShoppingItemAction,
   completeUpkeepAction,
-  restockStaplesAction,
   setChoreDoneAction,
   setReturnStatusAction,
-  setShoppingCheckedAction,
   syncCalendarAction,
 } from "./actions";
 import { createEventAction, deleteEventAction, updateEventAction } from "./calendar-actions";
 import { loadHub } from "./load";
+import { shoppingActions } from "./shopping-actions-map";
 
 /** Installs as its own full-screen landscape app (public/kiosk.webmanifest). */
 export const metadata = { title: "Kitchen", manifest: "/kiosk.webmanifest" };
@@ -90,14 +88,9 @@ export default async function KioskPage() {
                 {
                   key: "shopping",
                   label: "🛒 Shopping",
-                  badge: hub.shopping.filter((i) => !i.checked).length,
+                  badge: openItemCount(hub.shopping),
                   content: (
-                    <ShoppingPanel
-                      items={hub.shopping}
-                      stores={hub.stores}
-                      dateLabel={hub.todayLabel}
-                      actions={{ setChecked: setShoppingCheckedAction, add: addShoppingItemAction, restock: restockStaplesAction }}
-                    />
+                    <ShoppingPanel board={hub.shopping} today={hub.today} dateLabel={hub.todayLabel} actions={shoppingActions} expandable />
                   ),
                 },
                 {

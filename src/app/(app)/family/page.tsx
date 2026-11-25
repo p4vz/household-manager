@@ -8,25 +8,24 @@ import { FamilyPhone } from "@/modules/family/ui/family-phone";
 import {
   addOneTimeChoreAction,
   addReturnAction,
-  addShoppingItemAction,
   completeUpkeepAction,
-  restockStaplesAction,
   setChoreDoneAction,
   setReturnStatusAction,
-  setShoppingCheckedAction,
   syncCalendarAction,
 } from "../../kiosk/actions";
 import { createEventAction, deleteEventAction, updateEventAction } from "../../kiosk/calendar-actions";
 import { loadHub } from "../../kiosk/load";
+import { shoppingActions } from "../../kiosk/shopping-actions-map";
 import {
   addChoreAction,
   addKidAction,
-  addStapleAction,
   archiveChoreAction,
   deleteReturnAction,
   deleteShoppingItemAction,
+  deleteShoppingListAction,
+  deleteShoppingTemplateAction,
+  removeShoppingStoreAction,
   removeKidAction,
-  setStapleAction,
 } from "./actions";
 
 /** Phone companion to the kitchen kiosk: calendar, lists, chores, returns, upkeep and setup. Refreshes every 45 s. */
@@ -47,6 +46,7 @@ export default async function FamilyPage() {
         returns={hub.returns}
         upkeep={hub.upkeep}
         today={hub.calendar.days[0]}
+        todayIso={hub.today}
         calendar={{
           days: hub.calendar.days,
           today: hub.today,
@@ -59,9 +59,13 @@ export default async function FamilyPage() {
         actions={{
           setChoreDone: setChoreDoneAction,
           addOneTimeChore: addOneTimeChoreAction,
-          addShopping: addShoppingItemAction,
-          setShoppingChecked: setShoppingCheckedAction,
-          restock: restockStaplesAction,
+          shopping: shoppingActions,
+          shoppingMember: {
+            deleteItem: deleteShoppingItemAction,
+            removeStore: removeShoppingStoreAction,
+            deleteList: deleteShoppingListAction,
+            deleteTemplate: deleteShoppingTemplateAction,
+          },
           addReturn: addReturnAction,
           setReturnStatus: setReturnStatusAction,
           completeUpkeep: completeUpkeepAction,
@@ -69,9 +73,6 @@ export default async function FamilyPage() {
           removeKid: removeKidAction,
           addChore: addChoreAction,
           archiveChore: archiveChoreAction,
-          addStaple: addStapleAction,
-          setStaple: setStapleAction,
-          deleteShopping: deleteShoppingItemAction,
           deleteReturn: deleteReturnAction,
           calendar: { create: createEventAction, update: updateEventAction, remove: deleteEventAction },
           syncCalendar: syncCalendarAction.bind(null, {}),

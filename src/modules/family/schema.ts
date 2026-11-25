@@ -64,21 +64,83 @@ export const familyChoreCompletions = pgTable(
   ],
 );
 
+/**
+ * Shopping: lists (shown one below the other) hold store sections, which hold
+ * item tiles. A list can be deferred until a date (hidden until then) and
+ * saved as a template; a template starts new lists.
+ */
+export const familyShoppingLists = pgTable("family_shopping_lists", {
+  id: uuid("id").primaryKey().defaultRandom(),
+  name: text("name").notNull(),
+  sortOrder: integer("sort_order").notNull().default(0),
+  /** Hidden from the active view until this household date, then it comes back by itself. */
+  deferredUntil: date("deferred_until"),
+  createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+});
+
+export const familyShoppingSections = pgTable(
+  "family_shopping_sections",
+  {
+    id: uuid("id").primaryKey().defaultRandom(),
+    listId: uuid("list_id")
+      .notNull()
+      .references(() => familyShoppingLists.id, { onDelete: "cascade" }),
+    store: text("store").notNull(),
+    sortOrder: integer("sort_order").notNull().default(0),
+  },
+  (t) => [uniqueIndex("family_shopping_sections_uq").on(t.listId, t.store)],
+);
+
 export const familyShoppingItems = pgTable(
   "family_shopping_items",
   {
     id: uuid("id").primaryKey().defaultRandom(),
+    sectionId: uuid("section_id")
+      .notNull()
+      .references(() => familyShoppingSections.id, { onDelete: "cascade" }),
     name: text("name").notNull(),
-    store: text("store").notNull(),
     quantity: text("quantity"),
-    /** Staples stay on the default list; "Restock" unchecks them all. One-time items go once bought. */
-    isStaple: boolean("is_staple").notNull().default(false),
+    sortOrder: integer("sort_order").notNull().default(0),
     checked: boolean("checked").notNull().default(false),
+    /** Ticking an item ticks the same item on every active list with this exact timestamp, so un-ticking can undo them together. */
     checkedAt: timestamp("checked_at", { withTimezone: true }),
     createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
   },
-  (t) => [index("family_shopping_items_store_idx").on(t.store)],
+  (t) => [index("family_shopping_items_section_idx").on(t.sectionId)],
 );
+
+export const familyShoppingTemplates = pgTable(
+  "family_shopping_templates",
+  {
+    id: uuid("id").primaryKey().defaultRandom(),
+    name: text("name").notNull(),
+    createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+  },
+  (t) => [uniqueIndex("family_shopping_templates_name_uq").on(t.name)],
+);
+
+export const familyShoppingTemplateItems = pgTable(
+  "family_shopping_template_items",
+  {
+    id: uuid("id").primaryKey().defaultRandom(),
+    templateId: uuid("template_id")
+      .notNull()
+      .references(() => familyShoppingTemplates.id, { onDelete: "cascade" }),
+    store: text("store").notNull(),
+    /** Position of the store within the template. */
+    storeOrder: integer("store_order").notNull().default(0),
+    name: text("name").notNull(),
+    quantity: text("quantity"),
+    sortOrder: integer("sort_order").notNull().default(0),
+  },
+  (t) => [index("family_shopping_template_items_tpl_idx").on(t.templateId)],
+);
+
+/** One row (id 1). Bumped by every shopping change so screens can poll cheaply for "anything new?". */
+export const familyShoppingRevision = pgTable("family_shopping_revision", {
+  id: integer("id").primaryKey(),
+  revision: integer("revision").notNull().default(0),
+});
 
 export const familyPurchaseReturns = pgTable("family_purchase_returns", {
   id: uuid("id").primaryKey().defaultRandom(),

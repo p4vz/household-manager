@@ -6,15 +6,28 @@ import {
   addKid,
   addReturn,
   addShoppingItem,
+  addStore,
   choreBoard,
   completeChore,
+  createList,
+  deferList,
+  deleteList,
+  deleteTemplate,
+  itemKey,
   listReturns,
-  listShopping,
-  restockStaples,
+  listTemplates,
+  moveShoppingItem,
+  openItemCount,
+  reorderLists,
+  reorderStores,
   runHousekeeping,
+  saveListAsTemplate,
   setReturnStatus,
   setShoppingChecked,
+  shoppingBoard,
+  storeItemsToBuy,
   undoChore,
+  type ShoppingList,
 } from "@/modules/family/api";
 import { completeTask, listDueTasks, listOpenTasks, scheduleTask } from "@/modules/maintenance/api";
 import { listUpcoming } from "@/modules/calendar/api";
@@ -69,25 +82,134 @@ describe("chore board", () => {
 });
 
 describe("shopping", () => {
-  it("restocking puts staples back and clears bought one-time items", async () => {
-    const milk = await addShoppingItem({ name: "Milk", store: "Costco", isStaple: true });
-    const cake = await addShoppingItem({ name: "Birthday cake", store: "Costco" });
-    const eggs = await addShoppingItem({ name: "Eggs", store: "Giant", isStaple: true });
-    await setShoppingChecked(milk, true);
-    await setShoppingChecked(cake, true);
-    await setShoppingChecked(eggs, true);
-    await restockStaples("Costco");
-    const items = await listShopping();
-    expect(items.find((i) => i.id === milk)?.checked).toBe(false);
-    expect(items.find((i) => i.id === cake)).toBeUndefined();
-    expect(items.find((i) => i.id === eggs)?.checked).toBe(true); // other store untouched
+  const NOW = new Date("2026-11-23T22:00:00Z"); // Mon 23 Nov, New York
+  const items = (l: ShoppingList) => l.sections.flatMap((s) => s.items.map((i) => `${s.store}:${i.name}${i.checked ? "✓" : ""}`));
+
+  it("starts with the Weekly Sam's and Weekly Russian templates", async () => {
+    const t = await listTemplates();
+    expect(t.map((x) => [x.name, x.stores.map((s) => [s.store, s.items.map((i) => i.name)])])).toEqual([
+      ["Weekly Sam's", [["Sam's Club", ["Milk", "Eggs", "Yogurt", "Berries", "Fruits"]]]],
+      ["Weekly Russian", [["Russian store", ["Tvorog", "Snacks", "Eggs"]]]],
+    ]);
   });
 
-  it("housekeeping clears bought one-time items after 12 hours", async () => {
-    const id = await addShoppingItem({ name: "Batteries", store: "Target" });
+  it("ticks the same item off every active list, and un-ticks them together", async () => {
+    const [sams, russian] = await listTemplates();
+    const a = await createList({ templateId: sams.id });
+    const b = await createList({ templateId: russian.id });
+    let board = await shoppingBoard(NOW);
+    expect(board.lists.map((l) => l.name)).toEqual(["Weekly Sam's", "Weekly Russian"]);
+    const eggs = board.lists[0].sections[0].items.find((i) => i.name === "Eggs")!;
+
+    const rev = board.revision;
+    await setShoppingChecked(eggs.id, true, NOW);
+    board = await shoppingBoard(NOW);
+    expect(board.revision).toBeGreaterThan(rev);
+    expect(items(board.lists[0])).toContain("Sam's Club:Eggs✓");
+    expect(items(board.lists[1])).toContain("Russian store:Eggs✓");
+    expect(items(board.lists[0])).toContain("Sam's Club:Milk");
+
+    await setShoppingChecked(board.lists[1].sections[0].items.find((i) => i.name === "Eggs")!.id, false, NOW);
+    board = await shoppingBoard(NOW);
+    expect(items(board.lists[0])).toContain("Sam's Club:Eggs");
+    expect(items(board.lists[1])).toContain("Russian store:Eggs");
+
+    // Same name typed differently still matches.
+    const extra = await addShoppingItem({ name: " EGGS. ", store: "Costco", listId: a }, NOW);
+    await setShoppingChecked(extra, true, NOW);
+    board = await shoppingBoard(NOW);
+    expect(board.lists.flatMap((l) => l.sections.flatMap((s) => s.items)).filter((i) => itemKey(i.name) === "eggs").every((i) => i.checked)).toBe(true);
+
+    await deleteList(a);
+    await deleteList(b);
+  });
+
+  it("leaves deferred lists alone and brings them back on the date", async () => {
+    const [sams] = await listTemplates();
+    const now = await createList({ templateId: sams.id });
+    const later = await createList({ name: "Next week", templateId: sams.id });
+    await deferList(later, "2026-11-30");
+    let board = await shoppingBoard(NOW);
+    expect(board.lists.map((l) => l.id)).toEqual([now]);
+    expect(board.deferred.map((l) => [l.id, l.deferredUntil])).toEqual([[later, "2026-11-30"]]);
+
+    const milk = board.lists[0].sections[0].items.find((i) => i.name === "Milk")!;
+    await setShoppingChecked(milk.id, true, NOW);
+    board = await shoppingBoard(new Date("2026-11-30T15:00:00Z"));
+    expect(board.lists.map((l) => l.id)).toEqual([now, later]);
+    expect(items(board.lists[1])).toContain("Sam's Club:Milk"); // not ticked: it was put off
+
+    await deleteList(now);
+    await deleteList(later);
+  });
+
+  it("adds stores at the bottom, reorders them, and moves items between stores and lists", async () => {
+    const list = await createList({ name: "Party" });
+    const costco = await addStore(list, "Costco");
+    const target = await addStore(list, "Target");
+    expect(await addStore(list, "costco")).toBe(costco); // no duplicate store
+    const cups = await addShoppingItem({ name: "Cups", store: "Costco", listId: list });
+    const cake = await addShoppingItem({ name: "Cake", store: "Costco", listId: list });
+    const plates = await addShoppingItem({ name: "Plates", store: "Costco", listId: list });
+    expect(await addShoppingItem({ name: "cake", store: "Costco", listId: list })).toBe(cake); // no duplicate item
+
+    await reorderStores(list, [target, costco]);
+    await moveShoppingItem(plates, costco, 0);
+    await moveShoppingItem(cups, target, 0);
+    let l = (await shoppingBoard(NOW)).lists.find((x) => x.id === list)!;
+    expect(l.sections.map((s) => [s.store, s.items.map((i) => i.name)])).toEqual([
+      ["Target", ["Cups"]],
+      ["Costco", ["Plates", "Cake"]],
+    ]);
+
+    const other = await createList({ name: "Other" });
+    const otherStore = await addStore(other, "Giant");
+    await moveShoppingItem(cake, otherStore, 5);
+    l = (await shoppingBoard(NOW)).lists.find((x) => x.id === other)!;
+    expect(items(l)).toEqual(["Giant:Cake"]);
+
+    await reorderLists([other, list]);
+    expect((await shoppingBoard(NOW)).lists.map((x) => x.name).slice(0, 2)).toEqual(["Other", "Party"]);
+    await deleteList(list);
+    await deleteList(other);
+  });
+
+  it("saves a list as a template (same name replaces) and starts lists from it", async () => {
+    const list = await createList({ name: "Camping" });
+    await addShoppingItem({ name: "Marshmallows", store: "Target", listId: list });
+    await addShoppingItem({ name: "Water", store: "Costco", quantity: "2", listId: list });
+    const t1 = await saveListAsTemplate(list, "Camping");
+    await addShoppingItem({ name: "Ice", store: "Costco", listId: list });
+    const t2 = await saveListAsTemplate(list, "Camping");
+    expect(t2).toBe(t1);
+    const tpl = (await listTemplates()).find((t) => t.id === t1)!;
+    expect(tpl.stores).toEqual([
+      { store: "Target", items: [{ name: "Marshmallows", quantity: null }] },
+      { store: "Costco", items: [{ name: "Water", quantity: "2" }, { name: "Ice", quantity: null }] },
+    ]);
+    const copy = await createList({ templateId: t1 });
+    const l = (await shoppingBoard(NOW)).lists.find((x) => x.id === copy)!;
+    expect(items(l)).toEqual(["Target:Marshmallows", "Costco:Water", "Costco:Ice"]);
+    expect((await shoppingBoard(NOW)).stores).toContain("Russian store");
+
+    await deleteTemplate(t1);
+    await deleteList(list);
+    await deleteList(copy);
+  });
+
+  it("a bare add goes to the first active list, creating one when there is none", async () => {
+    const id = await addShoppingItem({ name: "Batteries", store: "Target" }, NOW);
+    const board = await shoppingBoard(NOW);
+    expect(board.lists.map((l) => [l.name, items(l)])).toEqual([["Shopping", ["Target:Batteries"]]]);
+    expect(openItemCount(board)).toBe(1);
+    expect(storeItemsToBuy(board, "Target")).toEqual([{ name: "Batteries", quantity: null }]);
     await setShoppingChecked(id, true, new Date("2026-11-20T10:00:00Z"));
+  });
+
+  it("housekeeping clears ticked items after 12 hours, and a list left empty", async () => {
     expect((await runHousekeeping(new Date("2026-11-20T21:00:00Z"))).shoppingCleared).toBe(0);
     expect((await runHousekeeping(new Date("2026-11-20T23:00:00Z"))).shoppingCleared).toBe(1);
+    expect((await shoppingBoard(NOW)).lists).toEqual([]);
   });
 });
 

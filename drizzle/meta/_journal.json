@@ -71,6 +71,20 @@
       "when": 1795617547527,
       "tag": "0009_kiosk_two_way_calendar",
       "breakpoints": true
+    },
+    {
+      "idx": 10,
+      "version": "7",
+      "when": 1795622971892,
+      "tag": "0010_shopping_lists",
+      "breakpoints": true
+    },
+    {
+      "idx": 11,
+      "version": "7",
+      "when": 1795622976226,
+      "tag": "0011_shopping_lists_finish",
+      "breakpoints": true
     }
   ]
 }

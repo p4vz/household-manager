@@ -1,27 +1,26 @@
 import "server-only";
-import { and, asc, eq, gte, inArray, isNotNull, isNull, lt, ne, or, sql } from "drizzle-orm";
+import { and, asc, eq, gte, inArray, isNull, lt, ne, or, sql } from "drizzle-orm";
 import { db } from "@/core/db/client";
 import { householdTimeZone } from "@/core/time/zoned";
 import { assertNoCardNumber } from "./guard";
+import { clearBoughtItems } from "./shopping";
 import {
   familyChoreCompletions,
   familyChores,
   familyKids,
   familyPurchaseReturns,
-  familyShoppingItems,
 } from "./schema";
 import { computeKidStats, type KidStats } from "./stats";
 import { addDays, bucketFor, dayBucket, householdToday, weekBucket, type Recurrence } from "./time";
 
 /**
  * Family hub public API: kids' chores with completion history, shopping
- * lists by store, and purchase returns. Used by the kitchen kiosk and the
+ * lists (stores, templates, deferral; see shopping.ts), and purchase returns. Used by the kitchen kiosk and the
  * phone view (app routes) only; other modules have no need for it yet.
  */
 export const RECURRENCES = ["daily", "weekly", "once"] as const satisfies readonly Recurrence[];
 export const RETURN_STATUSES = ["pending", "packed_in_car", "returned"] as const;
 export type ReturnStatus = (typeof RETURN_STATUSES)[number];
-export const DEFAULT_STORES = ["Costco", "Trader Joe's", "Giant", "Acme", "Target"] as const;
 export const CHORE_ICONS = ["🛏️", "🦷", "🧸", "🍽️", "🐶", "📚", "🧺", "🗑️", "🌱", "👕", "🎒", "🚿", "🎹", "🧹", "🥪", "✏️"] as const;
 export const KID_COLORS = ["#2563eb", "#db2777", "#16a34a", "#ea580c", "#7c3aed", "#0891b2"] as const;
 
@@ -219,87 +218,37 @@ export async function choreBoard(now = new Date()): Promise<BoardKid[]> {
 
 // ------------------------------------------------------------ shopping ----
 
-export type ShoppingItem = {
-  id: string;
-  name: string;
-  store: string;
-  quantity: string | null;
-  isStaple: boolean;
-  checked: boolean;
-};
-
-export async function listShopping(): Promise<ShoppingItem[]> {
-  return db()
-    .select({
-      id: familyShoppingItems.id,
-      name: familyShoppingItems.name,
-      store: familyShoppingItems.store,
-      quantity: familyShoppingItems.quantity,
-      isStaple: familyShoppingItems.isStaple,
-      checked: familyShoppingItems.checked,
-    })
-    .from(familyShoppingItems)
-    .orderBy(asc(familyShoppingItems.store), asc(familyShoppingItems.checked), asc(familyShoppingItems.createdAt));
-}
-
-/** Stores in use, defaults first. */
-export async function listStores(): Promise<string[]> {
-  const rows = await db().selectDistinct({ store: familyShoppingItems.store }).from(familyShoppingItems);
-  const used = rows.map((r) => r.store).filter((s) => !(DEFAULT_STORES as readonly string[]).includes(s)).sort();
-  return [...DEFAULT_STORES, ...used];
-}
-
-export async function addShoppingItem(input: { name: string; store: string; quantity?: string | null; isStaple?: boolean }) {
-  const [row] = await db()
-    .insert(familyShoppingItems)
-    .values({
-      name: input.name.trim().slice(0, 80),
-      store: input.store.trim().slice(0, 40),
-      quantity: input.quantity?.trim().slice(0, 20) || null,
-      isStaple: input.isStaple ?? false,
-    })
-    .returning({ id: familyShoppingItems.id });
-  return row.id;
-}
-
-export async function setShoppingChecked(id: string, checked: boolean, now = new Date()) {
-  await db()
-    .update(familyShoppingItems)
-    .set({ checked, checkedAt: checked ? now : null })
-    .where(eq(familyShoppingItems.id, id));
-}
-
-export async function deleteShoppingItem(id: string) {
-  await db().delete(familyShoppingItems).where(eq(familyShoppingItems.id, id));
-}
-
-export async function setStaple(id: string, isStaple: boolean) {
-  await db().update(familyShoppingItems).set({ isStaple }).where(eq(familyShoppingItems.id, id));
-}
-
-/**
- * "Restock Default Staples": every staple goes back on the list (unchecked),
- * and bought one-time items are cleared. Optionally for one store only.
- */
-export async function restockStaples(store?: string) {
-  const inStore = store ? eq(familyShoppingItems.store, store) : undefined;
-  await db()
-    .update(familyShoppingItems)
-    .set({ checked: false, checkedAt: null })
-    .where(and(eq(familyShoppingItems.isStaple, true), inStore));
-  await db()
-    .delete(familyShoppingItems)
-    .where(and(eq(familyShoppingItems.isStaple, false), eq(familyShoppingItems.checked, true), inStore));
-}
-
-/** Unchecked items for one store, for the printed list. */
-export async function storeListForPrint(store: string) {
-  return db()
-    .select({ name: familyShoppingItems.name, quantity: familyShoppingItems.quantity, isStaple: familyShoppingItems.isStaple })
-    .from(familyShoppingItems)
-    .where(and(eq(familyShoppingItems.store, store), eq(familyShoppingItems.checked, false)))
-    .orderBy(asc(familyShoppingItems.isStaple), asc(familyShoppingItems.name));
-}
+export {
+  addShoppingItem,
+  addStore,
+  clearBoughtItems,
+  createList,
+  deferList,
+  deleteList,
+  deleteShoppingItem,
+  deleteTemplate,
+  listTemplates,
+  moveShoppingItem,
+  openItemCount,
+  removeStore,
+  renameList,
+  reorderLists,
+  reorderStores,
+  saveListAsTemplate,
+  setShoppingChecked,
+  shoppingBoard,
+  shoppingRevision,
+  storeItemsToBuy,
+  updateShoppingItem,
+  ShoppingNotFoundError,
+  type ShoppingBoard,
+  type ShoppingItem,
+  type ShoppingList,
+  type ShoppingSection,
+  type ShoppingTemplate,
+  type ShoppingTemplateStore,
+} from "./shopping";
+export { DEFAULT_STORES, itemKey } from "./shopping-core";
 
 // ------------------------------------------------------------- returns ----
 
@@ -369,28 +318,17 @@ export function nextReturnStatus(s: ReturnStatus): ReturnStatus {
 // -------------------------------------------------------- housekeeping ----
 
 /**
- * Hourly tidy-up (cron): bought one-time shopping items disappear 12 hours
- * after they were ticked; returned items are deleted after 30 days. Chores
+ * Hourly tidy-up (cron): ticked shopping items disappear 12 hours after
+ * they were ticked; returned items are deleted after 30 days. Chores
  * need nothing: they reset by period (see time.ts).
  */
 export async function runHousekeeping(now = new Date()) {
-  const boughtBefore = new Date(now.getTime() - 12 * 3_600_000);
-  const shopping = await db()
-    .delete(familyShoppingItems)
-    .where(
-      and(
-        eq(familyShoppingItems.isStaple, false),
-        eq(familyShoppingItems.checked, true),
-        isNotNull(familyShoppingItems.checkedAt),
-        lt(familyShoppingItems.checkedAt, boughtBefore),
-      ),
-    )
-    .returning({ id: familyShoppingItems.id });
+  const shoppingCleared = await clearBoughtItems(now);
   const returns = await db()
     .delete(familyPurchaseReturns)
     .where(and(eq(familyPurchaseReturns.status, "returned"), lt(familyPurchaseReturns.returnedAt, new Date(now.getTime() - 30 * 86_400_000))))
     .returning({ id: familyPurchaseReturns.id });
-  return { shoppingCleared: shopping.length, returnsCleared: returns.length };
+  return { shoppingCleared, returnsCleared: returns.length };
 }
 
 /** Today's date in household time (for deadlines and labels). */

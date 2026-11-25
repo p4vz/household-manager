@@ -5,7 +5,7 @@ import { ChoreBoard, type BoardKidView } from "./chore-board";
 import { field, tap } from "./kit";
 import { PrintTodayButtons } from "./print-today";
 import { ReturnsPanel, type ReturnView } from "./returns-panel";
-import { ShoppingPanel, type ShoppingItemView } from "./shopping-panel";
+import { ShoppingPanel, type ShoppingActions, type ShoppingBoard, type ShoppingMemberActions } from "./shopping-panel";
 import { UpkeepPanel, type UpkeepView } from "./upkeep-panel";
 import type { AgendaDayView } from "./calendar-panel";
 import type { EventActions } from "./event-modal";
@@ -16,9 +16,8 @@ type Fn<I, O = void> = (input: I) => Promise<O>;
 export type FamilyPhoneActions = {
   setChoreDone: Fn<{ choreId: string; done: boolean }>;
   addOneTimeChore: Fn<{ kidId: string; title: string; icon?: string }>;
-  addShopping: Fn<{ name: string; store: string; quantity?: string }>;
-  setShoppingChecked: Fn<{ id: string; checked: boolean }>;
-  restock: Fn<{ store?: string }>;
+  shopping: ShoppingActions;
+  shoppingMember: ShoppingMemberActions;
   addReturn: Fn<{ itemName: string; store: string; returnDeadline?: string; notes?: string; orderRef?: string }, { error: string | null }>;
   setReturnStatus: Fn<{ id: string; status: ReturnView["status"] }>;
   completeUpkeep: Fn<{ taskId: string }>;
@@ -26,9 +25,6 @@ export type FamilyPhoneActions = {
   removeKid: Fn<{ id: string }>;
   addChore: Fn<{ kidId: string; title: string; icon: string; recurrence: "daily" | "weekly" | "once"; stars: number }>;
   archiveChore: Fn<{ id: string }>;
-  addStaple: Fn<{ name: string; store: string; quantity?: string }>;
-  setStaple: Fn<{ id: string; isStaple: boolean }>;
-  deleteShopping: Fn<{ id: string }>;
   deleteReturn: Fn<{ id: string }>;
   calendar: EventActions;
   syncCalendar: () => Promise<{ ok: boolean; message: string | null }>;
@@ -52,17 +48,20 @@ export function FamilyPhone({
   returns,
   upkeep,
   today,
+  todayIso,
   calendar,
   dateLabel,
   icons,
   actions,
 }: {
   kids: BoardKidView[];
-  shopping: ShoppingItemView[];
+  shopping: ShoppingBoard;
   stores: string[];
   returns: ReturnView[];
   upkeep: UpkeepView[];
   today: AgendaDayView | undefined;
+  /** Household date, YYYY-MM-DD. */
+  todayIso: string;
   calendar: PhoneCalendarView;
   dateLabel: string;
   icons: readonly string[];
@@ -100,28 +99,7 @@ export function FamilyPhone({
         {tab === "calendar" ? (
           <PhoneCalendar {...calendar} actions={actions.calendar} sync={actions.syncCalendar} />
         ) : tab === "shopping" ? (
-          <ShoppingPanel
-            items={shopping}
-            stores={stores}
-            dateLabel={dateLabel}
-            actions={{ setChecked: actions.setShoppingChecked, add: actions.addShopping, restock: actions.restock }}
-            manage={(i) => (
-              <>
-                <button
-                  type="button"
-                  aria-label={i.isStaple ? "Make one-time" : "Make staple"}
-                  title={i.isStaple ? "Staple (tap to make one-time)" : "One-time (tap to make a staple)"}
-                  className={`${tap} px-2 ${i.isStaple ? "text-amber-500" : "opacity-40"}`}
-                  onClick={() => startTransition(() => actions.setStaple({ id: i.id, isStaple: !i.isStaple }))}
-                >
-                  ★
-                </button>
-                <button type="button" aria-label="Delete" className={`${tap} px-2 opacity-60`} onClick={() => startTransition(() => actions.deleteShopping({ id: i.id }))}>
-                  🗑
-                </button>
-              </>
-            )}
-          />
+          <ShoppingPanel board={shopping} today={todayIso} dateLabel={dateLabel} actions={actions.shopping} member={actions.shoppingMember} />
         ) : tab === "chores" ? (
           <ChoreBoard kids={kids} icons={icons} layout="phone" actions={{ setDone: actions.setChoreDone, addOneTime: actions.addOneTimeChore }} />
         ) : tab === "returns" ? (
@@ -141,17 +119,16 @@ export function FamilyPhone({
             <a href="/maintenance" className="text-center text-sm underline">Add or edit upkeep tasks</a>
           </div>
         ) : (
-          <Setup kids={kids} stores={stores} icons={icons} actions={actions} />
+          <Setup kids={kids} icons={icons} actions={actions} />
         )}
       </div>
     </div>
   );
 }
 
-function Setup({ kids, stores, icons, actions }: { kids: BoardKidView[]; stores: string[]; icons: readonly string[]; actions: FamilyPhoneActions }) {
+function Setup({ kids, icons, actions }: { kids: BoardKidView[]; icons: readonly string[]; actions: FamilyPhoneActions }) {
   const [kidName, setKidName] = useState("");
   const [chore, setChore] = useState({ kidId: kids[0]?.id ?? "", title: "", icon: icons[0], recurrence: "daily" as "daily" | "weekly" | "once", stars: 1 });
-  const [staple, setStapleForm] = useState({ name: "", store: stores[0] ?? "" });
 
   return (
     <div className="h-full space-y-6 overflow-y-auto pb-8">
@@ -243,28 +220,9 @@ function Setup({ kids, stores, icons, actions }: { kids: BoardKidView[]; stores:
         </section>
       ) : null}
 
-      <section className="space-y-2">
-        <h3 className="text-lg font-semibold">Default staples</h3>
-        <p className="text-sm opacity-70">Staples stay on the grocery list. &quot;Restock&quot; puts them all back. Tap ★ on any item to switch.</p>
-        <form
-          className="flex flex-wrap gap-2"
-          onSubmit={(e) => {
-            e.preventDefault();
-            if (!staple.name.trim() || !staple.store) return;
-            const input = { name: staple.name.trim(), store: staple.store };
-            setStapleForm({ ...staple, name: "" });
-            startTransition(() => actions.addStaple(input));
-          }}
-        >
-          <input className={`${field} min-w-0 flex-1`} placeholder="Staple (Milk)" maxLength={80} value={staple.name} onChange={(e) => setStapleForm({ ...staple, name: e.target.value })} />
-          <input className={`${field} w-36`} list="staple-stores" placeholder="Store" maxLength={40} value={staple.store} onChange={(e) => setStapleForm({ ...staple, store: e.target.value })} />
-          <datalist id="staple-stores">
-            {stores.map((s) => (
-              <option key={s} value={s} />
-            ))}
-          </datalist>
-          <button className={`${tap} bg-sky-600 text-white`} type="submit">Add</button>
-        </form>
+      <section className="space-y-1">
+        <h3 className="text-lg font-semibold">Shopping templates</h3>
+        <p className="text-sm opacity-70">Templates start new lists (Shop tab, ＋ List). Save any list as one from its ⋯ menu; delete them at the bottom of the Shop tab.</p>
       </section>
     </div>
   );

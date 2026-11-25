@@ -259,8 +259,20 @@ same lists plus setup. Both are thin pages over module APIs:
 
 - **family** owns `family_kids`, `family_chores`,
   `family_chore_completions` (`kid_id`, `chore_id`, `completed_at`,
-  `date_bucket`, `stars`), `family_shopping_items` and
+  `date_bucket`, `stars`), the shopping tables and
   `family_purchase_returns`.
+- **Shopping lists** (`family/shopping.ts`): `family_shopping_lists`
+  (ordered, optional `deferred_until`) hold `family_shopping_sections` (one
+  per store, ordered), which hold `family_shopping_items` (ordered tiles).
+  `family_shopping_templates` + `_template_items` start new lists; any list
+  can be saved as one (same name replaces). Ticking an item ticks every
+  item with the same name (`itemKey()`: case, spacing and punctuation
+  ignored) on every list that is not deferred, all with one `checked_at`,
+  so un-ticking undoes that group. A deferred list is simply filtered out
+  until its date. The shopping UI keeps its own state: each action answers
+  with the whole board, and every screen polls `syncShoppingAction` every
+  3 s, which reads one revision counter (`family_shopping_revision`, bumped
+  by every change) and only returns the board when it moved.
 - **Chore resets need no job.** A completion is stored against its period:
   the chore day (4 AM `America/New_York` rollover) for daily and one-time
   chores, the Monday of the chore week for weekly ones (rolls over Monday
@@ -276,8 +288,8 @@ same lists plus setup. Both are thin pages over module APIs:
   `kioskCalendar()`, which merges Google events with household entries
   (trips, events typed by hand; never finance reminders).
 - **Live updates** without new HTTP routes: the kiosk calls
-  `router.refresh()` every 30 s while visible, and every action
-  revalidates `/kiosk` and `/family`.
+  `router.refresh()` every 30 s while visible, and every action except
+  shopping (see above) revalidates `/kiosk` and `/family`.
 - **Printing** (`src/lib/thermal/`): `receipt.ts` lays out 32-column text
   and encodes ESC/POS (bold, centre, double size, divider, `[ ]`
   checkboxes, feed and cut); `thermalPrinter.ts` writes it over Web
@@ -286,8 +298,8 @@ same lists plus setup. Both are thin pages over module APIs:
   Firefox) or on failure, a 58 mm print preview goes through the browser
   print dialog.
 - Cron `/api/cron/family-hub` (hourly) refreshes Google events and clears
-  bought one-time shopping items after 12 hours and returned items after 30
-  days.
+  ticked shopping items after 12 hours (and a list left empty by that) and
+  returned items after 30 days.
 
 ## Database
 

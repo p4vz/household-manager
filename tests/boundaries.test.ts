@@ -146,9 +146,11 @@ describe("external surface", () => {
   });
 
   it("kiosk actions never wrap anything that deletes data or reads money", () => {
-    const src = readFileSync(join(SRC, "app/kiosk/actions.ts"), "utf8");
-    expect(src).not.toMatch(/authedAction\(/);
-    expect(src).not.toMatch(/delete|remove|archive|finance|trips/i);
+    for (const f of ["app/kiosk/actions.ts", "app/kiosk/shopping-actions.ts"]) {
+      const src = readFileSync(join(SRC, f), "utf8");
+      expect(src, f).not.toMatch(/authedAction\(/);
+      expect(src, f).not.toMatch(/delete|remove|archive|finance|trips/i);
+    }
   });
 
   it("kiosk calendar actions delete nothing but family calendar events", () => {
