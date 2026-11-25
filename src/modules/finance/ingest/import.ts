@@ -4,7 +4,15 @@ import { bus } from "@/core/bus";
 import { db } from "@/core/db/client";
 import { financeAccounts, financeTransactions } from "../schema";
 import { learnRules } from "./categorize";
-import { assignExternalIds, parseSimplifiCsv, summarizeByAccount, type CsvRow } from "./csv";
+import {
+  assignExternalIds,
+  parseSimplifiCsv,
+  summarizeByAccount,
+  summarizeSkipped,
+  type CsvColumns,
+  type CsvRow,
+  type SkipSummary,
+} from "./csv";
 import { guessAccountKind } from "./merchant";
 
 /** "new" creates a CSV-only account named after the CSV account. */
@@ -13,6 +21,11 @@ export type AccountMapping = Record<string, string | "new" | "skip">;
 export type ImportPreview = {
   accounts: (ReturnType<typeof summarizeByAccount>[number] & { suggestedAccountId: string | null })[];
   skippedLines: number;
+  /** Why lines were skipped, grouped by reason, so a bad export is easy to diagnose. */
+  skipReasons: SkipSummary[];
+  /** CSV header each field is read from. */
+  columns: CsvColumns;
+  readableRows: number;
   existingAccounts: { id: string; name: string; simplefinStartDate: string | null }[];
 };
 
@@ -27,7 +40,7 @@ async function existingAccounts() {
 }
 
 export async function previewCsvImport(text: string): Promise<ImportPreview> {
-  const { rows, skipped } = parseSimplifiCsv(text);
+  const { rows, skipped, columns } = parseSimplifiCsv(text);
   const accounts = await existingAccounts();
   const norm = (s: string) => s.toLowerCase().replace(/[^a-z0-9]/g, "");
   return {
@@ -37,6 +50,9 @@ export async function previewCsvImport(text: string): Promise<ImportPreview> {
         accounts.find((a) => norm(a.name) === norm(s.name) || norm(a.bankName) === norm(s.name))?.id ?? null,
     })),
     skippedLines: skipped.length,
+    skipReasons: summarizeSkipped(skipped),
+    columns,
+    readableRows: rows.length,
     existingAccounts: accounts.map(({ id, name, simplefinStartDate }) => ({ id, name, simplefinStartDate })),
   };
 }
@@ -46,6 +62,7 @@ export type ImportResult = {
   alreadyPresent: number;
   coveredBySimplefin: number;
   skippedLines: number;
+  skipReasons: SkipSummary[];
 };
 
 /**
@@ -56,7 +73,13 @@ export async function commitCsvImport(text: string, mapping: AccountMapping): Pr
   const { rows, skipped } = parseSimplifiCsv(text);
   const accounts = await existingAccounts();
   const byId = new Map(accounts.map((a) => [a.id, a]));
-  const result: ImportResult = { inserted: 0, alreadyPresent: 0, coveredBySimplefin: 0, skippedLines: skipped.length };
+  const result: ImportResult = {
+    inserted: 0,
+    alreadyPresent: 0,
+    coveredBySimplefin: 0,
+    skippedLines: skipped.length,
+    skipReasons: summarizeSkipped(skipped),
+  };
 
   const grouped = new Map<string, CsvRow[]>();
   for (const r of rows) grouped.set(r.account, [...(grouped.get(r.account) ?? []), r]);
