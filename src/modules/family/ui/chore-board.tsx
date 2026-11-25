@@ -2,7 +2,7 @@
 
 import { startTransition, useOptimistic, useState } from "react";
 import { GoalStrip, type KidProgressView } from "./goal-strip";
-import { Modal, ProgressBar, field, tap } from "./kit";
+import { Modal, field, tap } from "./kit";
 
 export type BoardChoreView = { id: string; title: string; icon: string; recurrence: "daily" | "weekly" | "once"; stars: number; done: boolean };
 export type BoardKidView = {
@@ -11,7 +11,7 @@ export type BoardKidView = {
   color: string;
   emoji: string;
   chores: BoardChoreView[];
-  stats: { todayDone: number; todayTotal: number; weekPercent: number; streak: number; starsWeek: number; starsTotal: number };
+  stats: { todayDone: number; todayTotal: number; weekPercent: number; weekDone: number; weekTotal: number; streak: number; starsWeek: number; starsTotal: number };
 };
 
 type Actions = {
@@ -46,10 +46,18 @@ export function ChoreBoard({
       return {
         ...k,
         chores,
-        stats: { ...k.stats, todayDone: k.stats.todayDone + delta, starsWeek: k.stats.starsWeek + starDelta, starsTotal: k.stats.starsTotal + starDelta },
+        stats: {
+          ...k.stats,
+          todayDone: k.stats.todayDone + delta,
+          weekDone: k.stats.weekDone + delta,
+          starsWeek: k.stats.starsWeek + starDelta,
+          starsTotal: k.stats.starsTotal + starDelta,
+        },
       };
     }),
   );
+  // Ticks move the kid's points at once too (the star bank comes from the server).
+  const starDeltas = new Map(board.map((k) => [k.id, k.stats.starsTotal - (kids.find((x) => x.id === k.id)?.stats.starsTotal ?? k.stats.starsTotal)]));
   const [confirmUndo, setConfirmUndo] = useState<BoardChoreView | null>(null);
   const [adding, setAdding] = useState(false);
 
@@ -70,51 +78,48 @@ export function ChoreBoard({
 
   return (
     <div className="flex h-full min-h-0 flex-col gap-2">
-      <div className={`grid min-h-0 flex-1 gap-3 ${layout === "phone" ? "grid-cols-1" : ""}`} style={layout === "kiosk" ? { gridTemplateColumns: `repeat(auto-fit, minmax(min(100%, 15rem), 1fr))`, overflowY: "auto" } : undefined}>
+      <div className={`grid min-h-0 flex-1 gap-2 ${layout === "phone" ? "grid-cols-1" : ""}`} style={layout === "kiosk" ? { gridTemplateColumns: `repeat(auto-fit, minmax(min(100%, 13rem), 1fr))`, overflowY: "auto" } : undefined}>
         {board.map((kid) => (
-          <section key={kid.id} className="flex min-h-0 flex-col rounded-2xl border-4 bg-white p-3 dark:bg-slate-900" style={{ borderColor: kid.color }}>
-            <header className="mb-2 space-y-1">
-              <div className="flex items-center justify-between gap-2">
-                <h3 className="truncate text-2xl font-bold" style={{ color: kid.color }}>
+          <section key={kid.id} className="flex min-h-0 flex-col rounded-2xl border-[3px] bg-white p-2 dark:bg-slate-900" style={{ borderColor: kid.color }}>
+            <header className="mb-1.5 space-y-1">
+              <div className="flex items-baseline justify-between gap-2">
+                <h3 className="truncate text-xl font-bold leading-tight" style={{ color: kid.color }}>
                   {kid.emoji} {kid.name}
                 </h3>
-                <span className="shrink-0 text-xl font-bold" aria-label={`${kid.stats.starsWeek} stars this week`}>
-                  ⭐ {kid.stats.starsWeek}
-                </span>
+                {kid.stats.streak > 0 ? (
+                  <span className="shrink-0 text-sm font-semibold" aria-label={`${kid.stats.streak} day streak`}>
+                    🔥 {kid.stats.streak}
+                  </span>
+                ) : null}
               </div>
-              <ProgressBar value={kid.stats.todayTotal ? kid.stats.todayDone / kid.stats.todayTotal : 0} color={kid.color} />
-              <div className="flex justify-between text-sm font-medium opacity-80">
-                <span>
-                  {kid.stats.todayDone}/{kid.stats.todayTotal} today
-                </span>
-                <span>🔥 {kid.stats.streak} day{kid.stats.streak === 1 ? "" : "s"}</span>
-                <span>{kid.stats.weekPercent}% week</span>
+              <div className="text-sm font-medium opacity-80">
+                ⭐ {pointsOf(kid, progress, starDeltas)} points, {kid.stats.weekDone}/{kid.stats.weekTotal} this week
               </div>
               {progress?.[kid.id] ? <GoalStrip progress={progress[kid.id]} color={kid.color} /> : null}
             </header>
-            <ul className="min-h-0 flex-1 space-y-2 overflow-y-auto overscroll-contain">
+            <ul className="min-h-0 flex-1 space-y-1.5 overflow-y-auto overscroll-contain">
               {kid.chores.map((c) => (
                 <li key={c.id}>
                   <button
                     type="button"
                     onClick={() => (c.done ? setConfirmUndo(c) : set(c.id, true))}
-                    className={`flex min-h-16 w-full items-center gap-3 rounded-xl border-2 px-3 py-2 text-left transition-colors active:scale-[0.98] ${
+                    className={`flex min-h-12 w-full items-center gap-2 rounded-lg border-2 px-2 py-1 text-left transition-colors active:scale-[0.98] ${
                       c.done
                         ? "border-emerald-500 bg-emerald-50 dark:bg-emerald-950"
                         : "border-slate-200 bg-slate-50 dark:border-slate-700 dark:bg-slate-800"
                     }`}
                   >
-                    <span className="text-4xl leading-none" aria-hidden>
+                    <span className="text-2xl leading-none" aria-hidden>
                       {c.icon}
                     </span>
-                    <span className={`flex-1 text-lg font-semibold leading-tight ${c.done ? "line-through opacity-60" : ""}`}>
+                    <span className={`min-w-0 flex-1 text-base font-semibold leading-tight ${c.done ? "line-through opacity-60" : ""}`}>
                       {c.title}
                       {c.recurrence !== "daily" ? (
-                        <span className="ml-2 align-middle text-xs font-medium uppercase opacity-60">{c.recurrence === "weekly" ? "this week" : "today"}</span>
+                        <span className="ml-1.5 align-middle text-[10px] font-medium uppercase opacity-60">{c.recurrence === "weekly" ? "this week" : "today"}</span>
                       ) : null}
                     </span>
                     <span
-                      className={`flex h-11 w-11 shrink-0 items-center justify-center rounded-full border-4 text-2xl font-black ${
+                      className={`flex h-9 w-9 shrink-0 items-center justify-center rounded-full border-[3px] text-xl font-black ${
                         c.done ? "border-emerald-500 bg-emerald-500 text-white" : "border-slate-300 dark:border-slate-600"
                       }`}
                       aria-label={c.done ? "Done" : "Not done"}
@@ -157,6 +162,12 @@ export function ChoreBoard({
       {adding ? <AddOneTimeChore kids={board} icons={icons} onClose={() => setAdding(false)} add={actions.addOneTime} /> : null}
     </div>
   );
+}
+
+/** Points = stars saved in the star bank (spent on prizes), else stars earned in all. */
+function pointsOf(kid: BoardKidView, progress: Record<string, KidProgressView> | undefined, deltas: Map<string, number>): number {
+  const bank = progress?.[kid.id]?.stars;
+  return bank ? Math.max(0, bank.saved + (deltas.get(kid.id) ?? 0)) : kid.stats.starsTotal;
 }
 
 function AddOneTimeChore({

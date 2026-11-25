@@ -32,6 +32,9 @@ import {
   orderLists,
   orderStores,
   plusDays,
+  flatListTitle,
+  isWeeklyList,
+  nextWeekStart,
   removeLocal,
   sectionOfItem,
   toggleItem,
@@ -400,6 +403,10 @@ export function ShoppingPanel({
               onUp={li > 0 ? () => listsUp(list.id, -1) : undefined}
               onDown={li < board.lists.length - 1 ? () => listsUp(list.id, 1) : undefined}
               onMenu={() => setMenuFor(list.id)}
+              flat={list.sections.length === 1 && !editing}
+              onDismissWeek={
+                isWeeklyList(list.name) ? () => void run((b) => deferLocal(b, list.id, nextWeekStart(today), today), () => actions.deferList({ id: list.id, until: nextWeekStart(today) })) : undefined
+              }
             >
               <SortableContext items={list.sections.map((s) => `store:${s.id}`)} strategy={verticalListSortingStrategy}>
                 {list.sections.map((s, si) => (
@@ -419,6 +426,7 @@ export function ShoppingPanel({
                     onDeleteItem={member ? (id) => void run((b) => removeLocal(b, { itemId: id }), () => member.deleteItem({ id })) : undefined}
                     onRemove={member ? () => void run((b) => removeLocal(b, { sectionId: s.id }), () => member.removeStore({ id: s.id })) : undefined}
                     draggingId={dragging?.id ?? null}
+                    bare={list.sections.length === 1 && !editing}
                   />
                 ))}
               </SortableContext>
@@ -514,7 +522,7 @@ function QuickAdd({ board, onAdd, onNewList, children }: { board: ShoppingBoard;
   const storeValue = store || list?.sections[0]?.store || board.stores[0] || "";
   return (
     <form
-      className="flex min-w-0 items-center gap-1.5"
+      className="flex min-w-0 flex-wrap items-center gap-1.5"
       onSubmit={(e) => {
         e.preventDefault();
         const n = name.trim();
@@ -524,15 +532,15 @@ function QuickAdd({ board, onAdd, onNewList, children }: { board: ShoppingBoard;
         onAdd({ name: n, store: s, listId: list.id });
       }}
     >
-      <input className={`${compactField} min-w-0 flex-[2]`} placeholder="Add item…" value={name} maxLength={80} onChange={(e) => setName(e.target.value)} disabled={!list} />
-      <input className={`${compactField} w-24 min-w-0 flex-1`} list="shopping-stores" placeholder="Store" aria-label="Store" value={storeValue} maxLength={40} onChange={(e) => setStore(e.target.value)} disabled={!list} />
+      <input className={`${compactField} min-w-0 flex-[2_1_9rem]`} placeholder="Add item…" value={name} maxLength={80} onChange={(e) => setName(e.target.value)} disabled={!list} />
+      <input className={`${compactField} min-w-0 flex-[1_1_7.5rem]`} list="shopping-stores" placeholder="Store" aria-label="Store" value={storeValue} maxLength={40} onChange={(e) => setStore(e.target.value)} disabled={!list} />
       <datalist id="shopping-stores">
         {board.stores.map((s) => (
           <option key={s} value={s} />
         ))}
       </datalist>
       {board.lists.length > 1 ? (
-        <select className={`${compactField} w-24 min-w-0 shrink`} value={list?.id} onChange={(e) => setListId(e.target.value)} aria-label="List">
+        <select className={`${compactField} min-w-0 flex-[1_1_9rem]`} value={list?.id} onChange={(e) => setListId(e.target.value)} aria-label="List">
           {board.lists.map((l) => (
             <option key={l.id} value={l.id}>
               {l.name}
@@ -560,6 +568,8 @@ function ListCard({
   onUp,
   onDown,
   onMenu,
+  flat,
+  onDismissWeek,
   children,
 }: {
   list: ShoppingList;
@@ -568,29 +578,39 @@ function ListCard({
   onUp?: () => void;
   onDown?: () => void;
   onMenu: () => void;
+  /** One store: its items sit right under the list, with no store header. */
+  flat: boolean;
+  /** Weekly lists: hide until next Monday. */
+  onDismissWeek?: () => void;
   children: ReactNode;
 }) {
   const left = list.sections.reduce((n, s) => n + openCount(s), 0);
+  const title = flat ? flatListTitle(list.name, list.sections[0].store) : list.name;
   return (
-    <section className="rounded-2xl border border-slate-200 bg-slate-50 p-2">
+    <section className="rounded-xl border border-slate-200 bg-slate-50 p-1.5">
       <div className="flex items-center gap-1">
-        <button type="button" onClick={onToggle} aria-expanded={!collapsed} className="flex min-h-12 flex-1 items-center gap-2 rounded-xl px-1 text-left">
-          <span className="w-6 text-lg">{collapsed ? "▸" : "▾"}</span>
-          <span className="text-xl font-bold">{list.name}</span>
-          <span className="rounded-full bg-slate-200 px-2 text-sm">{left}</span>
+        <button type="button" onClick={onToggle} aria-expanded={!collapsed} className="flex min-h-10 min-w-0 flex-1 items-center gap-1.5 rounded-lg px-1 text-left">
+          <span className="w-4 text-sm">{collapsed ? "▸" : "▾"}</span>
+          <span className="truncate text-base font-bold">{title}</span>
+          <span className="shrink-0 rounded-full bg-slate-200 px-1.5 text-xs">{left}</span>
         </button>
-        <Arrows onUp={onUp} onDown={onDown} label={list.name} />
-        <button type="button" className={`${tap} px-3 text-xl`} onClick={onMenu} aria-label={`${list.name} options`}>
+        {onDismissWeek ? (
+          <button type="button" className="min-h-10 shrink-0 rounded-lg border border-slate-300 bg-white px-2 text-xs font-medium active:scale-95" onClick={onDismissWeek}>
+            Dismiss for this week
+          </button>
+        ) : null}
+        <Arrows onUp={onUp} onDown={onDown} label={title} />
+        <button type="button" className="flex h-10 w-9 shrink-0 items-center justify-center rounded-lg text-lg active:scale-95" onClick={onMenu} aria-label={`${title} options`}>
           ⋯
         </button>
       </div>
-      {collapsed ? null : <div className="mt-1 space-y-2">{children}</div>}
+      {collapsed ? null : <div className="mt-1 space-y-1.5">{children}</div>}
     </section>
   );
 }
 
 function Arrows({ onUp, onDown, label }: { onUp?: () => void; onDown?: () => void; label: string }) {
-  const btn = "flex h-12 w-10 items-center justify-center rounded-lg text-lg active:scale-95 disabled:opacity-20";
+  const btn = "flex h-10 w-8 items-center justify-center rounded-lg text-sm active:scale-95 disabled:opacity-20";
   return (
     <span className="flex">
       <button type="button" className={btn} onClick={onUp} disabled={!onUp} aria-label={`Move ${label} up`}>
@@ -620,7 +640,9 @@ function StoreSection({
   onDeleteItem,
   onRemove,
   draggingId,
+  bare = false,
 }: {
+  bare?: boolean;
   list: ShoppingList;
   section: ShoppingSection;
   collapsed: boolean;
@@ -657,20 +679,20 @@ function StoreSection({
       className={`rounded-xl border bg-white ${isDragging ? "opacity-40" : ""} ${isOver && draggingId && !draggingId.startsWith("store:") ? "border-sky-500 ring-2 ring-sky-300" : "border-slate-200"}`}
     >
       <div ref={dropRef}>
-        <div className="flex items-center gap-1 px-1">
+        <div className={`flex items-center gap-1 px-1 ${bare ? "hidden" : ""}`}>
           <button
             type="button"
             ref={handleRef}
             {...handleAttributes}
             {...handleListeners}
-            className="flex h-12 w-9 cursor-grab touch-none items-center justify-center text-xl opacity-50 select-none"
+            className="flex h-10 w-7 cursor-grab touch-none items-center justify-center text-base opacity-50 select-none"
             aria-label={`Drag ${section.store}`}
           >
             ⠿
           </button>
-          <button type="button" onClick={onToggle} aria-expanded={!collapsed} className="flex min-h-12 flex-1 items-center gap-2 text-left">
-            <span className="w-5">{collapsed ? "▸" : "▾"}</span>
-            <span className="text-lg font-semibold">{section.store}</span>
+          <button type="button" onClick={onToggle} aria-expanded={!collapsed} className="flex min-h-10 min-w-0 flex-1 items-center gap-1.5 text-left">
+            <span className="w-4 text-sm">{collapsed ? "▸" : "▾"}</span>
+            <span className="truncate text-base font-semibold">{section.store}</span>
             <span className="text-sm opacity-60">{open.length}</span>
           </button>
           <Arrows onUp={onUp} onDown={onDown} label={section.store} />
@@ -687,8 +709,8 @@ function StoreSection({
             )
           ) : null}
         </div>
-        {collapsed ? null : (
-          <div className="grid grid-cols-[repeat(auto-fill,minmax(8.5rem,1fr))] gap-2 p-2 pt-0">
+        {collapsed && !bare ? null : (
+          <div className={`grid grid-cols-[repeat(auto-fill,minmax(7rem,1fr))] gap-1.5 p-1.5 ${bare ? "" : "pt-0"}`}>
             <SortableContext items={open.map((i) => i.id)} strategy={rectSortingStrategy}>
               {open.map((i) => (
                 <ItemTile key={i.id} item={i} sectionId={section.id} onCheck={onCheck} onDelete={editing ? onDeleteItem : undefined} />
@@ -700,7 +722,7 @@ function StoreSection({
                 key={i.id}
                 type="button"
                 onClick={() => onCheck(i.id, false)}
-                className="relative flex min-h-12 items-center gap-2 rounded-xl bg-slate-100 px-3 text-left text-slate-500 line-through"
+                className="relative flex min-h-10 items-center gap-1.5 rounded-lg bg-slate-100 px-2.5 text-left text-sm text-slate-500 line-through"
               >
                 <span className="text-emerald-600 no-underline">✓</span>
                 <span className="truncate">{i.name}</span>
@@ -741,11 +763,11 @@ function ItemTile({
           onCheck(item.id, true);
         }
       }}
-      className={`relative flex min-h-14 cursor-pointer touch-manipulation items-center rounded-xl border border-slate-300 bg-white px-3 py-2 text-lg font-medium shadow-sm select-none active:bg-sky-50 ${isDragging ? "opacity-30" : ""}`}
+      className={`relative flex min-h-11 cursor-pointer touch-manipulation items-center rounded-lg border border-slate-300 bg-white px-2.5 py-1.5 text-base font-medium leading-tight shadow-sm select-none active:bg-sky-50 ${isDragging ? "opacity-30" : ""}`}
     >
       <span className="break-words">
         {item.name}
-        {item.quantity ? <span className="text-base font-normal opacity-60"> ×{item.quantity}</span> : null}
+        {item.quantity ? <span className="text-sm font-normal opacity-60"> ×{item.quantity}</span> : null}
       </span>
       {onDelete ? <DeleteBadge onClick={() => onDelete(item.id)} /> : null}
     </div>
@@ -775,7 +797,7 @@ function AddTile({ onAdd }: { onAdd: (name: string) => void }) {
   const [name, setName] = useState("");
   if (!open)
     return (
-      <button type="button" onClick={() => setOpen(true)} className="flex min-h-14 items-center justify-center rounded-xl border-2 border-dashed border-slate-300 text-2xl text-slate-400" aria-label="Add item here">
+      <button type="button" onClick={() => setOpen(true)} className="flex min-h-11 items-center justify-center rounded-lg border-2 border-dashed border-slate-300 text-xl text-slate-400" aria-label="Add item here">
         ＋
       </button>
     );

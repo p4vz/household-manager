@@ -42,37 +42,29 @@ export function GoalStrip({ progress, color }: { progress: KidProgressView; colo
   const [showBadges, setShowBadges] = useState(false);
   if (progress.goals.length === 0 && progress.badges.length === 0 && !progress.stars) return null;
   return (
-    <div className="space-y-1.5">
+    <div className="space-y-1">
       {progress.stars ? <StarBankRow bank={progress.stars} color={color} /> : null}
       {progress.goals.map((g) => (
         <div
           key={g.id}
-          className={`rounded-xl border-2 px-2 py-1.5 ${g.reached ? "animate-pulse border-amber-400 bg-amber-50" : "border-slate-200 bg-slate-50 dark:border-slate-700 dark:bg-slate-800"}`}
+          className={`rounded-lg border px-2 py-1 ${g.reached ? "animate-pulse border-amber-400 bg-amber-50" : "border-slate-200 bg-slate-50 dark:border-slate-700 dark:bg-slate-800"}`}
         >
           {g.reached ? (
-            <div className="text-sm font-bold leading-tight text-amber-900">
+            <div className="text-xs font-bold leading-tight text-amber-900">
               🎉 Goal reached! {g.choreIcon} {g.target} {g.unit} · Ask a parent for {g.rewardEmoji} {g.reward}
             </div>
           ) : (
             <>
-              <div className="flex items-center justify-between gap-2 text-sm font-semibold leading-tight">
-                <span className="truncate">
-                  {g.choreIcon} {g.kind === "streak" ? `${g.target} ${g.unit} in a row` : `${g.target} times`}
-                </span>
-                <span className="shrink-0">
-                  {g.progress}/{g.target} → {g.rewardEmoji}
-                </span>
+              <div className="text-xs font-semibold leading-tight" title={goalLabel(g)}>
+                {g.choreIcon} {g.progress}/{g.target} {g.kind === "streak" ? `${g.unit} in a row` : "times"} → {g.rewardEmoji} {g.reward}
               </div>
               <Trail value={g.progress} target={g.target} color={color} />
-              <div className="truncate text-xs opacity-70">
-                {g.target - g.progress} more for {g.reward}
-              </div>
             </>
           )}
         </div>
       ))}
       {progress.badges.length > 0 ? (
-        <button type="button" onClick={() => setShowBadges(true)} className="flex w-full items-center gap-1 text-xl" aria-label="Badges">
+        <button type="button" onClick={() => setShowBadges(true)} className="flex w-full items-center gap-0.5 text-base leading-none" aria-label="Badges">
           {progress.badges.slice(-6).map((b) => (
             <span key={b.key} title={b.label}>
               {b.emoji}
@@ -109,15 +101,15 @@ export function GoalStrip({ progress, color }: { progress: KidProgressView; colo
 function Trail({ value, target, color }: { value: number; target: number; color: string }) {
   if (target > 14) {
     return (
-      <div className="my-1 h-3 w-full overflow-hidden rounded-full bg-slate-200 dark:bg-slate-700">
+      <div className="mt-1 h-1.5 w-full overflow-hidden rounded-full bg-slate-200 dark:bg-slate-700">
         <div className="h-full rounded-full transition-all" style={{ width: `${Math.round((value / target) * 100)}%`, background: color }} />
       </div>
     );
   }
   return (
-    <div className="my-1 flex gap-1" aria-label={`${value} of ${target}`}>
+    <div className="mt-1 flex gap-0.5" aria-label={`${value} of ${target}`}>
       {Array.from({ length: target }, (_, i) => (
-        <span key={i} className="h-3 flex-1 rounded-full" style={{ background: i < value ? color : undefined }} data-on={i < value}>
+        <span key={i} className="h-1.5 flex-1 rounded-full" style={{ background: i < value ? color : undefined }} data-on={i < value}>
           {i < value ? null : <span className="block h-full rounded-full bg-slate-200 dark:bg-slate-700" />}
         </span>
       ))}
@@ -125,30 +117,19 @@ function Trail({ value, target, color }: { value: number; target: number; color:
   );
 }
 
-/** Saved stars and the next prize: "🐷 37 saved · 🍭 ready! · 63 more for 🎁". */
+/** One slim line: the next prize and how far, or "🍭 ready! Ask a parent". Points are on the card's second line. */
 function StarBankRow({ bank, color }: { bank: StarBankView; color: string }) {
   const next = bank.next;
   const share = next ? Math.min(1, bank.saved / next.stars) : 1;
   return (
-    <div className="rounded-xl border-2 border-yellow-300 bg-yellow-50 px-2 py-1.5 text-yellow-950">
-      <div className="flex items-center justify-between gap-2 text-sm font-semibold leading-tight">
-        <span>🐷 {bank.saved} ⭐ saved</span>
-        {next ? (
-          <span className="shrink-0">
-            {next.missing} more → {next.emoji} {next.name}
-          </span>
-        ) : (
-          <span className="shrink-0">Every prize unlocked!</span>
-        )}
+    <div className="rounded-lg border border-yellow-300 bg-yellow-50 px-2 py-1 text-yellow-950">
+      <div className="text-xs font-semibold leading-tight">
+        {bank.best ? `🎉 ${bank.best.emoji} ${bank.best.name} ready! Ask a parent. ` : "🐷 "}
+        {next ? `${next.missing} more → ${next.emoji} ${next.name}` : "Every prize unlocked!"}
       </div>
-      <div className="my-1 h-3 w-full overflow-hidden rounded-full bg-yellow-200">
+      <div className="mt-1 h-1.5 w-full overflow-hidden rounded-full bg-yellow-200">
         <div className="h-full rounded-full transition-all" style={{ width: `${Math.round(share * 100)}%`, background: color }} />
       </div>
-      {bank.best ? (
-        <div className="text-xs font-bold">
-          🎉 {bank.best.emoji} {bank.best.name} ready! Ask a parent, or keep saving.
-        </div>
-      ) : null}
     </div>
   );
 }
