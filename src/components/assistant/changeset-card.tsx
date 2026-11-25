@@ -45,7 +45,7 @@ const FIELD: Record<string, string> = {
   dueDate: "Due",
   estimatedCost: "Estimated cost",
   recurrenceDays: "Repeats every (days)",
-  isStaple: "Staple",
+  list: "List",
   itemName: "Item",
   returnDeadline: "Return by",
   done: "Done",

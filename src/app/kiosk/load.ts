@@ -1,7 +1,7 @@
 import "server-only";
 import { householdTimeZone } from "@/core/time/zoned";
 import { kioskCalendar } from "@/modules/calendar/api";
-import { choreBoard, deadlineUrgency, listReturns, listShopping, listStores } from "@/modules/family/api";
+import { choreBoard, deadlineUrgency, listReturns, shoppingBoard } from "@/modules/family/api";
 import type { ReturnView } from "@/modules/family/ui/returns-panel";
 import type { UpkeepView } from "@/modules/family/ui/upkeep-panel";
 import { householdToday, longDate, relativeDue, shortDate } from "@/modules/family/ui/dates";
@@ -14,11 +14,10 @@ export async function loadHub(now = new Date()) {
   const twoWeeks = new Date(`${today}T00:00:00Z`);
   twoWeeks.setUTCDate(twoWeeks.getUTCDate() + 14);
 
-  const [calendar, kids, shopping, stores, returns, tasks] = await Promise.all([
+  const [calendar, kids, shopping, returns, tasks] = await Promise.all([
     kioskCalendar(7, now),
     choreBoard(now),
-    listShopping(),
-    listStores(),
+    shoppingBoard(now),
     listReturns(),
     listDueTasks(twoWeeks.toISOString().slice(0, 10)),
   ]);
@@ -52,7 +51,7 @@ export async function loadHub(now = new Date()) {
     calendar: { ...calendar, syncedLabel, syncError: calendar.sync.ok ? null : calendar.sync.message },
     kids,
     shopping,
-    stores,
+    stores: shopping.stores,
     returns: returnViews,
     upkeep,
   };

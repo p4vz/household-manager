@@ -9,12 +9,14 @@ import {
   RECURRENCES,
   addChore,
   addKid,
-  addShoppingItem,
   archiveChore,
   deleteReturn,
+  deleteList,
   deleteShoppingItem,
+  deleteTemplate,
+  removeStore,
+  shoppingBoard,
   removeKid,
-  setStaple,
 } from "@/modules/family/api";
 
 /** Setup and deletions: members only (never the kiosk). */
@@ -57,22 +59,26 @@ export const archiveChoreAction = authedAction(z.object({ id }), async (input) =
   refresh();
 });
 
-export const addStapleAction = authedAction(
-  z.object({ name: z.string().trim().min(1).max(80), store: z.string().trim().min(1).max(40), quantity: z.string().trim().max(20).optional() }),
-  async (input) => {
-    await addShoppingItem({ ...input, isStaple: true });
-    refresh();
-  },
-);
-
-export const setStapleAction = authedAction(z.object({ id, isStaple: z.boolean() }), async (input) => {
-  await setStaple(input.id, input.isStaple);
-  refresh();
-});
+// Shopping deletions answer with the board, like the kiosk shopping actions.
 
 export const deleteShoppingItemAction = authedAction(z.object({ id }), async (input) => {
   await deleteShoppingItem(input.id);
-  refresh();
+  return shoppingBoard();
+});
+
+export const removeShoppingStoreAction = authedAction(z.object({ id }), async (input) => {
+  await removeStore(input.id);
+  return shoppingBoard();
+});
+
+export const deleteShoppingListAction = authedAction(z.object({ id }), async (input) => {
+  await deleteList(input.id);
+  return shoppingBoard();
+});
+
+export const deleteShoppingTemplateAction = authedAction(z.object({ id }), async (input) => {
+  await deleteTemplate(input.id);
+  return shoppingBoard();
 });
 
 export const deleteReturnAction = authedAction(z.object({ id }), async (input) => {

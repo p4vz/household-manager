@@ -57,7 +57,8 @@ npm run lint && npm run typecheck && npm test && npm run build
    point value.
 6. Settings: pick Gemini or Claude and the fast/flagship models.
 7. Kitchen kiosk: on your phone, Family hub → Setup to add the kids, their
-   chores and your default staples. Set `GOOGLE_CALENDARS` and a calendar
+   chores. Shopping starts with two templates (Weekly Sam's, Weekly
+   Russian); save any list as another. Set `GOOGLE_CALENDARS` and a calendar
    credential (see `.env.example`). On the wall screen open `/kiosk/pair`,
    and type the code from Settings → Kitchen kiosk. Pair the Bluetooth
    printer from the first Print tap (Chrome asks which device).

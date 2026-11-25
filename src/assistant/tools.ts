@@ -225,17 +225,19 @@ export const TOOLS: AssistantTool[] = [
   },
   {
     name: "shopping_list",
-    description: "Shopping items by store (checked = bought). Each has a ref for edit_shopping_item.",
+    description:
+      "Shopping items on every list, by list and store (checked = bought; ticking one item ticks the same item on the other active lists). Lists put off until a date show deferredUntil. Each item has a ref for edit_shopping_item.",
     input: {},
     kind: "read",
     scrub: "reference",
     async run(_args, { refs }) {
-      return (await family.listShopping()).map((i) => ({
+      return (await family.listShoppingItems()).map((i) => ({
         ref: refs.ref("shopping_item", i.id),
-        name: i.name,
+        list: i.list,
+        ...(i.deferredUntil && { deferredUntil: i.deferredUntil }),
         store: i.store,
+        name: i.name,
         quantity: i.quantity,
-        staple: i.isStaple,
         checked: i.checked,
       }));
     },
@@ -388,22 +390,23 @@ export const TOOLS: AssistantTool[] = [
   },
   {
     name: "edit_shopping_item",
-    description: "Add, update (rename, move store, quantity, staple, checked) or delete a shopping item. update/delete need the ref from shopping_list.",
+    description:
+      "Add, update (rename, move to another store on its list, quantity, checked) or delete a shopping item. create takes an optional list name (default: the first active list). update/delete need the ref from shopping_list.",
     input: {
       action: ACTION,
       ref: z.string().max(12).optional(),
       name: z.string().max(80).optional(),
       store: z.string().max(40).optional(),
       quantity: z.string().max(20).nullable().optional(),
-      isStaple: z.boolean().optional(),
       checked: z.boolean().optional(),
+      list: z.string().max(60).optional(),
     },
     kind: "edit",
     scrub: "reference",
     async run(args, env) {
       const { action, ref, ...rest } = args as { action: string; ref?: string } & Fields;
       if (action === "create") {
-        const f = ShoppingFields.parse({ quantity: null, isStaple: false, checked: false, ...rest });
+        const f = ShoppingFields.parse({ quantity: null, checked: false, list: null, ...rest });
         env.drafts.add({ entity: "shopping_item", op: "create", key: null, label: `${f.name} (${f.store})`, before: null, after: f });
         return queued(env, 1);
       }

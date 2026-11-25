@@ -152,14 +152,14 @@ describe("approval", () => {
     await call("edit_shopping_item", { action: "delete", ref: item.ref }, e);
     expect(needsApproval(e.drafts.drafts)).toBe(true);
     const id = (await recordChangeset(ONE, null, "remove milk", e.drafts.drafts))!;
-    expect((await family.listShopping()).length).toBe(1);
+    expect((await family.listShoppingItems()).length).toBe(1);
 
     await expect(applyChangeset(TWO, id)).rejects.toThrow(/not found/); // only its owner
     await applyChangeset(ONE, id);
-    expect((await family.listShopping()).length).toBe(0);
+    expect((await family.listShoppingItems()).length).toBe(0);
 
     await undoChangeset(ONE, id);
-    const back = await family.listShopping();
+    const back = await family.listShoppingItems();
     expect(back.map((i) => [i.name, i.store])).toEqual([["Milk", "Costco"]]);
   });
 

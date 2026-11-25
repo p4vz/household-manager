@@ -145,8 +145,9 @@ export const ShoppingFields = z
     name: text(80),
     store: text(40),
     quantity: optText(20),
-    isStaple: z.boolean(),
     checked: z.boolean(),
+    /** List name; a new item goes to the first active list when no list has this name. */
+    list: optText(60),
   })
   .strict();
 
@@ -156,15 +157,18 @@ const shoppingItem: EntityAdapter = {
   async get(_ctx, key) {
     const i = await family.getShoppingItem(key);
     if (!i) return null;
-    const fields: Fields = { name: i.name, store: i.store, quantity: i.quantity, isStaple: i.isStaple, checked: i.checked };
+    const fields: Fields = { name: i.name, store: i.store, quantity: i.quantity, checked: i.checked, list: i.list };
     return { fields, label: `${i.name} (${i.store})` };
   },
   async update(ctx, key, patch) {
-    await family.updateShoppingItem(key, ShoppingFields.partial().parse(patch), ctx.now);
+    // Moving an item to another list is not an assistant edit; the list field is ignored here.
+    const { list: _list, ...rest } = ShoppingFields.partial().parse(patch);
+    void _list;
+    await family.updateShoppingItem(key, rest, ctx.now);
   },
   async create(ctx, fields) {
-    const f = ShoppingFields.parse({ isStaple: false, checked: false, quantity: null, ...fields });
-    const id = await family.addShoppingItem(f);
+    const f = ShoppingFields.parse({ checked: false, quantity: null, list: null, ...fields });
+    const id = await family.addShoppingItem({ name: f.name, store: f.store, quantity: f.quantity, list: f.list }, ctx.now);
     if (f.checked) await family.updateShoppingItem(id, { checked: true }, ctx.now);
     return id;
   },

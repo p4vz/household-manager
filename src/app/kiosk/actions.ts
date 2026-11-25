@@ -10,18 +10,15 @@ import {
   SensitiveTextError,
   addChore,
   addReturn,
-  addShoppingItem,
   completeChore,
-  restockStaples,
   setReturnStatus,
-  setShoppingChecked,
   undoChore,
 } from "@/modules/family/api";
 import { householdToday } from "@/modules/family/ui/dates";
 import { completeTask } from "@/modules/maintenance/api";
 
 /**
- * What the kitchen screen can do. Built with kioskAction: an allowlisted
+ * What the kitchen screen can do (shopping lists: shopping-actions.ts). Built with kioskAction: an allowlisted
  * member (the phone view uses these too) or a paired kiosk device. Setup
  * changes and anything destructive are member-only actions.
  */
@@ -47,24 +44,6 @@ export const addOneTimeChoreAction = kioskAction(
     refresh();
   },
 );
-
-export const addShoppingItemAction = kioskAction(
-  z.object({ name, store, quantity: z.string().trim().max(20).optional() }),
-  async (input) => {
-    await addShoppingItem(input);
-    refresh();
-  },
-);
-
-export const setShoppingCheckedAction = kioskAction(z.object({ id, checked: z.boolean() }), async (input) => {
-  await setShoppingChecked(input.id, input.checked);
-  refresh();
-});
-
-export const restockStaplesAction = kioskAction(z.object({ store: store.optional() }), async (input) => {
-  await restockStaples(input.store);
-  refresh();
-});
 
 export const addReturnAction = kioskAction(
   z.object({
