@@ -87,6 +87,30 @@ export async function addChore(input: { kidId: string; title: string; icon?: str
   return chore.id;
 }
 
+/** A few everyday chores to start a new kid with; parents remove or add more in Setup. */
+export const STARTER_CHORES = [
+  { title: "Make bed", icon: "🛏️", recurrence: "daily", stars: 1 },
+  { title: "Brush teeth", icon: "🦷", recurrence: "daily", stars: 1 },
+  { title: "Read 20 min", icon: "📚", recurrence: "daily", stars: 2 },
+  { title: "Tidy room", icon: "🧹", recurrence: "weekly", stars: 3 },
+] as const satisfies readonly { title: string; icon: (typeof CHORE_ICONS)[number]; recurrence: Recurrence; stars: number }[];
+
+/** Adds the starter chores the kid doesn't have yet (same title). */
+export async function addStarterChores(kidId: string, now = new Date()): Promise<number> {
+  const have = await db()
+    .select({ title: familyChores.title })
+    .from(familyChores)
+    .where(and(eq(familyChores.kidId, kidId), isNull(familyChores.archivedAt)));
+  const titles = new Set(have.map((c) => c.title.toLowerCase()));
+  let added = 0;
+  for (const c of STARTER_CHORES) {
+    if (titles.has(c.title.toLowerCase())) continue;
+    await addChore({ kidId, ...c }, now);
+    added += 1;
+  }
+  return added;
+}
+
 export async function archiveChore(id: string, now = new Date()) {
   await db().update(familyChores).set({ archivedAt: now }).where(eq(familyChores.id, id));
 }
@@ -226,6 +250,14 @@ export {
   unarchiveGoal,
   unmarkRewardGiven,
   updateGoal,
+  givePrize,
+  listStarPrizes,
+  prizeHistory,
+  removeStarPrize,
+  saveStarPrize,
+  starBanks,
+  undoPrize,
+  MAX_PRIZE_STARS,
   createGoal,
   kidProgress,
   listGoals,
@@ -239,6 +271,7 @@ export {
   type KidProgress,
 } from "./goals-api";
 export type { Badge } from "./goals";
+export type { StarBank, StarPrize, PrizeState } from "./stars";
 
 // ------------------------------------------------------------ shopping ----
 

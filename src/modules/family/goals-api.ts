@@ -4,7 +4,8 @@ import { db } from "@/core/db/client";
 import { householdTimeZone } from "@/core/time/zoned";
 import { assertNoCardNumber } from "./guard";
 import { choreStreak, goalProgress, historyGrid, kidBadges, nextStreakBadge, type Badge, type GoalKind } from "./goals";
-import { familyChoreCompletions, familyChoreGoals, familyChores, familyKids } from "./schema";
+import { familyChoreCompletions, familyChoreGoals, familyChores, familyKids, familyStarPrizes, familyStarSpends } from "./schema";
+import { starBank, type StarBank, type StarPrize } from "./stars";
 import { addDays, dayBucket, weekBucket, type Recurrence } from "./time";
 
 /**
@@ -45,6 +46,7 @@ export type KidProgress = {
   badges: Badge[];
   bestStreak: number;
   nextBadge: { emoji: string; label: string; days: number } | null;
+  stars: StarBank;
 };
 
 type ChoreRow = typeof familyChores.$inferSelect;
@@ -125,7 +127,7 @@ export async function listGoals(now = new Date(), opts: { includeDone?: boolean 
 export async function kidProgress(now = new Date()): Promise<KidProgress[]> {
   const kids = await db().select({ id: familyKids.id }).from(familyKids).where(eq(familyKids.active, true));
   if (kids.length === 0) return [];
-  const [goals, reachedCounts, stars, daily] = await Promise.all([
+  const [goals, reachedCounts, stars, daily, banks] = await Promise.all([
     listGoals(now),
     db()
       .select({ kidId: familyChoreGoals.kidId, n: sql<number>`count(*)::int` })
@@ -137,6 +139,7 @@ export async function kidProgress(now = new Date()): Promise<KidProgress[]> {
       .from(familyChoreCompletions)
       .groupBy(familyChoreCompletions.kidId),
     db().select().from(familyChores).where(eq(familyChores.recurrence, "daily")),
+    starBanks(),
   ]);
   const today = dayBucket(now, tz());
   const done = await completionsByChore(
@@ -157,6 +160,7 @@ export async function kidProgress(now = new Date()): Promise<KidProgress[]> {
       }),
       bestStreak,
       nextBadge: nextStreakBadge(bestStreak),
+      stars: banks.get(k.id) ?? starBank(0, 0, []),
     };
   });
 }
@@ -306,3 +310,83 @@ export async function choreHistory(now = new Date(), days = 84): Promise<{ days:
   };
 }
 
+
+// ------------------------------------------------------------ star bank ----
+
+export const MAX_PRIZE_STARS = 10_000;
+
+export async function listStarPrizes(): Promise<StarPrize[]> {
+  return db()
+    .select({ id: familyStarPrizes.id, name: familyStarPrizes.name, emoji: familyStarPrizes.emoji, stars: familyStarPrizes.stars })
+    .from(familyStarPrizes)
+    .orderBy(asc(familyStarPrizes.stars), asc(familyStarPrizes.createdAt));
+}
+
+/** Each kid's star bank: lifetime stars from chores, minus prizes given. */
+export async function starBanks(): Promise<Map<string, StarBank>> {
+  const [earned, spent, prizes] = await Promise.all([
+    db()
+      .select({ kidId: familyChoreCompletions.kidId, stars: sql<number>`coalesce(sum(${familyChoreCompletions.stars}), 0)::int` })
+      .from(familyChoreCompletions)
+      .groupBy(familyChoreCompletions.kidId),
+    db()
+      .select({ kidId: familyStarSpends.kidId, stars: sql<number>`coalesce(sum(${familyStarSpends.stars}), 0)::int` })
+      .from(familyStarSpends)
+      .groupBy(familyStarSpends.kidId),
+    listStarPrizes(),
+  ]);
+  const kids = await db().select({ id: familyKids.id }).from(familyKids).where(eq(familyKids.active, true));
+  return new Map(
+    kids.map((k) => [k.id, starBank(earned.find((e) => e.kidId === k.id)?.stars ?? 0, spent.find((s) => s.kidId === k.id)?.stars ?? 0, prizes)]),
+  );
+}
+
+/** Parents only: hand a prize over, spending its stars. Refused if the kid hasn't saved enough. */
+export async function givePrize(kidId: string, prizeId: string, givenBy: string, now = new Date()): Promise<void> {
+  const [prize] = await db().select().from(familyStarPrizes).where(eq(familyStarPrizes.id, prizeId));
+  if (!prize) throw new GoalError("That prize is gone. Refresh and try again.");
+  const bank = (await starBanks()).get(kidId);
+  if (!bank) throw new GoalError("Kid not found.");
+  if (bank.saved < prize.stars) throw new GoalError(`Needs ${prize.stars} stars; ${bank.saved} saved.`);
+  await db().insert(familyStarSpends).values({ kidId, prizeName: prize.name, emoji: prize.emoji, stars: prize.stars, givenBy, givenAt: now });
+}
+
+/** Undo a prize given by mistake: its stars go back. */
+export async function undoPrize(spendId: string): Promise<void> {
+  await db().delete(familyStarSpends).where(eq(familyStarSpends.id, spendId));
+}
+
+export async function prizeHistory(limit = 50) {
+  return db()
+    .select({
+      id: familyStarSpends.id,
+      kidId: familyStarSpends.kidId,
+      prizeName: familyStarSpends.prizeName,
+      emoji: familyStarSpends.emoji,
+      stars: familyStarSpends.stars,
+      givenAt: familyStarSpends.givenAt,
+    })
+    .from(familyStarSpends)
+    .orderBy(sql`${familyStarSpends.givenAt} desc`)
+    .limit(limit);
+}
+
+export async function saveStarPrize(input: { id?: string; name: string; emoji?: string; stars: number }): Promise<string> {
+  const name = input.name.trim().slice(0, 40);
+  if (!name) throw new GoalError("Give the prize a name.");
+  assertNoCardNumber(name);
+  if (!Number.isInteger(input.stars) || input.stars < 1 || input.stars > MAX_PRIZE_STARS) throw new GoalError(`Stars must be 1 to ${MAX_PRIZE_STARS}.`);
+  const values = { name, emoji: (input.emoji ?? "🎁").slice(0, 8) || "🎁", stars: input.stars };
+  if (input.id) {
+    await db().update(familyStarPrizes).set(values).where(eq(familyStarPrizes.id, input.id));
+    return input.id;
+  }
+  const existing = await listStarPrizes();
+  if (existing.length >= 8) throw new GoalError("Up to 8 prizes.");
+  const [row] = await db().insert(familyStarPrizes).values(values).returning({ id: familyStarPrizes.id });
+  return row.id;
+}
+
+export async function removeStarPrize(id: string): Promise<void> {
+  await db().delete(familyStarPrizes).where(eq(familyStarPrizes.id, id));
+}

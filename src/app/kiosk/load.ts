@@ -41,6 +41,12 @@ export async function loadHub(now = new Date()) {
           rewardEmoji: g.rewardEmoji,
           unit: g.unit,
         })),
+        stars: {
+          saved: p.stars.saved,
+          lifetime: p.stars.lifetime,
+          best: p.stars.best ? { name: p.stars.best.name, emoji: p.stars.best.emoji, stars: p.stars.best.stars } : null,
+          next: p.stars.next ? { name: p.stars.next.name, emoji: p.stars.next.emoji, stars: p.stars.next.stars, missing: p.stars.next.missing } : null,
+        },
         badges: p.badges,
         bestStreak: p.bestStreak,
         nextBadge: p.nextBadge,

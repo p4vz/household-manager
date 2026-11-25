@@ -17,8 +17,20 @@ import { BankSyncSettings, type BankSyncView } from "@/modules/finance/ui/bank-s
 import { householdTimeZone, syncStatus } from "@/modules/finance/api";
 import { listMailboxes, memberFromLabel } from "@/modules/family/api";
 import { MailSettings } from "@/modules/family/ui/mail-settings";
+import { BackupSettings } from "@/components/backup-settings";
+import { PushSettings } from "@/components/push-settings";
+import { getPrefs, listDevices, vapidKeys } from "@/core/push/push";
+import { backupStatus } from "@/core/backup/run";
+import { householdTimeZone as zone } from "@/core/time/zoned";
 import {
   connectBankAction,
+  connectDriveAction,
+  subscribePushAction,
+  unsubscribePushAction,
+  savePushPrefsAction,
+  testPushAction,
+  backupNowAction,
+  disconnectDriveAction,
   connectGmailAction,
   disconnectMailboxAction,
   scanMailNowAction,
@@ -58,7 +70,11 @@ const KEY_HELP: Record<KeyId, Pick<KeyRowStatus, "placeholder" | "help" | "getKe
 
 export default async function SettingsPage({ searchParams }: PageProps<"/settings">) {
   const user = await requireUserOrRedirect();
-  const justConnected = (await searchParams).mail === "connected";
+  const params = await searchParams;
+  const justConnected = params.mail === "connected";
+  const backup = await backupStatus();
+  const pushMember = user.owner === "User 1" ? "user1" : "user2";
+  const [pushKeys, pushDevices, pushPrefs] = await Promise.all([vapidKeys(), listDevices(pushMember), getPrefs(pushMember)]);
   // Only this member's own mailboxes, never the other member's.
   const mailboxes = await listMailboxes(memberFromLabel(user.owner));
   const settings = await getAiSettings();
@@ -108,6 +124,34 @@ export default async function SettingsPage({ searchParams }: PageProps<"/setting
           mailboxes={mailboxes}
           justConnected={justConnected}
           actions={{ connect: connectGmailAction, scanNow: scanMailNowAction, setSpam: setMailboxSpamAction, disconnect: disconnectMailboxAction }}
+        />
+      </div>
+      <div id="notifications" className="scroll-mt-6 space-y-3 rounded-xl border p-6">
+        <h2 className="font-medium">Phone notifications</h2>
+        <PushSettings
+          publicKey={pushKeys.publicKey}
+          devices={pushDevices.map((d) => ({ id: d.id, label: d.label, createdAt: d.createdAt.toISOString(), lastOkAt: d.lastOkAt?.toISOString() ?? null, endpoint: d.endpoint }))}
+          prefs={pushPrefs}
+          actions={{ subscribe: subscribePushAction, unsubscribe: unsubscribePushAction, savePrefs: savePushPrefsAction, test: testPushAction }}
+        />
+      </div>
+      <div id="backups" className="scroll-mt-6 space-y-3 rounded-xl border p-6">
+        <h2 className="font-medium">Backups</h2>
+        <BackupSettings
+          view={{
+            keySet: backup.keySet,
+            driveConnected: backup.drive.connected,
+            connectedBy: backup.drive.member ? memberDisplayName(backup.drive.member) : null,
+            connectedAt: backup.drive.connectedAt,
+            lastRunAt: backup.lastRunAt,
+            lastOk: backup.lastOk,
+            lastMessage: backup.lastMessage,
+            lastOkAt: backup.lastOkAt,
+            kept: backup.kept,
+            timeZone: zone(),
+          }}
+          justConnected={params.backup === "connected"}
+          actions={{ connect: connectDriveAction, backupNow: backupNowAction, disconnect: disconnectDriveAction }}
         />
       </div>
       <div className="space-y-5 rounded-xl border p-6">
