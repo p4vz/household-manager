@@ -1,4 +1,4 @@
-import { date, integer, jsonb, numeric, pgTable, text, timestamp, uuid } from "drizzle-orm/pg-core";
+import { customType, date, integer, jsonb, numeric, pgTable, text, timestamp, uuid } from "drizzle-orm/pg-core";
 
 export const maintenanceTasks = pgTable("maintenance_tasks", {
   id: uuid("id").primaryKey().defaultRandom(),
@@ -93,5 +93,58 @@ export const maintenanceProjects = pgTable("maintenance_projects", {
   transactionId: uuid("transaction_id"),
   /** The equipment or vehicle the work was on (vehicle service history). */
   assetId: uuid("asset_id"),
+  createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+});
+
+const bytea = customType<{ data: Buffer; driverData: Buffer }>({ dataType: () => "bytea" });
+
+export const BINDER_CATEGORIES = ["manual", "warranty", "insurance", "property_tax", "receipt", "other"] as const;
+export type BinderCategory = (typeof BINDER_CATEGORIES)[number];
+
+export const BINDER_CATEGORY_LABELS: Record<BinderCategory, string> = {
+  manual: "Manual",
+  warranty: "Warranty",
+  insurance: "Insurance",
+  property_tax: "Property tax",
+  receipt: "Receipt",
+  other: "Other",
+};
+
+/**
+ * The home binder: manuals, warranties, insurance policies, property tax
+ * bills and receipts. A file is encrypted with DOC_VAULT_KEY before it is
+ * stored and is only decrypted for a signed-in member who asks for it; it is
+ * never sent to an AI or an assistant. There is deliberately no column for a
+ * policy, account or parcel number: keep those in the file itself.
+ *
+ * `expiresOn` is the warranty end, the policy renewal or the tax due date; a
+ * reminder item in Home maintenance (`reminderTaskId`) is kept in step with it.
+ */
+export const maintenanceDocuments = pgTable("maintenance_documents", {
+  id: uuid("id").primaryKey().defaultRandom(),
+  category: text("category", { enum: BINDER_CATEGORIES }).notNull().default("other"),
+  title: text("title").notNull(),
+  /** Insurer, tax office, manufacturer or store. */
+  provider: text("provider"),
+  /** Equipment or car it belongs to. */
+  assetId: uuid("asset_id"),
+  /** House project it came from (a new roof's warranty). */
+  projectId: uuid("project_id"),
+  startsOn: date("starts_on"),
+  expiresOn: date("expires_on"),
+  /** Premium, tax bill or purchase price. */
+  amount: numeric("amount", { precision: 12, scale: 2, mode: "number" }),
+  /** A manufacturer's page for the manual, when there's no file. */
+  url: text("url"),
+  notes: text("notes"),
+  fileName: text("file_name"),
+  mimeType: text("mime_type"),
+  sizeBytes: integer("size_bytes"),
+  cipherText: bytea("cipher_text"),
+  iv: bytea("iv"),
+  authTag: bytea("auth_tag"),
+  reminderTaskId: uuid("reminder_task_id"),
+  /** user1 / user2. */
+  addedBy: text("added_by"),
   createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
 });

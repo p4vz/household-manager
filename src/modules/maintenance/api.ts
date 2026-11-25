@@ -3,12 +3,14 @@ import { and, asc, desc, eq, gte, isNull, lte, or, sql } from "drizzle-orm";
 import { bus } from "@/core/bus";
 import { searchRecalls, searchVehicleRecalls } from "./recalls";
 import { db } from "@/core/db/client";
+import { householdTimeZone, zonedParts } from "@/core/time/zoned";
+import * as binder from "./binder";
 import { ASSET_KINDS, ASSET_KIND_LABELS, maintenanceAssets, maintenanceProjects, maintenanceTasks, type AssetKind, type RecallHit } from "./schema";
 
 export { ASSET_KINDS, ASSET_KIND_LABELS, type AssetKind, type RecallHit };
 
 /** Areas the maintenance list is grouped by. Free text is allowed too. */
-export const UPKEEP_AREAS = ["Water filtration", "HVAC & heating", "Plumbing", "Exterior & stormwater", "Appliances", "Electrical", "Yard", "Vehicles", "Other"] as const;
+export const UPKEEP_AREAS = ["Water filtration", "HVAC & heating", "Plumbing", "Exterior & stormwater", "Appliances", "Electrical", "Yard", "Vehicles", "Home binder", "Other"] as const;
 
 /**
  * Home maintenance public API: upkeep tasks with due dates, optional costs
@@ -252,6 +254,7 @@ export async function deleteAsset(id: string) {
   for (const t of open) await deleteTask(t.id);
   await db().update(maintenanceTasks).set({ assetId: null }).where(eq(maintenanceTasks.assetId, id));
   await db().update(maintenanceProjects).set({ assetId: null }).where(eq(maintenanceProjects.assetId, id));
+  await binder.unlinkDocuments({ assetId: id });
   await db().delete(maintenanceAssets).where(eq(maintenanceAssets.id, id));
 }
 
@@ -310,6 +313,7 @@ export async function updateProject(id: string, patch: Partial<ProjectInput>) {
 }
 
 export async function deleteProject(id: string) {
+  await binder.unlinkDocuments({ projectId: id });
   await db().delete(maintenanceProjects).where(eq(maintenanceProjects.id, id));
 }
 
@@ -397,4 +401,79 @@ export function scheduleLabel(days: number | null | undefined, miles: number | n
   if (!miles) return everyLabel(days);
   const m = `every ${miles.toLocaleString("en-US")} miles`;
   return days ? `${everyLabel(days)} or ${m.replace(/^every /, "")}` : m;
+}
+
+// ---------- home binder ----------
+
+export {
+  BINDER_CATEGORIES,
+  BINDER_CATEGORY_LABELS,
+  BINDER_PAGE,
+  MAX_BINDER_FILE_BYTES,
+  binderVaultConfigured,
+  reminderDueDate,
+  type BinderCategory,
+  type BinderFile,
+  type BinderInput,
+} from "./binder";
+
+const householdDate = () => zonedParts(new Date(), householdTimeZone()).date;
+
+/** Reminder items for dated documents go through the normal task list (calendar, expected costs). */
+const reminderTasks: binder.ReminderTasks = {
+  schedule: (t) => scheduleTask(t),
+  remove: (taskId) => deleteTask(taskId),
+  isOpen: async (taskId) => {
+    const t = await getTask(taskId);
+    return Boolean(t && !t.completedOn);
+  },
+};
+
+export function addBinderEntry(input: binder.BinderInput, file: binder.BinderFile | null, addedBy: "user1" | "user2" | null, today = householdDate()) {
+  return binder.addDocument(input, file, addedBy, reminderTasks, today);
+}
+
+export function updateBinderEntry(id: string, patch: Partial<binder.BinderInput>, file: binder.BinderFile | null = null, today = householdDate()) {
+  return binder.updateDocument(id, patch, file, reminderTasks, today);
+}
+
+export function deleteBinderEntry(id: string) {
+  return binder.deleteDocument(id, reminderTasks);
+}
+
+export const listBinder = binder.listDocuments;
+export const getBinderEntry = binder.getDocument;
+export const openBinderFile = binder.openDocumentFile;
+export const expiringBinderEntries = binder.expiringDocuments;
+
+/**
+ * Files one document in the home binder: the entry point for the home-page
+ * upload, after a member confirmed what it is. Throws without DOC_VAULT_KEY.
+ */
+export async function addBinderDocument(input: {
+  title: string;
+  category: binder.BinderCategory;
+  bytes: Buffer;
+  mediaType: string;
+  fileName: string;
+  expiresOn?: string | null;
+  notes?: string | null;
+  provider?: string | null;
+  assetId?: string | null;
+  addedBy: "user1" | "user2";
+}): Promise<{ id: string; href: string }> {
+  if (!binder.BINDER_CATEGORIES.includes(input.category)) throw new Error("Unknown binder category");
+  const id = await addBinderEntry(
+    {
+      category: input.category,
+      title: input.title.trim().slice(0, 120) || "Document",
+      expiresOn: input.expiresOn ?? null,
+      notes: input.notes ?? null,
+      provider: input.provider ?? null,
+      assetId: input.assetId ?? null,
+    },
+    { fileName: input.fileName, mediaType: input.mediaType, bytes: input.bytes },
+    input.addedBy,
+  );
+  return { id, href: `${binder.BINDER_PAGE}#doc-${id}` };
 }

@@ -372,6 +372,37 @@ washes don't) and can be filed under a car; Claude's plan for an explained
 payment gets the cars' nicknames, make, model, year and mileage. Car recalls
 come from NHTSA (`api.nhtsa.gov`, keyless) by make, model and year.
 
+### Home binder
+
+`maintenance_documents` (migration 0020) holds manuals, warranties, insurance
+policies, property tax bills and receipts, optionally linked to equipment, a
+car (`asset_id`) or a house project (`project_id`). Files are sealed with
+DOC_VAULT_KEY (AES-256-GCM) like trip documents, up to 8 MB of any type, and
+decrypted only for a signed-in member's download (server action to blob URL;
+no route). There is no column for policy, account or parcel numbers. A
+warranty end, insurance renewal or tax due date keeps one reminder action
+item (area "Home binder") 30 days ahead (14 for tax), which reaches the
+calendar like any task. `addBinderDocument()` in `maintenance/api.ts` is the
+filing entry point for the home-page upload.
+
+## Subscriptions and net worth
+
+Subscriptions (`finance/subscriptions*.ts`): recurring charges are detected on
+the fly from the last 400 days of transactions the viewer can see, grouped
+by account owner and merchant (weekly, monthly, quarterly or yearly at a
+steady price; price rises flagged). `finance_subscriptions` stores what a
+member confirmed, renamed, cancelled, hid ("not a subscription") or added by
+hand. Rows follow the account privacy rule: joint plus the viewer's own.
+
+Net worth (`finance/net-worth*.ts`): account balances (signed as the bank
+reports them) plus hand-entered assets and liabilities
+(`finance_net_worth_items`, dated values in `finance_net_worth_values`).
+Scopes are Joint, the viewer's own, or both; never the other member's own.
+History is month ends for two years: each bank sync writes a daily balance
+snapshot (`finance_balance_snapshots`) and earlier balances are worked back
+from transactions. History only, no forecast. Neither feature sends anything
+to an AI or an assistant.
+
 ## Kitchen kiosk and family hub
 
 `/kiosk` is a single 1920x1080 touch screen (no page scroll): calendar on
