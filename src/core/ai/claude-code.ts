@@ -77,7 +77,24 @@ type RunOpts = {
   inProcessTools?: { server: McpSdkServerConfigWithInstance; name: string; allow: string[] };
   maxTurns?: number;
   timeoutMs?: number;
+  /** One picture sent with the prompt (adding a card from a photo). */
+  image?: { data: Buffer; mediaType: "image/jpeg" | "image/png" | "image/webp" };
 };
+
+/** A single user message carrying the picture and the prompt text. */
+async function* imagePrompt(image: NonNullable<RunOpts["image"]>, text: string) {
+  yield {
+    type: "user" as const,
+    message: {
+      role: "user" as const,
+      content: [
+        { type: "image" as const, source: { type: "base64" as const, media_type: image.mediaType, data: image.data.toString("base64") } },
+        { type: "text" as const, text },
+      ],
+    },
+    parent_tool_use_id: null,
+  };
+}
 
 export async function runClaudeCode(opts: RunOpts): Promise<{ text: string; output: unknown }> {
   const home = sandboxDir();
@@ -88,7 +105,7 @@ export async function runClaudeCode(opts: RunOpts): Promise<{ text: string; outp
   let error = "";
   try {
     for await (const msg of query({
-      prompt: opts.prompt,
+      prompt: opts.image ? imagePrompt(opts.image, opts.prompt) : opts.prompt,
       options: {
         model: opts.model,
         systemPrompt: opts.system,

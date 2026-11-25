@@ -11,7 +11,7 @@ const MAX_SIDE = 900;
  * drops the photo's metadata (location, camera), and the smaller file keeps
  * the Accounts page light.
  */
-async function shrink(file: File): Promise<Blob> {
+export async function shrink(file: File): Promise<Blob> {
   const bitmap = await createImageBitmap(file);
   const scale = Math.min(1, MAX_SIDE / Math.max(bitmap.width, bitmap.height));
   const canvas = document.createElement("canvas");

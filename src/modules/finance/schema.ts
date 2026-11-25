@@ -68,6 +68,13 @@ export const financeAccounts = pgTable(
     bankName: text("bank_name").notNull(),
     displayName: text("display_name"),
     officialName: text("official_name"),
+    /**
+     * Last four digits of the card or account, kept so people can tell
+     * similar accounts apart (Pavel, 2026-11-25). Shown only in the app to
+     * members who can see the account; never sent to an AI provider, an
+     * assistant or the logs (the outbound sanitizers strip digit runs too).
+     */
+    last4: text("last4"),
     owner: text("owner", { enum: OWNERS }).notNull().default("joint"),
     kind: text("kind", { enum: ACCOUNT_KINDS }).notNull().default("other"),
     active: boolean("active").notNull().default(true),

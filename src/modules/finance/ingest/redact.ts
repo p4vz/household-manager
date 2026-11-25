@@ -19,3 +19,15 @@ export function cleanTypedName(name: string | null | undefined): string | null {
   const out = trimmed.replace(NUMBER_RUN, " ").replace(/\s{2,}/g, " ").trim();
   return out || null;
 }
+
+/**
+ * Last four digits of the account or card number in a bank's name, e.g.
+ * "Freedom Unlimited (...1234)" -> "1234". Kept apart from the name (see
+ * financeAccounts.last4) so people can tell similar accounts apart.
+ */
+export function extractLast4(name: string): string | null {
+  const runs = name.match(/\d(?:[ -]?\d){3,}/g);
+  if (!runs) return null;
+  const digits = runs[runs.length - 1].replace(/\D/g, "");
+  return digits.slice(-4);
+}

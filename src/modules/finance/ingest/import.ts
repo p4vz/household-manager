@@ -15,7 +15,7 @@ import {
   type SkipSummary,
 } from "./csv";
 import { guessAccountKind } from "./merchant";
-import { stripAccountNumbers } from "./redact";
+import { extractLast4, stripAccountNumbers } from "./redact";
 
 /** "new" creates a CSV-only account named after the CSV account. */
 export type AccountMapping = Record<string, string | "new" | "skip">;
@@ -102,7 +102,7 @@ export async function commitCsvImport(viewer: Viewer, text: string, mapping: Acc
       const [created] = await db()
         .insert(financeAccounts)
         // New CSV-only accounts start private to the person importing them.
-        .values({ bankName: stripAccountNumbers(csvName), kind: guessAccountKind(csvName), owner: viewer })
+        .values({ bankName: stripAccountNumbers(csvName), last4: extractLast4(csvName), kind: guessAccountKind(csvName), owner: viewer })
         .returning();
       accountId = created.id;
     } else {
