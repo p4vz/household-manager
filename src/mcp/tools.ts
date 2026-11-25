@@ -24,6 +24,8 @@ export type ToolContext = {
   permissions: ReadonlySet<PermissionKey>;
   /** This app's origin, for links back to its pages. */
   appUrl: string | null;
+  /** The connection, for tools that make changes (src/assistant/connector.ts). */
+  caller?: { grantId: string; email: string };
 };
 
 /**
@@ -39,6 +41,8 @@ export type AssistantTool = {
   input: z.ZodRawShape;
   requires: PermissionKey[];
   scrub: ScrubMode;
+  /** Changes household data (only the "Make changes" tools, as changesets with Undo). */
+  writes?: boolean;
   run: (args: Record<string, unknown>, ctx: ToolContext) => Promise<unknown>;
 };
 
@@ -531,7 +535,9 @@ export function serverInstructions(owner: OwnerLabel, tools: readonly AssistantT
     "Do not save names, account details or identifiers from this server into memory.",
     "This is one household's private finance and travel assistant (two members, labelled User 1 and User 2; some accounts are Joint).",
     `You are talking with ${owner}. Never ask for or guess names, card numbers or account numbers; cards are known by nickname only.`,
-    "All tools are read-only. Nothing is booked, paid or changed from here; give advice and let the person act.",
+    tools.some((t) => t.writes)
+      ? "Nothing is booked or paid from here. The edit_* tools change household data the way the app's Ask Claude does: each call is logged in the member's history with Undo; deletes and more than 10 changes wait for the member to press Apply in the app. Only change what the person asked for. Read first to get refs (short handles like c12); never invent them. Kids are known by first name only."
+      : "All tools are read-only. Nothing is booked, paid or changed from here; give advice and let the person act.",
     "Trip steps carry a `link` to their page in the household app. When the person needs a booking's confirmation code and it is not in the answer, give them that link: the code is shown there.",
     tools.length < TOOLS.length
       ? "This connection was only given access to some sections of the app; if a question needs data you have no tool for, say that the household has not shared it with you and that it can be enabled under Settings > AI assistants."

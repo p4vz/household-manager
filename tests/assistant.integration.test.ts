@@ -366,3 +366,28 @@ describe("creating and completing across the household", () => {
     expect(msg).not.toContain("Pat Example");
   });
 });
+
+describe("kids", () => {
+  it("adds a kid and their chores in one reply; remove waits and undo brings them back", async () => {
+    const e = env(ONE);
+    await call("edit_kid", { action: "create", name: "Elana", emoji: "🌸" }, e);
+    await call("edit_chore", { action: "create", kid: "Elana", title: "Read 30 min", stars: 5 }, e);
+    await call("edit_chore", { action: "create", kid: "Elana", title: "Make bed", stars: 1 }, e);
+    await recordChangeset(ONE, null, "setup", e.drafts.drafts);
+    const [board] = await family.choreBoard(NOW);
+    expect([board.name, board.emoji, board.chores.map((c) => [c.title, c.stars])]).toEqual(["Elana", "🌸", [["Read 30 min", 5], ["Make bed", 1]]]);
+
+    const bad = await call("edit_kid", { action: "create", name: "Elana Example2" }, env(ONE));
+    expect(bad.error).toMatch(/first name/);
+
+    const e2 = env(ONE, e.refs);
+    const [k] = await call("chores", {}, e2);
+    await call("edit_kid", { action: "remove", ref: k.kidRef }, e2);
+    const id = (await recordChangeset(ONE, null, "remove", e2.drafts.drafts))!;
+    expect((await listChangesets(ONE, { ids: [id] }))[0].status).toBe("proposed");
+    await applyChangeset(ONE, id);
+    expect(await family.choreBoard(NOW)).toHaveLength(0);
+    await undoChangeset(ONE, id);
+    expect((await family.choreBoard(NOW))[0].chores).toHaveLength(2);
+  });
+});

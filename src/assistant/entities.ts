@@ -462,6 +462,43 @@ const purchaseReturn: EntityAdapter = {
   },
 };
 
+export const KidFields = z
+  .object({
+    /** First name only, as on the chore board. */
+    name: z.string().trim().min(1).max(30).regex(/^[\p{L}][\p{L}' -]*$/u, "A first name, letters only"),
+    emoji: z.string().max(8),
+  })
+  .strict();
+
+/** Kids on the chore board. "delete" hides the kid (chores and history stay); undo brings them back. */
+const kid: EntityAdapter = {
+  entity: "kid",
+  title: "Kid",
+  async get(_ctx, key) {
+    const k = await family.getKid(key);
+    return k ? { fields: { name: k.name, emoji: k.emoji }, label: k.name } : null;
+  },
+  async update(_ctx, key, patch) {
+    const f = KidFields.partial().parse(patch);
+    if (f.name && (await family.listKids()).some((k) => k.id !== key && k.name.toLowerCase() === f.name!.toLowerCase())) {
+      throw new Error(`There is already a kid called ${f.name}`);
+    }
+    await family.updateKid(key, f);
+  },
+  async create(_ctx, fields) {
+    const f = KidFields.parse({ emoji: "⭐", ...fields });
+    if ((await family.listKids()).some((k) => k.name.toLowerCase() === f.name.toLowerCase())) throw new Error(`There is already a kid called ${f.name}`);
+    return family.addKid(f);
+  },
+  async remove(_ctx, key) {
+    await family.removeKid(key);
+  },
+  async restore(_ctx, key) {
+    await family.restoreKid(key);
+    return key;
+  },
+};
+
 export const ChoreFields = z
   .object({
     /** The kid's first name as on the chore board. */
@@ -794,6 +831,7 @@ export const ADAPTERS: Record<string, EntityAdapter> = Object.fromEntries(
     shoppingList,
     shoppingTemplate,
     purchaseReturn,
+    kid,
     chore,
     choreGoal,
     calendarEvent,

@@ -207,3 +207,51 @@ describe("booking codes", () => {
     expect(init.result.instructions).toMatch(/give them that link/);
   });
 });
+
+describe("Make changes permissions", () => {
+  it("off by default; with manage.family a connected assistant sets up a kid and chores, logged with undo", async () => {
+    expect(DEFAULT_PERMISSIONS.filter((p) => p.startsWith("manage."))).toEqual([]);
+    const readOnly = await connect();
+    expect(await toolNames(readOnly)).not.toContain("edit_chore");
+
+    await trips.addTraveler({ name: "Danya Example", kind: "child", birthdate: null, owner: null });
+    const access = await connect(["manage.family"]);
+    const names = await toolNames(access);
+    expect(names).toEqual(expect.arrayContaining(["chores", "edit_kid", "edit_chore", "edit_shopping_item", "edit_shopping_list"]));
+    expect(names).not.toContain("edit_calendar_event");
+    expect(names).not.toContain("edit_transactions");
+    const list = (await rpc(access, "tools/list")).result.tools as { name: string; annotations: { readOnlyHint: boolean } }[];
+    expect(list.find((t) => t.name === "edit_chore")!.annotations.readOnlyHint).toBe(false);
+    expect(list.find((t) => t.name === "chores")!.annotations.readOnlyHint).toBe(true);
+
+    const kid = await call(access, "edit_kid", { action: "create", name: "Danya", emoji: "🦊" });
+    expect(kid.data.status).toMatch(/^Applied/);
+    const add = async (title: string, stars: number) => (await call(access, "edit_chore", { action: "create", kid: "Danya", title, stars, recurrence: "daily" })).data;
+    expect((await add("Read 30 min", 5)).status).toMatch(/^Applied/);
+    await add("Make bed", 1);
+
+    const board = (await call(access, "chores")).data;
+    expect(board[0].kid).toBe("Danya"); // first name passes; the surname would not
+    expect(board[0].chores.map((c: { title: string; stars: number }) => [c.title, c.stars])).toEqual([
+      ["Read 30 min", 5],
+      ["Make bed", 1],
+    ]);
+    expect(JSON.stringify(board)).not.toMatch(/Example|[0-9a-f]{8}-[0-9a-f]{4}/);
+
+    // A ref from one call works in the next; deletes wait for the member's Apply.
+    const archive = await call(access, "edit_chore", { action: "archive", ref: board[0].chores[1].ref });
+    expect(archive.data.status).toMatch(/^Waiting for the member/);
+    const { listChangesets } = await import("@/assistant/changesets");
+    const member = { email: "one@example.com", owner: "User 1" as const, viewer: "user1" as const, now: new Date() };
+    const sets = await listChangesets(member);
+    expect(sets.map((s) => s.status)).toEqual(["proposed", "applied", "applied", "applied"]);
+    expect(sets[0].summary).toMatch(/connected assistant/);
+  });
+
+  it("finance changes need Individual transactions too", async () => {
+    expect(await toolNames(await connect(["manage.finance"]))).toEqual([]);
+    expect(await toolNames(await connect(["manage.finance", "finance.transactions"]))).toEqual(
+      expect.arrayContaining(["edit_transactions", "list_transactions", "search_transactions", "set_merchant_rule"]),
+    );
+  });
+});

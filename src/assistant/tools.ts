@@ -18,6 +18,7 @@ import {
   CalendarEventFields,
   ChoreFields,
   GoalFields,
+  KidFields,
   MerchantRuleFields,
   AssetFields,
   ProjectFields,
@@ -449,6 +450,8 @@ export const TOOLS: AssistantTool[] = [
     async run(_args, { ctx, refs }) {
       return (await family.choreBoard(ctx.now)).map((k) => ({
         kid: k.name,
+        kidRef: refs.ref("kid", k.id),
+        emoji: k.emoji,
         stats: k.stats,
         chores: k.chores.map((c) => ({ ref: refs.ref("chore", c.id), title: c.title, icon: c.icon, recurrence: c.recurrence, stars: c.stars, done: c.done })),
       }));
@@ -892,6 +895,27 @@ export const TOOLS: AssistantTool[] = [
         return queued(env, 1);
       }
       return queued(env, (await draftUpdate(env, "purchase_return", key, ReturnFields.partial().parse(rest))) ? 1 : 0);
+    },
+  },
+  {
+    name: "edit_kid",
+    description:
+      "Kids on the chore board, by first name only (never a surname). create (name, optional emoji); update (kidRef from chores: name, emoji); remove (hides the kid from the board; chores and history stay, undo brings them back). Add their chores with edit_chore in the same reply.",
+    input: {
+      action: z.enum(["create", "update", "remove"]),
+      ref: z.string().max(12).optional().describe("kidRef from chores"),
+      name: z.string().max(30).optional(),
+      emoji: z.string().max(8).optional(),
+    },
+    kind: "edit",
+    scrub: "reference",
+    async run(args, env) {
+      const { action, ref, ...rest } = args as { action: string; ref?: string } & Fields;
+      return crud(env, "kid", action === "remove" ? "delete" : action, ref, rest, {
+        create: (f) => KidFields.parse({ emoji: "⭐", ...f }),
+        update: (f) => KidFields.partial().parse(f),
+        label: (f) => String(f.name),
+      });
     },
   },
   {

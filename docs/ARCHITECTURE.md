@@ -262,6 +262,7 @@ setup in MCP.md.
 ```
 core/oauth/     OAuth 2.1 authorization server (policy.ts pure, server.ts storage)
 mcp/            tools.ts (read-only tools over module APIs), server.ts, sanitize.ts
+                (plus Ask Claude's tools via assistant/connector.ts for "Make changes" grants)
 app/api/mcp     Streamable HTTP endpoint (stateless, JSON responses)
 app/api/oauth   register / token / revoke
 app/oauth/authorize   consent screen
@@ -330,6 +331,12 @@ data. Page: `/assistant`, history at `/assistant/history`.
   the home page upload). The text is shown for checking; only it is sent,
   and the server scrubs it (`withPhotoText` in `inbox.ts`) and marks it as
   data. No audio or picture reaches the app or Claude.
+- **Connected assistants** (`connector.ts`): the "Make changes"
+  permissions in Settings > AI assistants expose these same tools over the
+  Household MCP connector, acting as the member who connected it, with
+  changesets in that member's history (deletes wait for Apply in the app).
+- **Kids** can be added, renamed and removed (hidden, history kept) by
+  first name, and their chores added in the same reply.
 - **Kitchen screen** (`kitchen.ts`, adult mode only): the same agent with
   the fast model, a snapshot of the screen, and only the kitchen's tools
   (`KITCHEN_TOOLS`: calendar, chores and goals, shopping, returns, upkeep).
