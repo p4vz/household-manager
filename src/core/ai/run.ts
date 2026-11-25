@@ -66,6 +66,51 @@ export async function runStructured<S extends z.ZodType, P>(opts: {
   return result.output as z.infer<S>;
 }
 
+/**
+ * Structured answer about one picture. Used only where a person explicitly
+ * sends a photo to be read (adding a new card from a photo of its front);
+ * nothing else in the app sends pictures to a provider. The text side is
+ * the same sanitized JSON as runStructured.
+ */
+export async function runVisionStructured<S extends z.ZodType, P>(opts: {
+  tier: AiTier;
+  system: string;
+  task: string;
+  payload: Sanitized<P>;
+  image: { data: Buffer; mediaType: "image/jpeg" | "image/png" | "image/webp" };
+  schema: S;
+}): Promise<z.infer<S>> {
+  const settings = await getAiSettings();
+  const prompt = `${opts.task}\n\nDATA (JSON):\n${JSON.stringify(opts.payload)}`;
+  const sub = await viaSubscription(settings, (token) =>
+    runClaudeCodeStructured({
+      token,
+      model: settings.models.anthropic[opts.tier],
+      system: opts.system,
+      prompt,
+      image: opts.image,
+      schema: opts.schema,
+    }),
+  );
+  if (sub) return sub.value;
+  const result = await generateText({
+    model: await languageModel(settings, opts.tier),
+    system: opts.system,
+    messages: [
+      {
+        role: "user",
+        content: [
+          { type: "image", image: opts.image.data, mediaType: opts.image.mediaType },
+          { type: "text", text: prompt },
+        ],
+      },
+    ],
+    output: Output.object({ schema: opts.schema }),
+    maxRetries: 2,
+  });
+  return result.output as z.infer<S>;
+}
+
 export type WebSource = { url: string; title: string | null };
 
 const ResearchNotes = z.object({
