@@ -4,6 +4,8 @@ import { Badge } from "@/components/ui/badge";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Progress } from "@/components/ui/progress";
 import { formatMoney } from "@/lib/utils";
+import { requireUserOrRedirect } from "@/core/auth/guard";
+import { viewerFromLabel } from "@/modules/finance/api";
 import { getTrip, tripCardPlan } from "@/modules/trips/api";
 import { ITINERARY_ICONS } from "@/modules/trips/ui/format";
 
@@ -11,7 +13,8 @@ export default async function TripCardsPage({ params }: PageProps<"/trips/[slug]
   const { slug } = await params;
   const trip = await getTrip(slug);
   if (!trip) notFound();
-  const plan = await tripCardPlan(trip.id);
+  const user = await requireUserOrRedirect();
+  const plan = await tripCardPlan(viewerFromLabel(user.owner), trip.id);
   const unpaid = plan.steps.filter((s) => s.plan);
   const paid = plan.steps.filter((s) => s.paidWith);
   const extra = unpaid.reduce((s, x) => s + Math.max(0, x.plan!.recommended.cents - x.plan!.options[x.plan!.options.length - 1].cents), 0);

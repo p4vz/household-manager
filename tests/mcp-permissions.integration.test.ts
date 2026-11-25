@@ -41,7 +41,7 @@ beforeEach(async () => {
       { bankName: "CHK 123456789", displayName: null, owner: "joint", kind: "checking", balance: 5300 },
     ])
     .returning();
-  await finance.saveCardProfile(card.id, { rewardType: "points", baseRate: 1, centsPerUnit: 1.5, annualFee: 325, annualFeeMonth: 3 });
+  await finance.saveCardProfile("user1", card.id, { rewardType: "points", baseRate: 1, centsPerUnit: 1.5, annualFee: 325, annualFeeMonth: 3 });
   await db.insert(financeTransactions).values([
     { accountId: card.id, source: "csv", externalId: "a", postedDate: "2026-11-02", amount: -80, description: "x", merchant: "Trattoria", category: "Food & Dining", subcategory: "Restaurants" },
     { accountId: checking.id, source: "csv", externalId: "b", postedDate: "2026-11-01", amount: 4000, description: "x", merchant: "Payroll", category: "Income" },

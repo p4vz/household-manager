@@ -47,6 +47,34 @@ in-process function calls; no route, queue or socket exposes them.
 skips the secret check, or if an assistant route can answer while the
 feature is off.
 
+## Private accounts between members
+
+Each finance account is Joint, Pavel's (`user1`) or Raisa's (`user2`). In
+Finance a member sees joint accounts and their own: dashboard, transactions,
+drill-downs, budgets (kept per member), rewards audit, sign-up bonuses, the
+AI advisor (one report per member) and trip card advice. Assistants (MCP)
+answer as the member who connected them, with the same limits. The rule lives
+in `src/modules/finance/access.ts`, and every read in `finance/api.ts` takes the
+viewer as its first argument. Writes naming an account (owner, names, card
+rules, catalog links, pictures) are refused for the other member's accounts.
+
+The Accounts page lists every account to both members (official name,
+nickname, owner, type, picture) so each knows what exists; balances show
+only for accounts the viewer can see. New accounts start private: bank-sync
+accounts belong to whoever linked SimpleFIN (User 1 when the access URL comes
+from the environment), CSV-created ones to whoever imported them. Mark an
+account Joint to share it.
+
+Not covered: Settings shows the household's total transaction count, and
+annual-fee reminders on the shared calendar name the card and fee.
+
+Card pictures are encrypted with DOC_VAULT_KEY like trip documents, are
+re-encoded in the browser first (dropping photo metadata), are limited to
+600 KB of JPEG, PNG or WebP (checked by file signature), and are only
+decrypted to render the Accounts page. They never reach an AI provider or an
+assistant. Account and card numbers, even masked ones, are stripped from
+bank names and typed names before they are stored.
+
 ## Kitchen kiosk
 
 The kitchen wall screen (a Samsung DeX device in kiosk browser mode) is

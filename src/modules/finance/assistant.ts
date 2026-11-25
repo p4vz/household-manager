@@ -2,7 +2,8 @@ import "server-only";
 import { and, asc, desc, eq, gte, ilike, inArray, isNull, lte, or, sql, type SQL } from "drizzle-orm";
 import { db } from "@/core/db/client";
 import { ruleKey } from "./ingest/categorize";
-import { financeAccounts, financeCategoryRules, financeTransactions as t, type Owner } from "./schema";
+import { visibleTo, type Viewer } from "./access";
+import { financeAccounts, financeCategoryRules, financeTransactions as t } from "./schema";
 
 /**
  * What the in-app assistant (src/assistant) may read and edit in finance.
@@ -14,23 +15,6 @@ import { financeAccounts, financeCategoryRules, financeTransactions as t, type O
  * (category, subcategory, notes, transfer flag). Amounts, dates, merchants
  * and accounts come from the bank and are never edited here.
  */
-
-/** A signed-in household member, in ALLOWED_EMAILS order. */
-export type Viewer = "user1" | "user2";
-
-export function viewerFromLabel(label: "User 1" | "User 2"): Viewer {
-  return label === "User 1" ? "user1" : "user2";
-}
-
-function visibleTo(viewer: Viewer): SQL {
-  return or(eq(financeAccounts.owner, "joint"), eq(financeAccounts.owner, viewer as Owner))!;
-}
-
-/** Joint accounts plus the viewer's own. */
-export async function visibleAccountIds(viewer: Viewer): Promise<Set<string>> {
-  const rows = await db().select({ id: financeAccounts.id }).from(financeAccounts).where(visibleTo(viewer));
-  return new Set(rows.map((r) => r.id));
-}
 
 const accountName = sql<string>`coalesce(${financeAccounts.displayName}, ${financeAccounts.bankName})`;
 

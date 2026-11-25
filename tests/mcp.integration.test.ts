@@ -207,12 +207,12 @@ describe("assistant tools", () => {
       .insert(financeAccounts)
       .values([
         { bankName: "AMEX GOLD 41007", displayName: "Gold ****1007", owner: "user1", kind: "credit" },
-        { bankName: "Venture", displayName: "Pat Example Venture", owner: "user2", kind: "credit" },
+        { bankName: "Venture", displayName: "Pat Example Venture", owner: "joint", kind: "credit" },
       ])
       .returning();
-    await finance.saveCardProfile(gold.id, { rewardType: "points", baseRate: 1, centsPerUnit: 1.5, annualFee: 325, annualFeeMonth: 3 });
-    await finance.addCardRule(gold.id, { matchType: "subcategory", match: "Restaurants", rate: 4, capAmount: null, capPeriod: null, validFrom: null, validTo: null, label: "Dining" });
-    await finance.saveCardProfile(venture.id, {
+    await finance.saveCardProfile("user1", gold.id, { rewardType: "points", baseRate: 1, centsPerUnit: 1.5, annualFee: 325, annualFeeMonth: 3 });
+    await finance.addCardRule("user1", gold.id, { matchType: "subcategory", match: "Restaurants", rate: 4, capAmount: null, capPeriod: null, validFrom: null, validTo: null, label: "Dining" });
+    await finance.saveCardProfile("user1", venture.id, {
       rewardType: "points", baseRate: 2, centsPerUnit: 1, annualFee: 95, annualFeeMonth: null,
       signupBonus: 75_000, signupMinSpend: 4000, signupStart: "2026-10-20", signupDeadline: "2027-01-15",
     });
@@ -223,8 +223,8 @@ describe("assistant tools", () => {
     const cards = await callTool(tokens.access_token, "list_my_cards");
     const text = JSON.stringify(cards);
     expect(text).not.toMatch(/1007|Pat|Example/);
-    expect(cards.map((c: { owner: string }) => c.owner).sort()).toEqual(["User 1", "User 2"]);
-    expect(cards.find((c: { owner: string }) => c.owner === "User 2").signupBonus).toMatchObject({ minSpend: 4000, remaining: 4000 });
+    expect(cards.map((c: { owner: string }) => c.owner).sort()).toEqual(["Joint", "User 1"]);
+    expect(cards.find((c: { owner: string }) => c.owner === "Joint").signupBonus).toMatchObject({ minSpend: 4000, remaining: 4000 });
   });
 
   it("routes a big booking to the open sign-up bonus and dinner to the dining card", async () => {

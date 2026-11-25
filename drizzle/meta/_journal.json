@@ -75,8 +75,15 @@
     {
       "idx": 10,
       "version": "7",
-      "when": 1795622645224,
-      "tag": "0010_assistant_changesets",
+      "when": 1795622028925,
+      "tag": "0010_private_accounts",
+      "breakpoints": true
+    },
+    {
+      "idx": 11,
+      "version": "7",
+      "when": 1795623845426,
+      "tag": "0011_assistant_changesets",
       "breakpoints": true
     }
   ]
