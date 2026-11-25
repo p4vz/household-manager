@@ -17,7 +17,7 @@ import {
   type EventInput,
   type GoogleEvent,
 } from "./google-config";
-import { calendarGoogleEvents } from "./schema";
+import { calendarEventPhotos, calendarGoogleEvents } from "./schema";
 
 /**
  * Two-way Google Calendar sync for the kitchen kiosk and the phone view.
@@ -46,7 +46,7 @@ const TOKEN_URL = "https://oauth2.googleapis.com/token";
 const API = "https://www.googleapis.com/calendar/v3";
 const SYNC_STATE_KEY = "calendar.googleSync";
 const MIN_INTERVAL_MS = 60_000;
-const EVENT_FIELDS = "id,etag,status,summary,location,updated,recurringEventId,start,end";
+const EVENT_FIELDS = "id,etag,status,summary,location,description,updated,recurringEventId,start,end";
 
 export type GoogleSyncState = { lastSyncAt: string | null; ok: boolean; message: string | null };
 
@@ -333,7 +333,7 @@ export async function createGoogleEvent(input: EventInput): Promise<void> {
   await saveMirror(source.key, (await res.json()) as GoogleEvent);
 }
 
-async function mirroredFamilyEvent(eventId: string) {
+export async function mirroredFamilyEvent(eventId: string) {
   const source = familySource();
   const [row] = await db()
     .select()
@@ -346,7 +346,9 @@ async function mirroredFamilyEvent(eventId: string) {
 /** Changes an event on the family calendar (events.patch, If-Match etag). */
 export async function updateGoogleEvent(eventId: string, input: EventInput): Promise<void> {
   const row = await mirroredFamilyEvent(eventId);
-  const body = bodyOf(input, true);
+  // Notes left as they were are not sent, so formatting added in Google Calendar survives.
+  const unchangedNotes = (input.notes ?? null)?.trim() === (row.notes ?? null)?.trim() || ((input.notes ?? "").trim() === "" && !row.notes);
+  const body = bodyOf(unchangedNotes ? { ...input, notes: undefined } : input, true);
   const { source, id } = await writableCalendar();
   const res = await google(`/calendars/${encodeURIComponent(id)}/events/${encodeURIComponent(row.googleEventId)}`, {
     method: "PATCH",
@@ -375,4 +377,7 @@ export async function deleteGoogleEvent(eventId: string): Promise<void> {
     await failure(res, "delete the event");
   }
   await db().delete(calendarGoogleEvents).where(eq(calendarGoogleEvents.id, row.id));
+  await db()
+    .delete(calendarEventPhotos)
+    .where(and(eq(calendarEventPhotos.calendarKey, row.calendarKey), eq(calendarEventPhotos.googleEventId, row.googleEventId)));
 }

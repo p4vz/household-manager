@@ -1,12 +1,14 @@
 "use client";
 
-import { useState, useTransition } from "react";
+import { useEffect, useRef, useState, useTransition } from "react";
+import { shrinkImage } from "@/lib/shrink-image";
 import { ErrorNote, Modal, field, tap } from "./kit";
 
 /** Matches EventInput in the calendar module (household wall-clock time). */
 export type EventFormValue = {
   title: string;
   location?: string | null;
+  notes?: string | null;
   allDay: boolean;
   startDate: string;
   endDate: string;
@@ -20,6 +22,15 @@ export type EventActions = {
   create: (input: EventFormValue) => Promise<Result>;
   update: (input: EventFormValue & { id: string }) => Promise<Result>;
   /** Left out on the kitchen screen: kids use it, so only the signed-in app can delete events. */
+  remove?: (input: { id: string }) => Promise<Result>;
+  /** Pictures on an event; `remove` is left out on the kitchen screen. */
+  photos?: PhotoActions;
+};
+
+export type PhotoView = { id: string; url: string };
+export type PhotoActions = {
+  list: (input: { id: string }) => Promise<{ photos: PhotoView[]; error: string | null }>;
+  add: (input: { id: string; file: Blob }) => Promise<Result>;
   remove?: (input: { id: string }) => Promise<Result>;
 };
 
@@ -83,7 +94,7 @@ export function EventModal({
   onClose: () => void;
 }) {
   const [v, setV] = useState<EventFormValue>(
-    initial ?? { title: "", location: "", allDay: false, startDate: day ?? today, endDate: day ?? today, startTime: "09:00", endTime: "10:00" },
+    initial ?? { title: "", location: "", notes: "", allDay: false, startDate: day ?? today, endDate: day ?? today, startTime: "09:00", endTime: "10:00" },
   );
   const [error, setError] = useState<string | null>(null);
   const [confirmDelete, setConfirmDelete] = useState(false);
@@ -106,7 +117,7 @@ export function EventModal({
 
   const save = () => {
     if (!v.title.trim()) return setError("Give the event a name.");
-    const body: EventFormValue = { ...v, title: v.title.trim(), location: v.location?.trim() || null };
+    const body: EventFormValue = { ...v, title: v.title.trim(), location: v.location?.trim() || null, notes: v.notes?.trim() || null };
     if (body.allDay) Object.assign(body, { startTime: null, endTime: null });
     run(() => (initial ? actions.update({ ...body, id: initial.id }) : actions.create(body)));
   };
@@ -225,10 +236,24 @@ export function EventModal({
         <input
           value={v.location ?? ""}
           onChange={(e) => set({ location: e.target.value })}
-          maxLength={120}
-          placeholder="Where (optional)"
+          maxLength={200}
+          placeholder="Address or place (optional)"
           className={`${field} w-full`}
+          autoComplete="street-address"
         />
+        <textarea
+          value={v.notes ?? ""}
+          onChange={(e) => set({ notes: e.target.value })}
+          maxLength={4000}
+          rows={3}
+          placeholder="Notes (optional): what to bring, door code, who's driving…"
+          className={`${field} block w-full py-2`}
+        />
+        {initial && actions.photos ? (
+          <EventPhotos eventId={initial.id} actions={actions.photos} />
+        ) : actions.photos ? (
+          <p className="text-sm opacity-60">You can add pictures once the event is saved.</p>
+        ) : null}
 
         {initial?.recurring ? <p className="text-sm opacity-70">This is one day of a repeating event. Changes apply to this day only.</p> : null}
         <p className="text-sm opacity-60">Saves to the {calendarLabel} Google calendar.</p>
@@ -252,5 +277,117 @@ export function EventModal({
         </div>
       </div>
     </Modal>
+  );
+}
+
+/**
+ * Pictures on an event: loaded when the event is opened (they are not part
+ * of the screen's regular refresh), added from the camera or photo library
+ * after shrinking in the browser, and removed only in the signed-in app.
+ */
+function EventPhotos({ eventId, actions }: { eventId: string; actions: PhotoActions }) {
+  const [photos, setPhotos] = useState<PhotoView[] | null>(null);
+  const [error, setError] = useState<string | null>(null);
+  const [busy, setBusy] = useState(false);
+  const [big, setBig] = useState<PhotoView | null>(null);
+  const [confirm, setConfirm] = useState<string | null>(null);
+  const input = useRef<HTMLInputElement>(null);
+
+  const load = async () => {
+    try {
+      const r = await actions.list({ id: eventId });
+      setPhotos(r.photos);
+      if (r.error) setError(r.error);
+    } catch {
+      setPhotos([]);
+      setError("Couldn't load the pictures.");
+    }
+  };
+
+  // Server action references are stable, so this runs once per opened event.
+  const list = actions.list;
+  useEffect(() => {
+    let alive = true;
+    list({ id: eventId }).then(
+      (r) => {
+        if (!alive) return;
+        setPhotos(r.photos);
+        setError(r.error);
+      },
+      () => {
+        if (!alive) return;
+        setPhotos([]);
+        setError("Couldn't load the pictures.");
+      },
+    );
+    return () => {
+      alive = false;
+    };
+  }, [eventId, list]);
+
+  const onPick = async (files: FileList | null) => {
+    if (!files?.length) return;
+    setBusy(true);
+    setError(null);
+    try {
+      for (const f of Array.from(files)) {
+        const blob = await shrinkImage(f);
+        const r = await actions.add({ id: eventId, file: blob });
+        if (r.error) {
+          setError(r.error);
+          break;
+        }
+      }
+      await load();
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "That picture didn't save.");
+    } finally {
+      setBusy(false);
+      if (input.current) input.current.value = "";
+    }
+  };
+
+  const remove = actions.remove;
+  return (
+    <div>
+      <div className="mb-1 text-sm font-semibold opacity-70">Pictures</div>
+      <div className="flex flex-wrap gap-2">
+        {photos === null ? <span className="text-sm opacity-60">Loading…</span> : null}
+        {photos?.map((p) => (
+          <div key={p.id} className="relative">
+            <button type="button" onClick={() => setBig(p)} className="block h-20 w-20 overflow-hidden rounded-lg border" aria-label="Open picture">
+              {/* eslint-disable-next-line @next/next/no-img-element */}
+              <img src={p.url} alt="" className="h-full w-full object-cover" />
+            </button>
+            {remove ? (
+              <button
+                type="button"
+                className={`absolute -right-2 -top-2 h-7 min-w-7 rounded-full px-1 text-xs font-bold text-white shadow ${confirm === p.id ? "bg-red-600" : "bg-slate-700"}`}
+                aria-label={confirm === p.id ? "Tap again to remove" : "Remove picture"}
+                onClick={async () => {
+                  if (confirm !== p.id) return setConfirm(p.id);
+                  setConfirm(null);
+                  await remove({ id: p.id });
+                  await load();
+                }}
+              >
+                {confirm === p.id ? "Remove?" : "✕"}
+              </button>
+            ) : null}
+          </div>
+        ))}
+        <button type="button" disabled={busy} onClick={() => input.current?.click()} className={`${tap} h-20 w-20 border border-dashed text-sm`}>
+          {busy ? "Saving…" : "＋ Picture"}
+        </button>
+        <input ref={input} type="file" accept="image/*" multiple hidden onChange={(e) => void onPick(e.target.files)} />
+      </div>
+      <ErrorNote error={error} />
+      {big ? (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/90 p-4" onClick={() => setBig(null)} role="dialog" aria-label="Picture">
+          {/* eslint-disable-next-line @next/next/no-img-element */}
+          <img src={big.url} alt="" className="max-h-full max-w-full rounded-lg object-contain" />
+        </div>
+      ) : null}
+    </div>
   );
 }

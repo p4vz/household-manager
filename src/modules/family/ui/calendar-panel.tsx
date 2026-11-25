@@ -12,6 +12,8 @@ export type AgendaItemView = {
   allDay: boolean;
   color: string;
   who: string;
+  notes: string | null;
+  photos: number;
   /** Present for events on the family calendar, which can be edited here. */
   edit?: EditableEventView;
 };
@@ -158,24 +160,54 @@ export function CalendarPanel({
   );
 }
 
-export function EventCard({ e, compact = false, onEdit }: { e: AgendaItemView; compact?: boolean; onEdit?: OnEdit }) {
+/** Google Maps search for an address or place name (opens in a new tab). */
+export function mapsUrl(place: string) {
+  return `https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(place)}`;
+}
+
+/**
+ * One event. `details` (the day view) adds the notes and a maps link for
+ * the address; elsewhere small marks show that notes or pictures exist.
+ */
+export function EventCard({ e, compact = false, details = false, onEdit }: { e: AgendaItemView; compact?: boolean; details?: boolean; onEdit?: OnEdit }) {
   const edit = e.edit;
-  const Tag = edit && onEdit ? "button" : "div";
+  const editable = Boolean(edit && onEdit);
+  const marks = `${e.notes && !details ? " 📝" : ""}${e.photos ? ` 📷${e.photos > 1 ? e.photos : ""}` : ""}`;
+  const main = (
+    <div className={`flex items-baseline gap-2 ${compact ? "flex-col gap-0" : ""}`}>
+      <span className={`shrink-0 font-semibold tabular-nums ${compact ? "text-xs" : "w-28 text-sm sm:w-40 sm:text-base"}`} style={{ color: e.color }}>
+        {e.timeLabel}
+      </span>
+      <span className={`min-w-0 font-semibold leading-tight ${compact ? "text-sm" : "text-base sm:text-lg"}`}>
+        {e.title}
+        {marks ? <span className="ml-1 whitespace-nowrap text-xs font-normal opacity-70">{marks}</span> : null}
+      </span>
+    </div>
+  );
+  const indent = compact ? "" : "pl-[7.5rem] sm:pl-[10.5rem]";
   return (
-    <Tag
-      {...(edit && onEdit ? { type: "button" as const, onClick: () => onEdit(edit), "aria-label": `Edit ${e.title}` } : {})}
-      className={`block w-full rounded-lg border-l-8 bg-white text-left dark:bg-slate-900 ${compact ? "p-1.5" : "min-h-12 p-2"} ${edit && onEdit ? "active:scale-[0.98]" : ""}`}
+    <div
+      className={`w-full rounded-lg border-l-8 bg-white text-left dark:bg-slate-900 ${compact ? "p-1.5" : "min-h-12 p-2"}`}
       style={{ borderColor: e.color }}
     >
-      <div className={`flex items-baseline gap-2 ${compact ? "flex-col gap-0" : ""}`}>
-        <span className={`shrink-0 font-semibold tabular-nums ${compact ? "text-xs" : "w-28 text-sm sm:w-40 sm:text-base"}`} style={{ color: e.color }}>
-          {e.timeLabel}
-        </span>
-        <span className={`min-w-0 font-semibold leading-tight ${compact ? "text-sm" : "text-base sm:text-lg"}`}>{e.title}</span>
-      </div>
-      {e.location && !compact ? <div className="truncate pl-[7.5rem] text-sm sm:pl-[10.5rem] opacity-70">📍 {e.location}</div> : null}
-      {e.location && compact ? <div className="truncate text-xs opacity-70">📍 {e.location}</div> : null}
-    </Tag>
+      {editable ? (
+        <button type="button" onClick={() => onEdit!(edit!)} aria-label={`Edit ${e.title}`} className="block w-full text-left active:scale-[0.98]">
+          {main}
+        </button>
+      ) : (
+        main
+      )}
+      {e.location ? (
+        details ? (
+          <a href={mapsUrl(e.location)} target="_blank" rel="noreferrer" className={`block truncate text-sm text-sky-700 underline dark:text-sky-300 ${indent}`}>
+            📍 {e.location}
+          </a>
+        ) : (
+          <div className={`truncate opacity-70 ${compact ? "text-xs" : `text-sm ${indent}`}`}>📍 {e.location}</div>
+        )
+      ) : null}
+      {details && e.notes ? <p className={`mt-1 line-clamp-6 whitespace-pre-line text-sm opacity-80 ${indent}`}>{e.notes}</p> : null}
+    </div>
   );
 }
 
@@ -430,7 +462,7 @@ function DayModal({ day, canAdd, onEdit, onAdd, onClose }: { day: AgendaDayView;
       <div className="space-y-2">
         {day.items.length === 0 ? <p className="opacity-60">Nothing planned</p> : null}
         {day.items.map((e) => (
-          <EventCard key={e.key} e={e} onEdit={onEdit} />
+          <EventCard key={e.key} e={e} details onEdit={onEdit} />
         ))}
         {canAdd ? (
           <button type="button" className={`${tap} mt-2 w-full bg-sky-600 text-lg text-white`} onClick={onAdd}>

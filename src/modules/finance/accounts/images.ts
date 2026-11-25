@@ -1,6 +1,7 @@
 import "server-only";
 import { eq, inArray } from "drizzle-orm";
 import { db } from "@/core/db/client";
+import { IMAGE_TYPES, sniffImageType, type ImageType } from "@/core/files/sniff-image";
 import { openBytes, sealBytes, vaultConfigured } from "@/core/secrets/file-vault";
 import type { Viewer } from "../access";
 import { financeAccountImages } from "../schema";
@@ -13,16 +14,9 @@ import { financeAccountImages } from "../schema";
  * provider or an assistant, and nothing outside this file reads the table.
  */
 export const MAX_CARD_IMAGE_BYTES = 600 * 1024;
-export const CARD_IMAGE_TYPES = ["image/jpeg", "image/png", "image/webp"] as const;
-export type CardImageType = (typeof CARD_IMAGE_TYPES)[number];
-
-/** The declared type must match the file's own signature. */
-export function sniffImageType(bytes: Buffer): CardImageType | null {
-  if (bytes.length >= 3 && bytes[0] === 0xff && bytes[1] === 0xd8 && bytes[2] === 0xff) return "image/jpeg";
-  if (bytes.length >= 8 && bytes.subarray(0, 8).equals(Buffer.from([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a]))) return "image/png";
-  if (bytes.length >= 12 && bytes.toString("latin1", 0, 4) === "RIFF" && bytes.toString("latin1", 8, 12) === "WEBP") return "image/webp";
-  return null;
-}
+export const CARD_IMAGE_TYPES = IMAGE_TYPES;
+export type CardImageType = ImageType;
+export { sniffImageType };
 
 export { vaultConfigured as cardImagesConfigured };
 

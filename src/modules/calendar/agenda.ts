@@ -15,6 +15,10 @@ export type AgendaItem = {
   allDay: boolean;
   color: string;
   who: string;
+  /** The event's notes (Google description), plain text. */
+  notes: string | null;
+  /** Pictures added in the app (family calendar events only). */
+  photos: number;
   sortKey: number;
   /** Set for events on the family calendar: the values the edit form starts from. */
   edit?: EditableEvent;
@@ -46,6 +50,8 @@ export type GoogleRow = {
   startDate: string | null;
   endDate: string | null;
   recurring?: boolean;
+  notes?: string | null;
+  photoCount?: number;
 };
 
 export type HouseholdRow = {
@@ -118,7 +124,7 @@ export function buildAgenda(input: {
       const edit = s.writable ? { id: e.id, recurring: Boolean(e.recurring), ...toEventInput(e, tz) } : undefined;
       if (e.allDay) {
         if (!e.startDate || e.startDate > date || (e.endDate ?? addDays(e.startDate, 1)) <= date) continue;
-        items.push({ key: `g:${e.id}:${date}`, title: e.title, location: e.location, timeLabel: "All day", allDay: true, color: s.color, who: s.label, sortKey: 0, edit });
+        items.push({ key: `g:${e.id}:${date}`, title: e.title, location: e.location, timeLabel: "All day", allDay: true, color: s.color, who: s.label, notes: e.notes ?? null, photos: e.photoCount ?? 0, sortKey: 0, edit });
         continue;
       }
       if (!e.startsAt) continue;
@@ -142,6 +148,8 @@ export function buildAgenda(input: {
         allDay: !startsToday && !endsToday,
         color: s.color,
         who: s.label,
+        notes: e.notes ?? null,
+        photos: e.photoCount ?? 0,
         sortKey: startsToday ? e.startsAt.getTime() : 1,
         edit,
       });
@@ -158,6 +166,8 @@ export function buildAgenda(input: {
         allDay: true,
         color: HOUSEHOLD_STYLE.color,
         who: HOUSEHOLD_STYLE.label,
+        notes: null,
+        photos: 0,
         sortKey: 0,
       });
     }

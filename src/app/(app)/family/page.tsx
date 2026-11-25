@@ -15,7 +15,7 @@ import {
   setReturnStatusAction,
   syncCalendarAction,
 } from "../../kiosk/actions";
-import { createEventAction, updateEventAction } from "../../kiosk/calendar-actions";
+import { addEventPhotoAction, createEventAction, eventPhotosAction, updateEventAction } from "../../kiosk/calendar-actions";
 import { loadHub } from "../../kiosk/load";
 import { shoppingActions } from "../../kiosk/shopping-actions-map";
 import {
@@ -27,6 +27,7 @@ import {
   markSuggestionReturnedAction,
   archiveChoreAction,
   deleteEventAction,
+  removeEventPhotoAction,
   deleteReturnAction,
   deleteShoppingItemAction,
   deleteShoppingListAction,
@@ -94,7 +95,12 @@ export default async function FamilyPage() {
             dismiss: dismissSuggestionAction,
             extract: extractReturnAction,
           },
-          calendar: { create: createEventAction, update: updateEventAction, remove: deleteEventAction },
+          calendar: {
+            create: createEventAction,
+            update: updateEventAction,
+            remove: deleteEventAction,
+            photos: { list: eventPhotosAction, add: addEventPhotoAction, remove: removeEventPhotoAction },
+          },
           syncCalendar: syncCalendarAction.bind(null, {}),
         }}
       />
