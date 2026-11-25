@@ -43,3 +43,6 @@ next-env.d.ts
 
 # written by scripts/write-version.mjs at build time
 /public/version.json
+
+# copied from node_modules by scripts/copy-ocr-assets.mjs
+/public/ocr/

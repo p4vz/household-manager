@@ -4,6 +4,7 @@ import { db } from "@/core/db/client";
 import { householdTimeZone } from "@/core/time/zoned";
 import { assertNoCardNumber } from "./guard";
 import { clearBoughtItems } from "./shopping";
+import { pruneOldSuggestions } from "./mail";
 import {
   familyChoreCompletions,
   familyChores,
@@ -414,10 +415,38 @@ export async function runHousekeeping(now = new Date()) {
     .delete(familyPurchaseReturns)
     .where(and(eq(familyPurchaseReturns.status, "returned"), lt(familyPurchaseReturns.returnedAt, new Date(now.getTime() - 30 * 86_400_000))))
     .returning({ id: familyPurchaseReturns.id });
+  await pruneOldSuggestions(now);
   return { shoppingCleared, returnsCleared: returns.length };
 }
 
 /** Today's date in household time (for deadlines and labels). */
 export function today(now = new Date()): string {
   return householdToday(now, tz());
+}
+
+// --------------------------------------------------------- return emails ----
+
+export {
+  disconnectMailbox,
+  finishMailConnect,
+  getOwnSuggestion,
+  listMailboxes,
+  listReturnSuggestions,
+  mailRedirectUri,
+  markSuggestion,
+  MailConnectError,
+  scanDueMailboxes,
+  scanMemberMailboxes,
+  setMailboxSpam,
+  startMailConnect,
+  type MailboxView,
+  type Member,
+  type ReturnSuggestion,
+  type ScanResult,
+} from "./mail";
+export { extractReturn, type ExtractedReturn } from "./return-extract";
+
+/** "User 1" / "User 2" (the sign-in's owner label) to the member key used by return emails. */
+export function memberFromLabel(label: "User 1" | "User 2"): "user1" | "user2" {
+  return label === "User 1" ? "user1" : "user2";
 }

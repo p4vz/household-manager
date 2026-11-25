@@ -26,6 +26,8 @@ npm run dev
 
 Google OAuth client: add `http://localhost:3000/api/auth/callback/google`
 (and the Railway URL equivalent) as an authorized redirect URI.
+For return emails, also add `/settings/email/callback` on the same origins,
+enable the Gmail API, and add the `gmail.readonly` scope to the consent screen.
 
 ## Checks
 
