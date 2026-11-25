@@ -1,5 +1,6 @@
 "use client";
 
+import Link from "next/link";
 import { useState, useTransition } from "react";
 import { EventCard, type AgendaDayView } from "./calendar-panel";
 import { EventModal, type EditableEventView, type EventActions } from "./event-modal";
@@ -47,6 +48,9 @@ export function PhoneCalendar({
           <span className={pending ? "inline-block animate-spin" : ""}>⟳</span> Sync
         </button>
       </div>
+      <Link href="/calendar" className="text-center text-sm font-medium text-sky-700 underline dark:text-sky-300">
+        Open the full calendar (week and month)
+      </Link>
       {!configured ? (
         <p className="rounded-lg bg-amber-100 p-2 text-sm text-amber-900">Google Calendar isn&apos;t connected yet. Showing household events only.</p>
       ) : message || syncError ? (

@@ -40,7 +40,10 @@ type OnDay = (d: AgendaDayView) => void;
  * - Next 4 days: today large, then the next three days.
  * Tapping a day header (or a month cell) opens that day in full.
  * "+ Add Event" and a tap on a family calendar event open the event modal,
- * which writes to Google straight away. Deleting is not offered here.
+ * which writes to Google straight away. Deleting is offered only when
+ * `eventActions.remove` is given (the signed-in app, never the kiosk).
+ * Used full-screen on the kitchen kiosk and on /calendar in the app (phones
+ * down to 360 px wide).
  */
 export function CalendarPanel({
   days,
@@ -80,20 +83,20 @@ export function CalendarPanel({
   return (
     <div className="flex h-full min-h-0 flex-col gap-3">
       <div className="flex flex-wrap items-center gap-2">
-        <div className="flex rounded-xl border p-1">
+        <div className="flex rounded-xl border p-0.5 sm:p-1">
           {(["week", "month", "agenda"] as const).map((v) => (
             <button
               key={v}
               type="button"
               onClick={() => setView(v)}
               aria-pressed={view === v}
-              className={`${tap} ${view === v ? "bg-slate-900 text-white dark:bg-white dark:text-slate-900" : ""}`}
+              className={`${tap} max-sm:px-2.5 ${view === v ? "bg-slate-900 text-white dark:bg-white dark:text-slate-900" : ""}`}
             >
               {v === "agenda" ? "4 days" : v === "week" ? "Week" : "Month"}
             </button>
           ))}
         </div>
-        <div className="flex flex-1 flex-wrap gap-2">
+        <div className="order-last flex w-full flex-wrap gap-2 sm:order-none sm:w-auto sm:flex-1">
           {legend.map((l) => (
             <span key={l.label} className="flex items-center gap-1 rounded-full px-3 py-1 text-sm font-semibold" style={{ background: `${l.color}22`, color: l.color }}>
               <span className="h-3 w-3 rounded-full" style={{ background: l.color }} />
@@ -113,15 +116,16 @@ export function CalendarPanel({
           className={`${tap} border`}
           title={syncedLabel ? `Last synced ${syncedLabel}` : undefined}
         >
-          <span className={pending ? "inline-block animate-spin" : ""}>⟳</span> {pending ? "Syncing" : "Sync"}
+          <span className={pending ? "inline-block animate-spin" : ""}>⟳</span>
+          <span className="hidden sm:inline"> {pending ? "Syncing" : "Sync"}</span>
         </button>
         <button
           type="button"
           disabled={!writableLabel}
           onClick={() => setModal({})}
-          className={`${tap} bg-sky-600 text-lg text-white disabled:opacity-40`}
+          className={`${tap} ml-auto bg-sky-600 text-white max-sm:px-3 disabled:opacity-40 sm:ml-0 sm:text-lg`}
         >
-          + Add Event
+          + Add<span className="hidden sm:inline"> Event</span>
         </button>
       </div>
       {!configured ? (
@@ -164,12 +168,12 @@ export function EventCard({ e, compact = false, onEdit }: { e: AgendaItemView; c
       style={{ borderColor: e.color }}
     >
       <div className={`flex items-baseline gap-2 ${compact ? "flex-col gap-0" : ""}`}>
-        <span className={`shrink-0 font-semibold tabular-nums ${compact ? "text-xs" : "w-40 text-base"}`} style={{ color: e.color }}>
+        <span className={`shrink-0 font-semibold tabular-nums ${compact ? "text-xs" : "w-28 text-sm sm:w-40 sm:text-base"}`} style={{ color: e.color }}>
           {e.timeLabel}
         </span>
-        <span className={`min-w-0 font-semibold leading-tight ${compact ? "text-sm" : "text-lg"}`}>{e.title}</span>
+        <span className={`min-w-0 font-semibold leading-tight ${compact ? "text-sm" : "text-base sm:text-lg"}`}>{e.title}</span>
       </div>
-      {e.location && !compact ? <div className="truncate pl-[10.5rem] text-sm opacity-70">📍 {e.location}</div> : null}
+      {e.location && !compact ? <div className="truncate pl-[7.5rem] text-sm sm:pl-[10.5rem] opacity-70">📍 {e.location}</div> : null}
       {e.location && compact ? <div className="truncate text-xs opacity-70">📍 {e.location}</div> : null}
     </Tag>
   );
@@ -397,11 +401,19 @@ function MonthGrid({ days, today, onDay }: { days: AgendaDayView[]; today: strin
               <span className={`text-sm font-bold ${isToday ? "text-sky-700 dark:text-sky-300" : ""}`}>{Number(date.slice(8))}</span>
               <span className="flex min-h-0 flex-1 flex-col gap-0.5 overflow-hidden">
                 {items.slice(0, 3).map((e) => (
-                  <span key={e.key} className="truncate rounded px-1 text-xs font-medium leading-5" style={{ background: `${e.color}22`, color: e.color }}>
+                  <span key={e.key} className="hidden truncate rounded px-1 text-xs font-medium leading-5 sm:block" style={{ background: `${e.color}22`, color: e.color }}>
                     {e.title}
                   </span>
                 ))}
-                {items.length > 3 ? <span className="text-xs opacity-70">+{items.length - 3} more</span> : null}
+                {items.length > 3 ? <span className="hidden text-xs opacity-70 sm:block">+{items.length - 3} more</span> : null}
+                {/* Phones: a dot per event instead of titles. */}
+                {items.length ? (
+                  <span className="flex flex-wrap gap-0.5 sm:hidden">
+                    {items.slice(0, 4).map((e) => (
+                      <span key={e.key} className="h-2 w-2 rounded-full" style={{ background: e.color }} />
+                    ))}
+                  </span>
+                ) : null}
               </span>
             </button>
           );
