@@ -1,4 +1,4 @@
-import Link from "next/link";
+import { TabBar } from "@/components/ui/tabs";
 import { SubmitButton } from "@/components/submit-button";
 import { Badge } from "@/components/ui/badge";
 import { householdToday } from "@/modules/family/ui/dates";
@@ -14,7 +14,7 @@ import {
 import { OpenDocumentButton } from "@/modules/trips/ui/open-document-button";
 import { addEntryFormAction, deleteEntryFormAction, openEntryFileAction, updateEntryFormAction } from "./actions";
 
-const input = "min-h-10 rounded-lg border bg-transparent px-2";
+const input = "min-h-10 w-full min-w-0 rounded-lg border bg-transparent px-2";
 const button = "min-h-10 rounded-lg border px-3 text-sm disabled:opacity-50";
 const primary = "min-h-10 rounded-lg bg-foreground px-3 text-sm text-background disabled:opacity-50";
 const money = (n: number) => `$${n.toLocaleString("en-US", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
@@ -139,14 +139,20 @@ export default async function BinderPage({ searchParams }: PageProps<"/maintenan
   const byCategory = BINDER_CATEGORIES.map((c) => ({ c, list: entries.filter((e) => e.category === c) })).filter((g) => g.list.length);
 
   return (
-    <section className="max-w-4xl space-y-8">
+    <section className="max-w-4xl space-y-6">
+      <TabBar
+        label="Home maintenance"
+        active="/maintenance/binder"
+        items={[
+          { href: "/maintenance#items", label: "Action items" },
+          { href: "/maintenance#vehicles", label: "Cars" },
+          { href: "/maintenance#questions", label: "Questionable transactions" },
+          { href: "/maintenance#history", label: "House history" },
+          { href: "/maintenance#equipment", label: "Equipment" },
+          { href: "/maintenance/binder", label: "Home binder" },
+        ]}
+      />
       <div className="space-y-2">
-        <p className="text-sm">
-          <Link className="underline" href="/maintenance">
-            Home maintenance
-          </Link>{" "}
-          /
-        </p>
         <h1 className="text-2xl font-semibold">Home binder</h1>
         <p className="text-sm opacity-70">
           Manuals, warranties, insurance policies, property tax bills and receipts, linked to the equipment, car or project they belong to.

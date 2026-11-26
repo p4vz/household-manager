@@ -178,6 +178,7 @@ export function ReviewView(d: ReviewData) {
                 </div>
                 <details className="text-sm">
                   <summary className="cursor-pointer text-muted-foreground">See them</summary>
+                  <div className="overflow-x-auto">
                   <table className="mt-2 w-full text-sm">
                     <thead className="text-left text-xs text-muted-foreground">
                       <tr>
@@ -202,6 +203,7 @@ export function ReviewView(d: ReviewData) {
                       ))}
                     </tbody>
                   </table>
+                  </div>
                   {report.duplicates.length > 25 && (
                     <p className="pt-1 text-xs text-muted-foreground">and {report.duplicates.length - 25} more.</p>
                   )}

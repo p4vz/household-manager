@@ -62,6 +62,7 @@ export default async function TripCardsPage({ params }: PageProps<"/trips/[slug]
               No unpaid steps with a cost. Add costs on the <Link className="underline" href={`/trips/${slug}/itinerary`}>itinerary</Link> to get card advice.
             </p>
           ) : (
+            <div className="overflow-x-auto">
             <table className="w-full text-sm">
               <thead className="text-left text-muted-foreground">
                 <tr><th className="py-1">Step</th><th className="text-right">Cost</th><th className="pl-3">Charge</th><th className="pl-3">Use</th><th className="text-right">Earns</th><th className="pl-3">Why</th></tr>
@@ -88,6 +89,7 @@ export default async function TripCardsPage({ params }: PageProps<"/trips/[slug]
                 })}
               </tbody>
             </table>
+            </div>
           )}
         </CardContent>
       </Card>

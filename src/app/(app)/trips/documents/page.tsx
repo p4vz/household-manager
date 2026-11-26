@@ -25,6 +25,7 @@ export default async function DocumentsPage({ searchParams }: PageProps<"/trips/
 
       <Card>
         <CardContent>
+          <div className="overflow-x-auto">
           <table className="w-full text-sm">
             <thead className="text-left text-muted-foreground">
               <tr><th className="py-1">Document</th><th>For</th><th>Number</th><th>Expires</th><th /></tr>
@@ -54,6 +55,7 @@ export default async function DocumentsPage({ searchParams }: PageProps<"/trips/
               {docs.length === 0 ? <tr><td colSpan={5} className="py-2 text-muted-foreground">Nothing stored yet.</td></tr> : null}
             </tbody>
           </table>
+          </div>
         </CardContent>
       </Card>
 

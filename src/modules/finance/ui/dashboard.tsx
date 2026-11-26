@@ -242,6 +242,7 @@ export function FinanceDashboard(props: {
             <Button variant="ghost" size="sm" onClick={() => setDrill(null)}>Close</Button>
           </CardHeader>
           <CardContent>
+            <div className="overflow-x-auto">
             <table className="w-full text-sm">
               <tbody>
                 {drill.rows.map((t) => (
@@ -255,6 +256,7 @@ export function FinanceDashboard(props: {
                 ))}
               </tbody>
             </table>
+            </div>
           </CardContent>
         </Card>
       ) : null}
