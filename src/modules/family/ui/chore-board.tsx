@@ -132,6 +132,12 @@ export function ChoreBoard({
                       ) : null}
                     </span>
                     <span
+                      className={`shrink-0 rounded-full px-1.5 py-0.5 text-sm font-bold ${c.done ? "bg-emerald-100 text-emerald-800" : "bg-yellow-100 text-yellow-900"}`}
+                      aria-label={`${c.stars} ${c.stars === 1 ? "point" : "points"}`}
+                    >
+                      +{c.stars}⭐
+                    </span>
+                    <span
                       className={`flex h-9 w-9 shrink-0 items-center justify-center rounded-full border-[3px] text-xl font-black ${
                         c.done ? "border-emerald-500 bg-emerald-500 text-white" : "border-slate-300 dark:border-slate-600"
                       }`}
