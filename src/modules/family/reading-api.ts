@@ -126,7 +126,7 @@ export type ReadingSummary = {
   stats: ReadingStats;
   /** Today's entries (the kiosk can remove these). */
   today: { id: string; book: string; language: ReadingLanguage; minutes: number; pages: number | null }[];
-  /** Recent entries, newest first (phone history). */
+  /** Entries from the last 90 days, newest first (the reading history). */
   recent: { id: string; day: string; book: string; language: ReadingLanguage; minutes: number; pages: number | null }[];
   /** The kid's book shelf: books being read (last read first), then finished ones. */
   books: { id: string; title: string; author: string | null; language: ReadingLanguage; finished: boolean }[];
@@ -152,7 +152,7 @@ export async function readingSummaries(now = new Date()): Promise<Map<string, Re
         {
           stats: readingStats(mine, today),
           today: mine.filter((r) => r.day === today).map(slim),
-          recent: mine.filter((r) => r.day >= addDays(today, -30)).slice(0, 40).map((r) => ({ ...slim(r), day: r.day })),
+          recent: mine.filter((r) => r.day >= addDays(today, -90)).slice(0, 200).map((r) => ({ ...slim(r), day: r.day })),
           books,
         },
       ];
