@@ -18,7 +18,8 @@ async function apply(pg: PGlite, from: number, to: number) {
 }
 
 describe("shopping migration", () => {
-  it("keeps existing items and turns staples into a template", async () => {
+  // Each test boots its own PGlite and runs a dozen migrations: over 5 s on a busy CI runner.
+  it("keeps existing items and turns staples into a template", { timeout: 30_000 }, async () => {
     const pg = new PGlite();
     await apply(pg, 0, 11);
     await pg.exec(`
@@ -47,7 +48,7 @@ describe("shopping migration", () => {
     expect(tpl.rows.filter((r) => r.template === "Weekly Russian").map((r) => `${r.store}:${r.name}`)).toEqual(["Russian store:Tvorog", "Russian store:Snacks", "Russian store:Eggs"]);
   });
 
-  it("creates nothing but the starter templates on an empty database", async () => {
+  it("creates nothing but the starter templates on an empty database", { timeout: 30_000 }, async () => {
     const pg = new PGlite();
     await apply(pg, 0, 13);
     expect((await pg.query(`SELECT 1 FROM family_shopping_lists`)).rows).toHaveLength(0);
