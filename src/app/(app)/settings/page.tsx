@@ -15,9 +15,10 @@ import { InstallAppButton } from "@/components/pwa/install-app-button";
 import { listKioskDevices } from "@/core/kiosk/devices";
 import { BankSyncSettings, type BankSyncView } from "@/modules/finance/ui/bank-sync-settings";
 import { householdTimeZone, syncStatus } from "@/modules/finance/api";
-import { listMailboxes, memberFromLabel } from "@/modules/family/api";
+import { MAX_SLIDESHOW_PHOTOS, listMailboxes, memberFromLabel, slideshowStatus } from "@/modules/family/api";
 import { MailSettings } from "@/modules/family/ui/mail-settings";
 import { BackupSettings } from "@/components/backup-settings";
+import { SlideshowSettings } from "@/components/slideshow-settings";
 import { PushSettings } from "@/components/push-settings";
 import { getPrefs, listDevices, vapidKeys } from "@/core/push/push";
 import { backupStatus } from "@/core/backup/run";
@@ -25,6 +26,10 @@ import { householdTimeZone as zone } from "@/core/time/zoned";
 import {
   connectBankAction,
   connectDriveAction,
+  choosePhotosAction,
+  slideshowStepAction,
+  cancelPhotosAction,
+  clearSlideshowAction,
   subscribePushAction,
   unsubscribePushAction,
   savePushPrefsAction,
@@ -73,6 +78,7 @@ export default async function SettingsPage({ searchParams }: PageProps<"/setting
   const params = await searchParams;
   const justConnected = params.mail === "connected";
   const backup = await backupStatus();
+  const slideshow = await slideshowStatus();
   const pushMember = user.owner === "User 1" ? "user1" : "user2";
   const [pushKeys, pushDevices, pushPrefs] = await Promise.all([vapidKeys(), listDevices(pushMember), getPrefs(pushMember)]);
   // Only this member's own mailboxes, never the other member's.
@@ -152,6 +158,13 @@ export default async function SettingsPage({ searchParams }: PageProps<"/setting
           }}
           justConnected={params.backup === "connected"}
           actions={{ connect: connectDriveAction, backupNow: backupNowAction, disconnect: disconnectDriveAction }}
+        />
+      </div>
+      <div id="slideshow" className="scroll-mt-6 space-y-3 rounded-xl border p-6">
+        <h2 className="font-medium">Kitchen screen slideshow</h2>
+        <SlideshowSettings
+          view={{ ...slideshow, max: MAX_SLIDESHOW_PHOTOS }}
+          actions={{ choose: choosePhotosAction, step: slideshowStepAction, cancel: cancelPhotosAction, clear: clearSlideshowAction }}
         />
       </div>
       <div className="space-y-5 rounded-xl border p-6">

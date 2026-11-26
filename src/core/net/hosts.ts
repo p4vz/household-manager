@@ -30,6 +30,9 @@ export const STATIC_OUTBOUND_HOSTS = [
   // (keyless GETs of fixed URLs; nothing about the household is sent)
   "www.abingtonpa.gov",
   "thrillshare-cmsv2.services.thrillshare.com",
+  // Kitchen screen slideshow: Google Photos Picker sessions and the picked photos (family/slideshow.ts)
+  "photospicker.googleapis.com",
+  "lh3.googleusercontent.com",
   // Phone notifications (Web Push): the push services of Chrome/Android, Safari/iPhone and Firefox.
   // Only end-to-end encrypted payloads are sent (RFC 8291); see core/push.
   "fcm.googleapis.com",

@@ -1,4 +1,6 @@
-import { boolean, date, index, integer, pgTable, text, timestamp, uniqueIndex, uuid } from "drizzle-orm/pg-core";
+import { boolean, customType, date, index, integer, pgTable, text, timestamp, uniqueIndex, uuid } from "drizzle-orm/pg-core";
+
+const bytea = customType<{ data: Buffer; driverData: Buffer }>({ dataType: () => "bytea" });
 
 /**
  * Family hub: kids' chores, shopping lists and purchase returns, shown on the
@@ -335,4 +337,27 @@ export const familyReturnSuggestions = pgTable(
     uniqueIndex("family_return_suggestions_msg_idx").on(t.mailboxId, t.messageId),
     index("family_return_suggestions_member_idx").on(t.member, t.status),
   ],
+);
+
+/**
+ * The kitchen screen's sleep slideshow: copies of photos a member picked in
+ * Google Photos (Picker API), shrunk to screen size by Google and encrypted
+ * with DOC_VAULT_KEY. `batch` is one pick: a new pick replaces the old set
+ * once it has fully arrived. Never sent to an AI provider or an assistant.
+ */
+export const familySlideshowPhotos = pgTable(
+  "family_slideshow_photos",
+  {
+    id: uuid("id").primaryKey().defaultRandom(),
+    batch: uuid("batch").notNull(),
+    /** Google's id for the picked item, so a retried import step doesn't copy it twice. */
+    sourceId: text("source_id").notNull(),
+    mimeType: text("mime_type").notNull(),
+    cipherText: bytea("cipher_text").notNull(),
+    iv: bytea("iv").notNull(),
+    authTag: bytea("auth_tag").notNull(),
+    bytes: integer("bytes").notNull(),
+    createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+  },
+  (t) => [uniqueIndex("family_slideshow_photos_batch_source_idx").on(t.batch, t.sourceId)],
 );

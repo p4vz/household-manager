@@ -575,3 +575,18 @@ export { assertNoCardNumber } from "./guard";
 export function memberFromLabel(label: "User 1" | "User 2"): "user1" | "user2" {
   return label === "User 1" ? "user1" : "user2";
 }
+
+export {
+  MAX_SLIDESHOW_PHOTOS,
+  SlideshowError,
+  cancelPick,
+  clearSlideshow,
+  finishPhotosConnect,
+  slideshowPhoto,
+  slideshowPhotoIds,
+  slideshowStatus,
+  slideshowStep,
+  startPhotosConnect,
+  type SlideshowStatus,
+  type StepResult,
+} from "./slideshow";

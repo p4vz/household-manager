@@ -371,6 +371,7 @@ fails if `fetch(` is used anywhere else.
 | `fcm.googleapis.com`, `web.push.apple.com`, `updates.push.services.mozilla.com` | phone notifications (Web Push to Chrome/Android, Safari/iPhone, Firefox); payloads are end-to-end encrypted for the device, see "Phone notifications" |
 | `api.nhtsa.gov` | car upkeep: NHTSA vehicle safety-recall search (keyless; only make, model and model year are sent, never a VIN or plate, which the app doesn't store) |
 | `www.abingtonpa.gov`, `thrillshare-cmsv2.services.thrillshare.com` | calendar: public iCalendar feeds of Abington Township and the Abington School District for the read-only township layer (keyless GETs of fixed URLs; nothing is sent) |
+| `photospicker.googleapis.com`, `lh3.googleusercontent.com` | kitchen screen slideshow: a member picks photos in Google's Photos picker (`photospicker.mediaitems.readonly`, short-lived token, no refresh token kept); the picked photos are copied once at screen size, encrypted with `DOC_VAULT_KEY`, and the token is revoked. The token is only sent to `lh3.googleusercontent.com` URLs that Google returned for the pick |
 
 The trips hosts receive only a place name or coordinates. No household
 data, names or credentials are sent to them.

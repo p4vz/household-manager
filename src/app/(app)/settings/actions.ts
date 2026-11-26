@@ -18,7 +18,13 @@ import { DEFAULT_PREFS, NOTIFICATION_TYPES, PushError, removeDevice, saveSubscri
 import { rateLimit } from "@/core/net/rate-limit";
 import {
   MailConnectError,
+  SlideshowError,
+  cancelPick,
+  clearSlideshow,
   disconnectMailbox,
+  slideshowStep,
+  startPhotosConnect,
+  type StepResult,
   memberFromLabel,
   scanMemberMailboxes,
   setMailboxSpam,
@@ -249,6 +255,38 @@ export const backupNowAction = authedAction(z.object({}), async (): Promise<{ ok
 export const disconnectDriveAction = authedAction(z.object({}), async () => {
   await disconnectDrive();
   revalidatePath("/settings");
+});
+
+// ---- Kitchen screen slideshow (Google Photos Picker) ----
+
+export const choosePhotosAction = authedAction(z.object({}), async (_input, user): Promise<{ url: string | null; error: string | null }> => {
+  try {
+    return { url: await startPhotosConnect(user.owner, await appOrigin()), error: null };
+  } catch (err) {
+    return { url: null, error: err instanceof SlideshowError ? err.message : "Could not start the Google sign-in" };
+  }
+});
+
+export const slideshowStepAction = authedAction(z.object({}), async (): Promise<{ result: StepResult | null; error: string | null }> => {
+  try {
+    const result = await slideshowStep();
+    if (result.state === "done") revalidatePath("/settings");
+    return { result, error: null };
+  } catch (err) {
+    revalidatePath("/settings");
+    return { result: null, error: err instanceof SlideshowError ? err.message : "Copying the photos failed. Try again." };
+  }
+});
+
+export const cancelPhotosAction = authedAction(z.object({}), async () => {
+  await cancelPick();
+  revalidatePath("/settings");
+});
+
+export const clearSlideshowAction = authedAction(z.object({}), async () => {
+  await clearSlideshow();
+  revalidatePath("/settings");
+  revalidatePath("/kiosk");
 });
 
 // ---- Phone notifications (Web Push) ----
