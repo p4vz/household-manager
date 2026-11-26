@@ -18,9 +18,13 @@ import { DEFAULT_PREFS, NOTIFICATION_TYPES, PushError, removeDevice, saveSubscri
 import { rateLimit } from "@/core/net/rate-limit";
 import {
   MailConnectError,
+  MAX_SLIDESHOW_UPLOAD_BYTES,
   SlideshowError,
+  addSlideshowUpload,
   cancelPick,
   clearSlideshow,
+  removeSlideshowPhoto,
+  slideshowPhoto,
   disconnectMailbox,
   slideshowStep,
   startPhotosConnect,
@@ -259,9 +263,9 @@ export const disconnectDriveAction = authedAction(z.object({}), async () => {
 
 // ---- Kitchen screen slideshow (Google Photos Picker) ----
 
-export const choosePhotosAction = authedAction(z.object({}), async (_input, user): Promise<{ url: string | null; error: string | null }> => {
+export const choosePhotosAction = authedAction(z.object({ mode: z.enum(["replace", "add"]).default("replace") }), async ({ mode }, user): Promise<{ url: string | null; error: string | null }> => {
   try {
-    return { url: await startPhotosConnect(user.owner, await appOrigin()), error: null };
+    return { url: await startPhotosConnect(user.owner, await appOrigin(), new Date(), mode), error: null };
   } catch (err) {
     return { url: null, error: err instanceof SlideshowError ? err.message : "Could not start the Google sign-in" };
   }
@@ -281,6 +285,34 @@ export const slideshowStepAction = authedAction(z.object({}), async (): Promise<
 export const cancelPhotosAction = authedAction(z.object({}), async () => {
   await cancelPick();
   revalidatePath("/settings");
+});
+
+/** One slideshow photo for the Settings grid (a data: URL), or null if it is gone. */
+export const slideshowPhotoAction = authedAction(z.object({ id: z.uuid() }), async ({ id }) => slideshowPhoto(id));
+
+/** Adds a photo from this device, or puts it in place of `replaceId`. */
+export const uploadSlideshowPhotoAction = authedAction(
+  z.object({
+    file: z.instanceof(File).refine((f) => f.size > 0 && f.size <= MAX_SLIDESHOW_UPLOAD_BYTES, "That photo is too large. Try a smaller one."),
+    replaceId: z.uuid().optional(),
+  }),
+  async ({ file, replaceId }): Promise<{ id: string | null; error: string | null }> => {
+    try {
+      const id = await addSlideshowUpload(Buffer.from(await file.arrayBuffer()), { replaceId });
+      revalidatePath("/settings");
+      revalidatePath("/kiosk");
+      return { id, error: null };
+    } catch (err) {
+      if (err instanceof SlideshowError) return { id: null, error: err.message };
+      throw err;
+    }
+  },
+);
+
+export const removeSlideshowPhotoAction = authedAction(z.object({ id: z.uuid() }), async ({ id }) => {
+  await removeSlideshowPhoto(id);
+  revalidatePath("/settings");
+  revalidatePath("/kiosk");
 });
 
 export const clearSlideshowAction = authedAction(z.object({}), async () => {

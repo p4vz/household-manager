@@ -1,6 +1,6 @@
 import "server-only";
 import { createHash, randomBytes, randomUUID } from "node:crypto";
-import { asc, count, eq, ne } from "drizzle-orm";
+import { and, asc, count, eq, ne } from "drizzle-orm";
 import type { OwnerLabel } from "@/core/auth/allowlist";
 import { db } from "@/core/db/client";
 import { sniffImageType } from "@/core/files/sniff-image";
@@ -19,8 +19,10 @@ import { familySlideshowPhotos } from "./schema";
  * with Google, open the picker, and select the photos (for example, all of
  * one album). The app copies the picked photos once, at screen size, and
  * keeps them encrypted with DOC_VAULT_KEY. It never sees the rest of the
- * library, keeps no lasting Google access (the short-lived token is dropped
- * and revoked when the copy finishes), and a new pick replaces the old set.
+ * library, and keeps no lasting Google access (the short-lived token is
+ * dropped and revoked when the copy finishes). A pick either replaces the
+ * whole set or adds to it; single photos can also be uploaded from the
+ * device, removed, or replaced one by one.
  *
  * Hosts: accounts.google.com (browser redirect), oauth2.googleapis.com
  * (token, revoke), photospicker.googleapis.com (picker sessions) and
@@ -45,7 +47,9 @@ const STEP = 6;
 const PENDING_KEY = "slideshow.pending";
 const PICK_KEY = "slideshow.pick";
 
-type Pending = { stateHash: string; verifierSealed: string; member: OwnerLabel; expiresAt: string };
+/** "replace": the new pick becomes the whole set. "add": it joins the photos already there. */
+export type PickMode = "replace" | "add";
+type Pending = { stateHash: string; verifierSealed: string; member: OwnerLabel; expiresAt: string; mode?: PickMode };
 type QueueItem = { id: string; baseUrl: string };
 type Pick = {
   sessionId: string;
@@ -54,11 +58,17 @@ type Pick = {
   tokenExpiresAt: string;
   member: OwnerLabel;
   batch: string;
+  mode?: PickMode;
   /** Filled once the member has finished picking. */
   queue?: QueueItem[];
   total?: number;
   skipped?: number;
+  /** Add mode: picked photos that were already in the slideshow. */
+  already?: number;
 };
+
+/** Photos uploaded from a device share this batch (never a pick's batch). */
+const UPLOAD_BATCH = "00000000-0000-4000-8000-0000000000ad";
 
 export class SlideshowError extends Error {}
 
@@ -78,7 +88,7 @@ export function photosRedirectUri(origin: string): string {
 export const slideshowConfigured = vaultConfigured;
 
 /** Step 1: a Google sign-in URL asking only to see the photos the member picks. */
-export async function startPhotosConnect(member: OwnerLabel, origin: string, now = new Date()): Promise<string> {
+export async function startPhotosConnect(member: OwnerLabel, origin: string, now = new Date(), mode: PickMode = "replace"): Promise<string> {
   if (!vaultConfigured()) throw new SlideshowError("The slideshow needs DOC_VAULT_KEY set on the server.");
   if (!clientId() || !clientSecret()) throw new SlideshowError("Google sign-in is not configured");
   const state = randomBytes(24).toString("base64url");
@@ -88,6 +98,7 @@ export async function startPhotosConnect(member: OwnerLabel, origin: string, now
     verifierSealed: seal(verifier),
     member,
     expiresAt: new Date(now.getTime() + STATE_TTL_MS).toISOString(),
+    mode,
   };
   await setSetting(PENDING_KEY, pending);
   const url = new URL(AUTH_URL);
@@ -143,6 +154,7 @@ export async function finishPhotosConnect(input: { member: OwnerLabel; state: st
     tokenExpiresAt: new Date(now.getTime() + (token.expires_in ?? 3600) * 1000).toISOString(),
     member: input.member,
     batch: randomUUID(),
+    mode: pending.mode ?? "replace",
   };
   await setSetting(PICK_KEY, pick);
 }
@@ -187,7 +199,7 @@ export type SlideshowStatus = {
   configured: boolean;
   photos: number;
   /** A pick in progress: waiting for the member in Google Photos, or copying. */
-  pick: null | { pickerUri: string; stage: "picking" | "copying"; copied: number; total: number };
+  pick: null | { pickerUri: string; stage: "picking" | "copying"; copied: number; total: number; mode: PickMode };
 };
 
 export async function slideshowStatus(): Promise<SlideshowStatus> {
@@ -201,6 +213,7 @@ export async function slideshowStatus(): Promise<SlideshowStatus> {
           stage: pick.queue ? "copying" : "picking",
           copied: pick.total !== undefined && pick.queue ? pick.total - pick.queue.length : 0,
           total: pick.total ?? 0,
+          mode: pick.mode ?? "replace",
         }
       : null,
   };
@@ -220,7 +233,7 @@ export type StepResult =
   | { state: "none" }
   | { state: "picking" }
   | { state: "copying"; copied: number; total: number }
-  | { state: "done"; photos: number; skipped: number };
+  | { state: "done"; photos: number; skipped: number; added?: number; already?: number };
 
 /**
  * Moves a pick along; the Settings page calls it every few seconds. While
@@ -242,6 +255,13 @@ export async function slideshowStep(now = new Date()): Promise<StepResult> {
     if (!session.mediaItemsSet) return { state: "picking" };
     const queue: QueueItem[] = [];
     let skipped = 0;
+    let already = 0;
+    const adding = pick.mode === "add";
+    // Adding: skip photos already in the slideshow, and stay under the cap.
+    const existing = adding
+      ? new Set((await db().select({ s: familySlideshowPhotos.sourceId }).from(familySlideshowPhotos).where(ne(familySlideshowPhotos.batch, pick.batch))).map((r) => r.s))
+      : new Set<string>();
+    const room = MAX_SLIDESHOW_PHOTOS - (adding ? existing.size : 0);
     let pageToken: string | undefined;
     do {
       const q = new URLSearchParams({ sessionId: pick.sessionId, pageSize: "100" });
@@ -250,18 +270,22 @@ export async function slideshowStep(now = new Date()): Promise<StepResult> {
       for (const item of page.mediaItems ?? []) {
         const baseUrl = item.mediaFile?.baseUrl;
         const isPhoto = item.type ? item.type === "PHOTO" : (item.mediaFile?.mimeType ?? "").startsWith("image/");
-        if (!item.id || !baseUrl || !isPhoto || queue.length >= MAX_SLIDESHOW_PHOTOS) skipped++;
+        if (item.id && existing.has(item.id)) already++;
+        else if (!item.id || !baseUrl || !isPhoto || queue.length >= room) skipped++;
         else queue.push({ id: item.id, baseUrl });
       }
       pageToken = page.nextPageToken;
     } while (pageToken);
     if (queue.length === 0) {
       await dropPick();
+      if (adding && already > 0) return { state: "done", photos: existing.size, skipped, added: 0, already };
+      if (adding && room <= 0) throw new SlideshowError(`The slideshow is full (${MAX_SLIDESHOW_PHOTOS} photos). Remove some first.`);
       throw new SlideshowError("No photos were picked (videos are left out). Choose photos again.");
     }
     pick.queue = queue;
     pick.total = queue.length;
     pick.skipped = skipped;
+    pick.already = already;
     await setSetting(PICK_KEY, pick);
     return { state: "copying", copied: 0, total: queue.length };
   }
@@ -290,6 +314,11 @@ export async function slideshowStep(now = new Date()): Promise<StepResult> {
   if (n === 0) {
     await dropPick();
     throw new SlideshowError("None of the picked photos could be copied. Try again.");
+  }
+  if (pick.mode === "add") {
+    await dropPick({ keepCopied: true });
+    const [{ total }] = await db().select({ total: count() }).from(familySlideshowPhotos);
+    return { state: "done", photos: total, skipped: pick.skipped ?? 0, added: n, already: pick.already ?? 0 };
   }
   await db().delete(familySlideshowPhotos).where(ne(familySlideshowPhotos.batch, pick.batch));
   await dropPick({ keepCopied: true });
@@ -343,4 +372,44 @@ export async function slideshowPhoto(id: string): Promise<string | null> {
 export async function clearSlideshow(): Promise<void> {
   await dropPick();
   await db().delete(familySlideshowPhotos);
+}
+
+/** Largest photo accepted from a device (the browser shrinks it to screen size first). */
+export const MAX_UPLOAD_BYTES = MAX_PHOTO_BYTES;
+
+/**
+ * Adds a photo uploaded from a device. With `replaceId`, it takes that
+ * photo's place in the order and the old one is removed.
+ */
+export async function addSlideshowUpload(bytes: Buffer, opts: { replaceId?: string } = {}): Promise<string> {
+  if (!vaultConfigured()) throw new SlideshowError("The slideshow needs DOC_VAULT_KEY set on the server.");
+  if (bytes.length === 0 || bytes.length > MAX_PHOTO_BYTES) throw new SlideshowError("That photo is too large. Try a smaller one.");
+  const mimeType = sniffImageType(bytes);
+  if (!mimeType) throw new SlideshowError("That file isn't a JPEG, PNG or WebP photo.");
+  const pick = await currentPick();
+  let createdAt: Date | undefined;
+  if (opts.replaceId) {
+    const [old] = await db()
+      .select({ createdAt: familySlideshowPhotos.createdAt, batch: familySlideshowPhotos.batch })
+      .from(familySlideshowPhotos)
+      .where(eq(familySlideshowPhotos.id, opts.replaceId));
+    if (!old || (pick && old.batch === pick.batch)) throw new SlideshowError("That photo is no longer in the slideshow.");
+    createdAt = old.createdAt;
+  } else if ((await livePhotoCount(pick?.batch)) >= MAX_SLIDESHOW_PHOTOS) {
+    throw new SlideshowError(`The slideshow is full (${MAX_SLIDESHOW_PHOTOS} photos). Remove some first.`);
+  }
+  const [row] = await db()
+    .insert(familySlideshowPhotos)
+    .values({ batch: UPLOAD_BATCH, sourceId: `upload:${randomUUID()}`, mimeType, ...sealBytes(bytes), bytes: bytes.length, ...(createdAt ? { createdAt } : {}) })
+    .returning({ id: familySlideshowPhotos.id });
+  if (opts.replaceId) await db().delete(familySlideshowPhotos).where(eq(familySlideshowPhotos.id, opts.replaceId));
+  return row.id;
+}
+
+/** Takes one photo out of the slideshow. */
+export async function removeSlideshowPhoto(id: string): Promise<void> {
+  const pick = await currentPick();
+  await db()
+    .delete(familySlideshowPhotos)
+    .where(pick ? and(eq(familySlideshowPhotos.id, id), ne(familySlideshowPhotos.batch, pick.batch)) : eq(familySlideshowPhotos.id, id));
 }

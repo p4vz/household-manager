@@ -579,15 +579,19 @@ export function memberFromLabel(label: "User 1" | "User 2"): "user1" | "user2" {
 
 export {
   MAX_SLIDESHOW_PHOTOS,
+  MAX_UPLOAD_BYTES as MAX_SLIDESHOW_UPLOAD_BYTES,
   SlideshowError,
+  addSlideshowUpload,
   cancelPick,
   clearSlideshow,
   finishPhotosConnect,
+  removeSlideshowPhoto,
   slideshowPhoto,
   slideshowPhotoIds,
   slideshowStatus,
   slideshowStep,
   startPhotosConnect,
+  type PickMode,
   type SlideshowStatus,
   type StepResult,
 } from "./slideshow";

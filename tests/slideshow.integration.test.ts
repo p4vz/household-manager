@@ -33,8 +33,8 @@ vi.mock("@/core/net/outbound", () => ({
 let api: typeof import("@/modules/family/slideshow");
 const origin = "https://home.example";
 
-async function pickFlow() {
-  const url = new URL(await api.startPhotosConnect("User 1", origin));
+async function pickFlow(mode: "replace" | "add" = "replace") {
+  const url = new URL(await api.startPhotosConnect("User 1", origin, new Date(), mode));
   await api.finishPhotosConnect({ member: "User 1", state: url.searchParams.get("state")!, code: "c", origin });
 }
 
@@ -125,6 +125,43 @@ describe("kitchen sleep slideshow", () => {
   it("refuses a sign-in that does not match the one started", async () => {
     await api.startPhotosConnect("User 1", origin);
     await expect(api.finishPhotosConnect({ member: "User 1", state: "forged", code: "c", origin })).rejects.toThrow(/expired/);
+  });
+
+  it("adds a pick to the set, skipping photos already in it", async () => {
+    await api.clearSlideshow();
+    await pickFlow();
+    items = [item(70), item(71)];
+    picked = true;
+    await runToEnd();
+    const before = await api.slideshowPhotoIds();
+    await pickFlow("add");
+    expect((await api.slideshowStatus()).pick?.mode).toBe("add");
+    items = [item(71), item(72), item(73, "VIDEO")];
+    expect(await runToEnd()).toEqual({ state: "done", photos: 3, skipped: 1, added: 1, already: 1 });
+    const after = await api.slideshowPhotoIds();
+    expect(after.slice(0, 2)).toEqual(before);
+    expect(after).toHaveLength(3);
+  });
+
+  it("uploads, replaces in place and removes single photos", async () => {
+    const before = await api.slideshowPhotoIds();
+    const PNG = Buffer.concat([Buffer.from([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a]), Buffer.alloc(8, 1)]);
+    const up = await api.addSlideshowUpload(PNG);
+    expect(await api.slideshowPhotoIds()).toEqual([...before, up]);
+    expect(await api.slideshowPhoto(up)).toBe(`data:image/png;base64,${PNG.toString("base64")}`);
+    // Replace keeps the photo's place in the order.
+    const swapped = await api.addSlideshowUpload(JPEG, { replaceId: before[0] });
+    expect(await api.slideshowPhotoIds()).toEqual([swapped, ...before.slice(1), up]);
+    await api.removeSlideshowPhoto(up);
+    expect(await api.slideshowPhotoIds()).toEqual([swapped, ...before.slice(1)]);
+    await expect(api.addSlideshowUpload(Buffer.from("not a photo"))).rejects.toThrow(/JPEG, PNG or WebP/);
+    await expect(api.addSlideshowUpload(JPEG, { replaceId: up })).rejects.toThrow(/no longer/);
+    // A replace-all pick drops uploads too.
+    await pickFlow();
+    items = [item(80)];
+    picked = true;
+    await runToEnd();
+    expect(await api.slideshowPhotoIds()).toHaveLength(1);
   });
 
   it("can be emptied", async () => {

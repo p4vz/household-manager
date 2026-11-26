@@ -16,7 +16,7 @@ import { InstallAppButton } from "@/components/pwa/install-app-button";
 import { listKioskDevices } from "@/core/kiosk/devices";
 import { BankSyncSettings, type BankSyncView } from "@/modules/finance/ui/bank-sync-settings";
 import { householdTimeZone, syncStatus } from "@/modules/finance/api";
-import { MAX_SLIDESHOW_PHOTOS, listMailboxes, memberFromLabel, slideshowStatus } from "@/modules/family/api";
+import { MAX_SLIDESHOW_PHOTOS, listMailboxes, memberFromLabel, slideshowPhotoIds, slideshowStatus } from "@/modules/family/api";
 import { MailSettings } from "@/modules/family/ui/mail-settings";
 import { BackupSettings } from "@/components/backup-settings";
 import { SlideshowSettings } from "@/components/slideshow-settings";
@@ -31,6 +31,9 @@ import {
   slideshowStepAction,
   cancelPhotosAction,
   clearSlideshowAction,
+  removeSlideshowPhotoAction,
+  slideshowPhotoAction,
+  uploadSlideshowPhotoAction,
   subscribePushAction,
   unsubscribePushAction,
   savePushPrefsAction,
@@ -79,7 +82,7 @@ export default async function SettingsPage({ searchParams }: PageProps<"/setting
   const params = await searchParams;
   const justConnected = params.mail === "connected";
   const backup = await backupStatus();
-  const slideshow = await slideshowStatus();
+  const [slideshow, slideshowIds] = await Promise.all([slideshowStatus(), slideshowPhotoIds()]);
   const pushMember = user.owner === "User 1" ? "user1" : "user2";
   const [pushKeys, pushDevices, pushPrefs] = await Promise.all([vapidKeys(), listDevices(pushMember), getPrefs(pushMember)]);
   // Only this member's own mailboxes, never the other member's.
@@ -228,8 +231,16 @@ export default async function SettingsPage({ searchParams }: PageProps<"/setting
             <div id="slideshow" className="scroll-mt-6 space-y-3 rounded-xl border p-6">
               <h2 className="text-lg font-semibold">Kitchen screen slideshow</h2>
               <SlideshowSettings
-                view={{ ...slideshow, max: MAX_SLIDESHOW_PHOTOS }}
-                actions={{ choose: choosePhotosAction, step: slideshowStepAction, cancel: cancelPhotosAction, clear: clearSlideshowAction }}
+                view={{ ...slideshow, max: MAX_SLIDESHOW_PHOTOS, ids: slideshowIds }}
+                actions={{
+                  choose: choosePhotosAction,
+                  step: slideshowStepAction,
+                  cancel: cancelPhotosAction,
+                  clear: clearSlideshowAction,
+                  photo: slideshowPhotoAction,
+                  upload: uploadSlideshowPhotoAction,
+                  remove: removeSlideshowPhotoAction,
+                }}
               />
             </div>
             </div>
