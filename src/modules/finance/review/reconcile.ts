@@ -2,9 +2,10 @@ import "server-only";
 import { and, asc, eq, gte, inArray, sql } from "drizzle-orm";
 import { db } from "@/core/db/client";
 import { canSeeOwner, HiddenAccountError, visibleTo, type Viewer } from "../access";
-import { guessAccountKind } from "../ingest/merchant";
+import { accountFamily, guessAccountKind, kindsCompatible } from "../ingest/account-kind";
+import { refreshGuessedKinds } from "../ingest/kinds";
 import { cleanTypedName } from "../ingest/redact";
-import { financeAccounts, financeTransactions as t, type AccountKind, type Owner } from "../schema";
+import { ACCOUNT_KIND_LABELS, financeAccounts, financeTransactions as t, type AccountKind, type Owner } from "../schema";
 import { recordReviewAction, type TxnSnapshot } from "./log";
 
 /**
@@ -90,7 +91,11 @@ export type ImportedMatch = {
   last: string;
   /** Best linked (bank-feed) account by name, if any looks right. */
   suggestedIntoId: string | null;
-  candidates: { id: string; name: string; owner: Owner; score: number; simplefinStartDate: string | null }[];
+  /**
+   * Linked accounts it could go into. Never one of another family: a bank
+   * account's history is never offered a credit card, or the reverse.
+   */
+  candidates: { id: string; name: string; owner: Owner; kind: AccountKind; score: number; simplefinStartDate: string | null }[];
 };
 
 export type DuplicatePair = {
@@ -215,6 +220,9 @@ export function matchCopies(rows: Row[]) {
 }
 
 export async function reconcileReport(viewer: Viewer, now = new Date()): Promise<ReconcileReport> {
+  // Types still guessed are worked out from activity first, so a checking
+  // import is never offered a credit card to merge into.
+  await refreshGuessedKinds((await visibleAccounts(viewer)).map((a) => a.id));
   const accounts = await visibleAccounts(viewer);
   const stats = await statsBySource(accounts.map((a) => a.id));
   const statOf = (id: string, source: Stats["source"]) => stats.find((s) => s.accountId === id && s.source === source);
@@ -226,16 +234,23 @@ export async function reconcileReport(viewer: Viewer, now = new Date()): Promise
     if (a.simplefinId || !a.active) continue;
     const csv = statOf(a.id, "csv");
     if (!csv || statOf(a.id, "simplefin")) continue;
+    // An untyped import is judged by what its name says it is.
+    const kind = a.kind === "other" ? guessAccountKind(`${nameOf(a)} ${a.bankName}`) : a.kind;
     const candidates = linked
+      .filter((l) => kindsCompatible(kind, l.kind))
       .map((l) => ({
         id: l.id,
         name: nameOf(l),
         owner: l.owner,
+        kind: l.kind,
         score: Math.max(nameSimilarity(nameOf(a), nameOf(l)), nameSimilarity(a.bankName, l.bankName), l.officialName ? nameSimilarity(nameOf(a), l.officialName) : 0),
         simplefinStartDate: l.simplefinStartDate,
       }))
-      .sort((x, y) => y.score - x.score || x.name.localeCompare(y.name));
-    const best = candidates[0];
+      .sort((x, y) => Number(y.kind === kind) - Number(x.kind === kind) || y.score - x.score || x.name.localeCompare(y.name));
+    // Suggest only an account of the same family (checking with checking or
+    // savings, card with card); an untyped one is listed, never suggested.
+    const family = accountFamily(kind);
+    const best = candidates.find((c) => family && accountFamily(c.kind) === family && c.score >= 0.5);
     imported.push({
       accountId: a.id,
       name: nameOf(a),
@@ -243,7 +258,7 @@ export async function reconcileReport(viewer: Viewer, now = new Date()): Promise
       count: csv.count,
       first: csv.first,
       last: csv.last,
-      suggestedIntoId: best && best.score >= 0.5 ? best.id : null,
+      suggestedIntoId: best?.id ?? null,
       candidates,
     });
   }
@@ -357,6 +372,9 @@ export async function mergeImportedAccount(viewer: Viewer, fromId: string, intoI
   const from = await visibleAccount(viewer, fromId);
   const into = await visibleAccount(viewer, intoId);
   if (from.simplefinId) throw new Error("Only imported (CSV) accounts can be merged into another");
+  if (!kindsCompatible(from.kind, into.kind)) {
+    throw new Error(`A ${ACCOUNT_KIND_LABELS[from.kind].toLowerCase()} account can't be merged into a ${ACCOUNT_KIND_LABELS[into.kind].toLowerCase()}. Fix the type on the Accounts page if it's wrong.`);
+  }
 
   const fromRows = await db().select().from(t).where(eq(t.accountId, fromId));
   const intoRows = await db()
@@ -409,7 +427,7 @@ export async function renameAccountForReview(viewer: Viewer, id: string, display
   const before = { displayName: a.displayName, kind: a.kind };
   const after = { displayName: name, kind };
   if (before.displayName === after.displayName && before.kind === after.kind) return { summary: "No change" };
-  await db().update(financeAccounts).set(after).where(eq(financeAccounts.id, id));
+  await db().update(financeAccounts).set({ ...after, kindSource: "manual" }).where(eq(financeAccounts.id, id));
   const summary = `Renamed "${nameOf(a)}" to "${name}"${kind !== a.kind ? ` (${kind.replace(/_/g, " ")})` : ""}`;
   await recordReviewAction(viewer, "rename_account", summary, { accountId: id, before, after });
   return { summary };

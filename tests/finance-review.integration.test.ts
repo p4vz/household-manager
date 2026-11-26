@@ -77,6 +77,37 @@ describe("finance review: reconcile", () => {
     expect(r.coverage.some((c) => c.accountId === joint && /Balance last updated 2026-11-01/.test(c.text))).toBe(true);
   });
 
+  it("never offers a bank account's import a credit card to merge into", async () => {
+    const [wf] = await db
+      .insert(financeAccounts)
+      .values({ bankName: "Wells Fargo Joint (Imported)", owner: "joint", kind: "other" })
+      .returning();
+    const [card] = await db
+      .insert(financeAccounts)
+      .values({ bankName: "Wells Fargo Active Cash Card", simplefinId: "ACT-3", owner: "joint", kind: "credit", balanceDate: NOW })
+      .returning();
+    await db.insert(financeTransactions).values([
+      txn(wf.id, "csv", "2026-05-01", 2500, "PAYROLL DIRECT DEP"),
+      txn(wf.id, "csv", "2026-05-03", -200, "ATM WITHDRAWAL"),
+      txn(wf.id, "csv", "2026-05-04", -80, "ZELLE TO FRIEND"),
+    ]);
+    const r = await finance.reconcileReport("user1", NOW);
+    const row = r.imported.find((x) => x.accountId === wf.id)!;
+    // Its activity made it a checking account, so no card is listed or suggested.
+    expect(row.candidates.map((c) => c.id)).not.toContain(card.id);
+    expect(row.candidates.map((c) => c.id)).toContain(joint);
+    expect(row.suggestedIntoId).not.toBe(card.id);
+    const [typed] = await db.select().from(financeAccounts).where(eq(financeAccounts.id, wf.id));
+    expect(typed).toMatchObject({ kind: "checking", kindSource: "guess" });
+    await expect(finance.mergeImportedAccount("user1", wf.id, card.id)).rejects.toThrow(/can't be merged/);
+
+    // A type a person saved is never changed by the guesser.
+    await finance.updateAccount("user1", wf.id, { displayName: null, officialName: null, last4: null, owner: "joint", kind: "savings", active: true });
+    await finance.reconcileReport("user1", NOW);
+    const [kept] = await db.select().from(financeAccounts).where(eq(financeAccounts.id, wf.id));
+    expect(kept).toMatchObject({ kind: "savings", kindSource: "manual" });
+  });
+
   it("merges the import into the linked account without duplicates, and undoes it", async () => {
     const before = await db.select().from(financeTransactions).where(eq(financeTransactions.accountId, imported));
     const res = await finance.mergeImportedAccount("user1", imported, linked);

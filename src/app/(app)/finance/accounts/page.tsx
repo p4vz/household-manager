@@ -11,6 +11,7 @@ import {
   cardImagesConfigured,
   listAccounts,
   viewerFromLabel,
+  type AccountKind,
   type Owner,
 } from "@/modules/finance/api";
 import { CardPictureUpload } from "@/modules/finance/ui/card-picture";
@@ -19,6 +20,11 @@ import { NewCardFromPhoto } from "@/modules/finance/ui/new-card-from-photo";
 import { addCardFromPhotoAction, removeCardPictureAction, updateAccountAction, uploadCardPictureAction } from "../actions";
 
 const input = "w-full rounded border bg-transparent px-2 py-1";
+
+/** Bank accounts first, then cards, then the rest; within a type, by name. */
+const KIND_ORDER = Object.fromEntries(
+  (["checking", "savings", "business_checking", "credit", "business_credit", "loan", "investment", "other"] as AccountKind[]).map((k, i) => [k, i]),
+) as Record<AccountKind, number>;
 
 export default async function AccountsPage() {
   const user = await requireUserOrRedirect();
@@ -68,7 +74,9 @@ export default async function AccountsPage() {
       {accounts.length === 0 ? <p className="text-muted-foreground">No accounts yet. Connect SimpleFIN or import a CSV.</p> : null}
 
       {groups.map((g) => {
-        const rows = accounts.filter((a) => a.owner === g.owner);
+        const rows = accounts
+          .filter((a) => a.owner === g.owner)
+          .sort((x, y) => KIND_ORDER[x.kind] - KIND_ORDER[y.kind] || (x.displayName ?? x.officialNameShown).localeCompare(y.displayName ?? y.officialNameShown));
         if (rows.length === 0) return null;
         return (
           <div key={g.owner} className="space-y-2">
@@ -101,9 +109,15 @@ export default async function AccountsPage() {
                 </div>
 
                 <div className="min-w-64 flex-1 space-y-2">
-                  <div className="text-base font-medium">
-                    {a.displayName ?? a.officialNameShown}
-                    {a.last4 ? <span className="ml-2 font-mono text-sm text-muted-foreground">•••• {a.last4}</span> : null}
+                  <div className="flex flex-wrap items-center gap-2 text-base font-medium">
+                    <span>{a.displayName ?? a.officialNameShown}</span>
+                    {a.last4 ? <span className="font-mono text-sm text-muted-foreground">•••• {a.last4}</span> : null}
+                    <Badge variant={a.kind === "other" ? "outline" : "secondary"}>{ACCOUNT_KIND_LABELS[a.kind]}</Badge>
+                    {a.canEdit && a.kindSource === "guess" ? (
+                      <span className="text-xs font-normal text-muted-foreground">
+                        {a.kind === "other" ? "Type unknown: pick one below" : "Type guessed from the bank's data: Save to confirm"}
+                      </span>
+                    ) : null}
                   </div>
                   <div className="flex flex-wrap items-center gap-2 text-xs text-muted-foreground">
                     <span>From the bank: {a.institution ? `${a.institution} · ` : ""}{a.bankName}</span>

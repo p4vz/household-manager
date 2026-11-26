@@ -34,13 +34,4 @@ export function looksLikeTransfer(description: string, category?: string | null)
   return TRANSFER_HINTS.test(description);
 }
 
-export function guessAccountKind(name: string) {
-  const business = /\b(business|biz|ink)\b/i.test(name);
-  if (/(card|visa|mastercard|amex|express|discover|sapphire|freedom|venture|quicksilver|credit|\bink\b)/i.test(name))
-    return business ? ("business_credit" as const) : ("credit" as const);
-  if (/checking/i.test(name)) return business ? ("business_checking" as const) : ("checking" as const);
-  if (/saving|money market/i.test(name)) return "savings" as const;
-  if (/loan|mortgage/i.test(name)) return "loan" as const;
-  if (/brokerage|ira|401k|invest/i.test(name)) return "investment" as const;
-  return "other" as const;
-}
+export { guessAccountKind } from "./account-kind";

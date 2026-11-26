@@ -7,7 +7,9 @@ import { financeAccounts, financeBalanceSnapshots, financeSyncRuns, financeTrans
 import { categorizeTransactions } from "../categorize/run";
 import type { Viewer } from "../access";
 import { getAccessUrl, newAccountOwner } from "./credentials";
-import { guessAccountKind, looksLikeTransfer, normalizeMerchant } from "./merchant";
+import { guessAccountKind, kindsCompatible } from "./account-kind";
+import { refreshGuessedKinds } from "./kinds";
+import { looksLikeTransfer, normalizeMerchant } from "./merchant";
 import { extractLast4, stripAccountNumbers } from "./redact";
 import { MIN_MANUAL_SYNC_INTERVAL_MS, MIN_SYNC_INTERVAL_MS, STALE_RUN_MS } from "./schedule";
 import { fetchAccounts, type SimplefinAccountSet } from "./simplefin";
@@ -108,14 +110,15 @@ function isoDay(unixSeconds: number): string {
  * the synced account when exactly one unsynced account has the same last
  * four digits, so it keeps its picture, owner and rewards setup.
  */
-async function adoptManualAccount(simplefinId: string, last4: string) {
+async function adoptManualAccount(simplefinId: string, last4: string, name: string) {
   const [known] = await db().select({ id: financeAccounts.id }).from(financeAccounts).where(eq(financeAccounts.simplefinId, simplefinId));
   if (known) return;
   const matches = await db()
-    .select({ id: financeAccounts.id })
+    .select({ id: financeAccounts.id, kind: financeAccounts.kind })
     .from(financeAccounts)
     .where(and(isNull(financeAccounts.simplefinId), eq(financeAccounts.last4, last4)));
-  if (matches.length !== 1) return;
+  // A checking account and a card can share last 4 digits: never join a bank account to a card.
+  if (matches.length !== 1 || !kindsCompatible(matches[0].kind, guessAccountKind(name))) return;
   await db().update(financeAccounts).set({ simplefinId }).where(eq(financeAccounts.id, matches[0].id));
 }
 
@@ -123,7 +126,7 @@ export async function applyAccountSet(data: SimplefinAccountSet, owner: Viewer |
   let inserted = 0;
   for (const acct of data.accounts) {
     const last4 = extractLast4(acct.name);
-    if (last4) await adoptManualAccount(acct.id, last4);
+    if (last4) await adoptManualAccount(acct.id, last4, acct.name);
     const [account] = await db()
       .insert(financeAccounts)
       .values({
@@ -231,5 +234,6 @@ export async function applyAccountSet(data: SimplefinAccountSet, owner: Viewer |
         ),
       );
   }
+  await refreshGuessedKinds();
   return inserted;
 }
