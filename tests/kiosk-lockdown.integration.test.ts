@@ -56,6 +56,7 @@ const CHILD_SAFE_ACTIONS: Record<string, string> = {
   updateEventAction: "calendar.edit",
   eventPhotosAction: "hub.view",
   slideshowIdsAction: "hub.view",
+  choreLogAction: "hub.view",
   slideshowPhotoAction: "hub.view",
   addEventPhotoAction: "calendar.photo.add",
   unlockAdultAction: "adult.unlock",
@@ -64,6 +65,8 @@ const CHILD_SAFE_ACTIONS: Record<string, string> = {
 /** Kiosk actions that need adult mode (adult PIN) on the screen. */
 const ADULT_ACTIONS: Record<string, string> = {
   readBookCoverAction: "reading.cover",
+  addChoreDoneAction: "chores.log.edit",
+  removeChoreDoneAction: "chores.log.edit",
   setReturnStatusAction: "returns.status",
   completeUpkeepAction: "upkeep.complete",
   deleteEventAdultAction: "calendar.delete",
@@ -141,7 +144,7 @@ describe("kid-proof kitchen screen", () => {
   });
 
   it("names an ability on every kiosk action, and only the listed ones need an adult", () => {
-    const src = ["actions.ts", "shopping-actions.ts", "calendar-actions.ts", "adult-actions.ts", "reading-actions.ts", "slideshow-actions.ts"].map((f) => readFileSync(join(SRC, "app/kiosk", f), "utf8")).join("\n");
+    const src = ["actions.ts", "shopping-actions.ts", "calendar-actions.ts", "adult-actions.ts", "reading-actions.ts", "slideshow-actions.ts", "chore-log-actions.ts"].map((f) => readFileSync(join(SRC, "app/kiosk", f), "utf8")).join("\n");
     const declared = Object.fromEntries([...src.matchAll(/export const (\w+) = kioskAction\(\s*"([\w.]+)"/g)].map((m) => [m[1], m[2]]));
     expect(declared).toEqual({ ...CHILD_SAFE_ACTIONS, ...ADULT_ACTIONS });
     for (const a of Object.values(CHILD_SAFE_ACTIONS)) expect(CHILD_SAFE_ABILITIES).toContain(a);
@@ -154,7 +157,7 @@ describe("kid-proof kitchen screen", () => {
   });
 
   it("adult mode lets the screen past the adult check, and only until it runs out", async () => {
-    const mod = { ...(await import("@/app/kiosk/actions")), ...(await import("@/app/kiosk/adult-actions")), ...(await import("@/app/kiosk/reading-actions")) } as Record<string, (i: unknown) => Promise<unknown>>;
+    const mod = { ...(await import("@/app/kiosk/actions")), ...(await import("@/app/kiosk/adult-actions")), ...(await import("@/app/kiosk/reading-actions")), ...(await import("@/app/kiosk/chore-log-actions")) } as Record<string, (i: unknown) => Promise<unknown>>;
     device.adultUntil = new Date(Date.now() + 60_000);
     for (const name of Object.keys(ADULT_ACTIONS).filter((n) => n !== "exitKitchenModeAction")) {
       // Bad input: refused by the input check, which runs only after the permission check passed.

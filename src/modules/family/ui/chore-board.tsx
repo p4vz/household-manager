@@ -2,6 +2,7 @@
 
 import { startTransition, useOptimistic, useState } from "react";
 import { GoalStrip, type KidProgressView } from "./goal-strip";
+import { ChoreLogModal, type ChoreLogActions } from "./chore-log";
 import { ReadingRow, type ReadingActions } from "./reading-log";
 import { Modal, field, tap } from "./kit";
 
@@ -20,6 +21,8 @@ type Actions = {
   addOneTime: (input: { kidId: string; title: string; icon?: string }) => Promise<void>;
   /** Reading log (📖 Log under the prize bar). */
   reading?: ReadingActions;
+  /** Chore log (tap a kid's points line). */
+  log?: ChoreLogActions;
 };
 
 /**
@@ -63,6 +66,7 @@ export function ChoreBoard({
   const starDeltas = new Map(board.map((k) => [k.id, k.stats.starsTotal - (kids.find((x) => x.id === k.id)?.stats.starsTotal ?? k.stats.starsTotal)]));
   const [confirmUndo, setConfirmUndo] = useState<BoardChoreView | null>(null);
   const [adding, setAdding] = useState(false);
+  const [logKid, setLogKid] = useState<BoardKidView | null>(null);
 
   function set(choreId: string, done: boolean) {
     startTransition(async () => {
@@ -95,9 +99,15 @@ export function ChoreBoard({
                   </span>
                 ) : null}
               </div>
-              <div className="text-sm font-medium opacity-80">
-                ⭐ {pointsOf(kid, progress, starDeltas)} points, {kid.stats.weekDone}/{kid.stats.weekTotal} this week
-              </div>
+              {actions.log ? (
+                <button type="button" onClick={() => setLogKid(kid)} className="block w-full text-left text-sm font-medium opacity-80 underline decoration-dotted underline-offset-4" aria-label={`${kid.name}'s chore log`}>
+                  ⭐ {pointsOf(kid, progress, starDeltas)} points, {kid.stats.weekDone}/{kid.stats.weekTotal} this week ›
+                </button>
+              ) : (
+                <div className="text-sm font-medium opacity-80">
+                  ⭐ {pointsOf(kid, progress, starDeltas)} points, {kid.stats.weekDone}/{kid.stats.weekTotal} this week
+                </div>
+              )}
               {progress?.[kid.id] ? (
                 <GoalStrip
                   progress={progress[kid.id]}
@@ -158,6 +168,9 @@ export function ChoreBoard({
         + One-time chore
       </button>
 
+      {logKid && actions.log ? (
+        <ChoreLogModal kidId={logKid.id} kidName={logKid.name} chores={logKid.chores} actions={actions.log} onClose={() => setLogKid(null)} />
+      ) : null}
       {confirmUndo ? (
         <Modal title="Not done after all?" onClose={() => setConfirmUndo(null)}>
           <p className="mb-4 text-lg">
