@@ -101,6 +101,15 @@
   body {
     @apply bg-background text-foreground;
   }
+  /* Form controls never push their card wider than the screen. */
+  input,
+  select,
+  textarea {
+    max-width: 100%;
+  }
+  input[type="file"] {
+    min-width: 0;
+  }
 }
 
 /* 58 mm receipt print-preview fallback (src/modules/family/ui/print-slip.tsx). */

@@ -1,4 +1,4 @@
-import Link from "next/link";
+import { RouteTabs } from "@/components/ui/route-tabs";
 import { notFound } from "next/navigation";
 import { getTrip } from "@/modules/trips/api";
 import { formatDateRange } from "@/modules/trips/ui/format";
@@ -27,11 +27,7 @@ export default async function TripLayout({ children, params }: LayoutProps<"/tri
         </h1>
         <p className="text-sm text-muted-foreground">{trip.destination} · {formatDateRange(trip.startDate, trip.endDate)}</p>
       </div>
-      <nav className="flex flex-wrap gap-4 text-sm print:hidden">
-        {TABS.map(([href, label]) => (
-          <Link key={href} href={`/trips/${slug}${href}`} className="text-muted-foreground hover:text-foreground">{label}</Link>
-        ))}
-      </nav>
+      <RouteTabs label="Trip" items={TABS.map(([href, label]) => ({ href: `/trips/${slug}${href}`, label }))} />
       {children}
     </div>
   );

@@ -42,6 +42,7 @@ export default async function TripSpendPage({ params, searchParams }: PageProps<
     <form action={tripChargesAction} className="space-y-3">
       <input type="hidden" name="tripId" value={trip.id} />
       <input type="hidden" name="back" value={back} />
+      <div className="overflow-x-auto">
       <table className="w-full text-sm">
         <tbody>
           {rows.map((x) => (
@@ -63,6 +64,7 @@ export default async function TripSpendPage({ params, searchParams }: PageProps<
           ))}
         </tbody>
       </table>
+      </div>
       <div className="flex flex-wrap gap-2">
         <Button size="sm" name="action" value="link">Add ticked to this trip</Button>
         <Button size="sm" variant="outline" name="action" value="dismiss">Not this trip</Button>
@@ -135,6 +137,7 @@ export default async function TripSpendPage({ params, searchParams }: PageProps<
           {steps.length === 0 ? (
             <p className="text-sm text-muted-foreground">No steps with a cost yet. Add costs on the <Link className="underline" href={`/trips/${slug}/itinerary`}>itinerary</Link>.</p>
           ) : (
+            <div className="overflow-x-auto">
             <table className="w-full text-sm">
               <thead className="text-left text-muted-foreground">
                 <tr><th className="py-1">Step</th><th className="text-right">Planned</th><th className="text-right">Charged</th></tr>
@@ -149,6 +152,7 @@ export default async function TripSpendPage({ params, searchParams }: PageProps<
                 ))}
               </tbody>
             </table>
+            </div>
           )}
         </CardContent>
       </Card>
@@ -173,6 +177,7 @@ export default async function TripSpendPage({ params, searchParams }: PageProps<
           {s.charges.length === 0 ? (
             <p className="text-sm text-muted-foreground">No charges linked yet.</p>
           ) : (
+            <div className="overflow-x-auto">
             <table className="w-full text-sm">
               <tbody>
                 {s.charges.map((c) => (
@@ -209,6 +214,7 @@ export default async function TripSpendPage({ params, searchParams }: PageProps<
                 ))}
               </tbody>
             </table>
+            </div>
           )}
         </CardContent>
       </Card>

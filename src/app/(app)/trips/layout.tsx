@@ -1,4 +1,4 @@
-import Link from "next/link";
+import { RouteTabs } from "@/components/ui/route-tabs";
 
 const LINKS = [
   { href: "/trips", label: "Trips" },
@@ -10,11 +10,7 @@ const LINKS = [
 export default function TripsLayout({ children }: LayoutProps<"/trips">) {
   return (
     <div className="space-y-6">
-      <nav className="flex gap-4 border-b pb-2 text-sm print:hidden">
-        {LINKS.map((l) => (
-          <Link key={l.href} href={l.href} className="text-muted-foreground hover:text-foreground">{l.label}</Link>
-        ))}
-      </nav>
+      <RouteTabs items={LINKS} label="Trips" />
       {children}
     </div>
   );

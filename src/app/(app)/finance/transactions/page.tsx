@@ -31,6 +31,39 @@ export default async function TransactionsPage() {
         {categories.map((c) => <option key={c} value={c} />)}
       </datalist>
       <CardThumbsProvider images={images}>
+      {/* Phone: one card per transaction instead of a table wider than the screen. */}
+      <ul className="divide-y rounded-xl border text-sm md:hidden">
+        {rows.map((t) => (
+          <li key={t.id} className={`space-y-2 p-3 ${t.isTransfer ? "opacity-50" : ""}`}>
+            <div className="flex items-baseline justify-between gap-3">
+              <span className="min-w-0 truncate font-medium">
+                {t.merchant}
+                {t.pending ? <span className="ml-1 text-xs font-normal text-muted-foreground">pending</span> : null}
+              </span>
+              <span className={`shrink-0 tabular-nums ${t.amount < 0 ? "" : "text-success"}`}>{formatMoney(t.amount, { cents: true })}</span>
+            </div>
+            <div className="flex flex-wrap items-center gap-x-2 text-xs text-muted-foreground">
+              <span>{t.date}</span>
+              <span aria-hidden>·</span>
+              <span className="inline-flex items-center gap-1">
+                <CardThumb accountId={t.accountId} /> {t.account ?? t.bankName}
+                {last4[t.accountId] ? <span className="font-mono">··{last4[t.accountId]}</span> : null}
+              </span>
+              <span aria-hidden>·</span>
+              <span>{OWNER_LABELS[t.owner]}</span>
+            </div>
+            <form action={setMerchantCategoryAction} className="grid grid-cols-[1fr_1fr_auto] items-center gap-1.5">
+              <input type="hidden" name="merchant" value={t.merchant} />
+              <input name="category" list="categories" defaultValue={t.category ?? ""} placeholder="Uncategorized" required aria-label="Category"
+                className="h-8 min-w-0 rounded border bg-transparent px-1.5" />
+              <input name="subcategory" defaultValue={t.subcategory ?? ""} placeholder="Subcategory" aria-label="Subcategory"
+                className="h-8 min-w-0 rounded border bg-transparent px-1.5" />
+              <button className="px-1 text-xs underline">Save</button>
+            </form>
+          </li>
+        ))}
+      </ul>
+      <div className="hidden overflow-x-auto md:block">
       <table className="w-full text-sm">
         <thead className="text-left text-muted-foreground">
           <tr><th className="py-1">Date</th><th>Merchant</th><th>Category (applies to all from this merchant)</th><th>Account</th><th>Owner</th><th className="text-right">Amount</th></tr>
@@ -65,6 +98,7 @@ export default async function TransactionsPage() {
           ))}
         </tbody>
       </table>
+      </div>
       </CardThumbsProvider>
     </section>
   );

@@ -129,6 +129,7 @@ export function CsvImporter(props: {
 
       {preview && !result ? (
         <div className="space-y-4">
+          <div className="overflow-x-auto">
           <table className="w-full text-sm">
             <thead className="text-left opacity-70">
               <tr>
@@ -173,6 +174,7 @@ export function CsvImporter(props: {
               })}
             </tbody>
           </table>
+          </div>
           <p className="text-xs opacity-60">
             {preview.readableRows} transactions read. Columns used:{" "}
             {Object.entries(FIELD_LABELS)

@@ -85,7 +85,8 @@ export default async function RewardsPage() {
           <Card className="md:col-span-3">
             <CardHeader><CardTitle>Card performance</CardTitle></CardHeader>
             <CardContent>
-              <table className="w-full text-sm">
+              <div className="overflow-x-auto">
+              <table className="w-full text-sm min-w-[34rem]">
                 <thead className="text-left text-muted-foreground">
                   <tr><th className="py-1">Card</th><th className="text-right">Spend</th><th className="text-right">Rewards</th><th className="text-right">Fee</th><th className="text-right">Net</th></tr>
                 </thead>
@@ -101,9 +102,11 @@ export default async function RewardsPage() {
                   ))}
                 </tbody>
               </table>
+              </div>
               {audit.topMisses.length ? (
                 <details className="mt-4 text-sm">
                   <summary className="cursor-pointer text-muted-foreground">Biggest misses</summary>
+                  <div className="overflow-x-auto">
                   <table className="mt-2 w-full">
                     <tbody>
                       {audit.topMisses.map((m) => (
@@ -117,6 +120,7 @@ export default async function RewardsPage() {
                       ))}
                     </tbody>
                   </table>
+                  </div>
                 </details>
               ) : null}
             </CardContent>
@@ -136,7 +140,8 @@ export default async function RewardsPage() {
             </CardDescription>
           </CardHeader>
           <CardContent>
-            <table className="w-full text-sm">
+            <div className="overflow-x-auto">
+            <table className="w-full text-sm min-w-[34rem]">
               <thead className="text-left text-muted-foreground">
                 <tr><th className="py-1">Card</th><th className="text-right">Fee</th><th className="text-right">Adds / yr</th><th className="text-right">Net / yr</th><th className="pl-4">Sign-up offer</th><th className="text-right">Verified</th></tr>
               </thead>
@@ -159,6 +164,7 @@ export default async function RewardsPage() {
                 ))}
               </tbody>
             </table>
+            </div>
           </CardContent>
         </Card>
       ) : null}
