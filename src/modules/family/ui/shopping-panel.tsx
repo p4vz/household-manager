@@ -510,6 +510,9 @@ export function ShoppingPanel({
 
 // ---------------------------------------------------------- quick add ----
 
+/** A list's name as its card shows it: one-store lists read as one title. */
+const listLabel = (l: ShoppingList) => (l.sections.length === 1 ? flatListTitle(l.name, l.sections[0].store) : l.name);
+
 /** The add row sits in a narrow kiosk panel: one line, still 44 px touch targets. */
 const compactTap = "min-h-11 min-w-11 shrink-0 rounded-lg px-2.5 text-sm font-medium active:scale-95 transition-transform select-none";
 const compactField = "min-h-11 rounded-lg border border-slate-300 bg-white px-2 text-sm text-slate-900 dark:border-slate-600 dark:bg-slate-800 dark:text-slate-100";
@@ -519,7 +522,8 @@ function QuickAdd({ board, onAdd, onNewList, children }: { board: ShoppingBoard;
   const [store, setStore] = useState("");
   const [listId, setListId] = useState("");
   const list = board.lists.find((l) => l.id === listId) ?? board.lists[0];
-  const storeValue = store || list?.sections[0]?.store || board.stores[0] || "";
+  const oneStore = list && list.sections.length === 1 ? list.sections[0].store : null;
+  const storeValue = oneStore ?? (store || list?.sections[0]?.store || board.stores[0] || "");
   return (
     <form
       className="flex min-w-0 flex-wrap items-center gap-1.5"
@@ -533,21 +537,26 @@ function QuickAdd({ board, onAdd, onNewList, children }: { board: ShoppingBoard;
       }}
     >
       <input className={`${compactField} min-w-0 flex-[2_1_9rem]`} placeholder="Add item…" value={name} maxLength={80} onChange={(e) => setName(e.target.value)} disabled={!list} />
-      <input className={`${compactField} min-w-0 flex-[1_1_7.5rem]`} list="shopping-stores" placeholder="Store" aria-label="Store" value={storeValue} maxLength={40} onChange={(e) => setStore(e.target.value)} disabled={!list} />
-      <datalist id="shopping-stores">
-        {board.stores.map((s) => (
-          <option key={s} value={s} />
-        ))}
-      </datalist>
       {board.lists.length > 1 ? (
         <select className={`${compactField} min-w-0 flex-[1_1_9rem]`} value={list?.id} onChange={(e) => setListId(e.target.value)} aria-label="List">
           {board.lists.map((l) => (
             <option key={l.id} value={l.id}>
-              {l.name}
+              {listLabel(l)}
             </option>
           ))}
         </select>
       ) : null}
+      {/* A list with one store is that store ("Weekly Sam's Club"): no separate store box. */}
+      {list && list.sections.length === 1 ? null : (
+        <>
+          <input className={`${compactField} min-w-0 flex-[1_1_7.5rem]`} list="shopping-stores" placeholder="Store" aria-label="Store" value={storeValue} maxLength={40} onChange={(e) => setStore(e.target.value)} disabled={!list} />
+          <datalist id="shopping-stores">
+            {board.stores.map((s) => (
+              <option key={s} value={s} />
+            ))}
+          </datalist>
+        </>
+      )}
       <button type="submit" className={`${compactTap} bg-sky-600 text-white`} disabled={!list}>
         Add
       </button>
