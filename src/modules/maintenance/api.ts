@@ -150,7 +150,12 @@ export async function listOpenTasks() {
 }
 
 /** Open tasks due on or before `throughDate` (overdue ones included), soonest first. */
-export async function listDueTasks(throughDate: string, limit = 20) {
+/**
+ * Open upkeep due by `throughDate`, oldest first, with the house to-dos.
+ * `today` hides to-dos and tasks deferred past it; `todos: false` leaves the
+ * one-time to-dos out (they have no deadline, so no reminders).
+ */
+export async function listDueTasks(throughDate: string, limit = 20, opts: { today?: string; todos?: boolean } = {}) {
   return db()
     .select({
       id: maintenanceTasks.id,
@@ -159,12 +164,53 @@ export async function listDueTasks(throughDate: string, limit = 20) {
       recurrenceDays: maintenanceTasks.recurrenceDays,
       notes: maintenanceTasks.notes,
       parts: maintenanceTasks.parts,
+      todo: maintenanceTasks.todo,
+      assignee: maintenanceTasks.assignee,
+      deferredUntil: maintenanceTasks.deferredUntil,
     })
     .from(maintenanceTasks)
-    .where(and(isNull(maintenanceTasks.completedOn), lte(maintenanceTasks.dueDate, throughDate)))
-    .orderBy(asc(maintenanceTasks.dueDate))
+    .where(
+      and(
+        isNull(maintenanceTasks.completedOn),
+        lte(maintenanceTasks.dueDate, throughDate),
+        opts.todos === false ? eq(maintenanceTasks.todo, false) : undefined,
+        opts.today ? or(isNull(maintenanceTasks.deferredUntil), lte(maintenanceTasks.deferredUntil, opts.today)) : undefined,
+      ),
+    )
+    .orderBy(asc(maintenanceTasks.dueDate), asc(maintenanceTasks.createdAt))
     .limit(limit);
 }
+
+export class HouseTodoError extends Error {
+  override name = "HouseTodoError";
+}
+
+/**
+ * Adds a one-time house to-do from the kitchen screen: what, and who will
+ * do it, dated the day it was added.
+ */
+export async function addHouseTodo(input: { title: string; assignee?: string | null; today: string }) {
+  const title = input.title.trim();
+  if (!title) throw new HouseTodoError("Say what needs doing.");
+  const [row] = await db()
+    .insert(maintenanceTasks)
+    .values({ title, dueDate: input.today, todo: true, assignee: input.assignee?.trim() || null })
+    .returning({ id: maintenanceTasks.id });
+  return row.id;
+}
+
+/**
+ * "Defer until": hides an open to-do or upkeep task until that day. A day
+ * that is not after today brings it back now.
+ */
+export async function deferTask(taskId: string, until: string, today: string) {
+  if (until > nextDueDate(today, 366)) throw new HouseTodoError("Pick a day within the next year.");
+  await db()
+    .update(maintenanceTasks)
+    .set({ deferredUntil: until > today ? until : null })
+    .where(and(eq(maintenanceTasks.id, taskId), isNull(maintenanceTasks.completedOn)));
+}
+
 
 export async function updateTask(taskId: string, input: Partial<ScheduleTaskInput>) {
   await db()

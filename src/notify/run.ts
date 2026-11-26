@@ -23,7 +23,7 @@ const REGISTRATION = /\b(registration|inspection|emissions|renew(al)?|licen[cs]e
 async function sharedCandidates(today: string): Promise<Candidate[]> {
   const out: Candidate[] = [];
   const horizon = addDays(today, Math.max(LEAD_DAYS.upkeep, LEAD_DAYS.registrations));
-  for (const t of await listDueTasks(horizon, 200)) {
+  for (const t of await listDueTasks(horizon, 200, { today, todos: false })) {
     const type = REGISTRATION.test(t.title) ? "registrations" : "upkeep";
     const c = dueCandidate(type, { id: t.id, title: t.title, due: t.dueDate }, today, "/maintenance#items");
     if (c) out.push(c);

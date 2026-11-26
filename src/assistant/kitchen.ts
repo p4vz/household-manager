@@ -62,7 +62,7 @@ export async function kitchenSnapshot(now = new Date()) {
     family.kidProgress(now),
     family.shoppingBoard(now),
     family.listReturns(),
-    maintenance.listDueTasks(twoWeeks.toISOString().slice(0, 10)),
+    maintenance.listDueTasks(twoWeeks.toISOString().slice(0, 10), 20, { today }),
     family.readingSummaries(now),
   ]);
   return {
@@ -106,7 +106,7 @@ export async function kitchenSnapshot(now = new Date()) {
       stores: l.sections.map((s) => ({ store: s.store, toBuy: s.items.filter((i) => !i.checked).map((i) => (i.quantity ? `${i.name} (${i.quantity})` : i.name)) })),
     })),
     returns: returns.map((r) => ({ item: r.itemName, store: r.store, returnBy: r.returnDeadline, status: r.status })),
-    upkeepDue: upkeep.map((t) => ({ task: t.title, due: t.dueDate })),
+    upkeepDue: upkeep.map((t) => (t.todo ? { task: t.title, houseTodo: true, added: t.dueDate, who: t.assignee } : { task: t.title, due: t.dueDate })),
   };
 }
 

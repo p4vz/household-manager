@@ -22,7 +22,7 @@ import { ResizableSplit } from "@/modules/family/ui/resizable-split";
 import { ReturnsPanel } from "@/modules/family/ui/returns-panel";
 import { ShoppingPanel } from "@/modules/family/ui/shopping-panel";
 import { UpkeepPanel } from "@/modules/family/ui/upkeep-panel";
-import { addOneTimeChoreAction, addReturnAction, completeUpkeepAction, setChoreDoneAction, setReturnStatusAction, syncCalendarAction } from "./actions";
+import { addHouseTodoAction, addOneTimeChoreAction, addReturnAction, completeUpkeepAction, deferUpkeepAction, setChoreDoneAction, setReturnStatusAction, syncCalendarAction } from "./actions";
 import { addEventPhotoAction, createEventAction, eventPhotosAction, updateEventAction } from "./calendar-actions";
 import { addChoreDoneAction, choreLogAction, removeChoreDoneAction } from "./chore-log-actions";
 import { loadHub } from "./load";
@@ -60,6 +60,8 @@ export default async function KioskPage() {
   const urgentReturns = hub.returns.filter((r) => r.urgency !== "ok" && r.status !== "returned").length;
   const choresLeft = hub.kids.reduce((n, k) => n + Math.max(0, k.stats.todayTotal - k.stats.todayDone), 0);
   const overdueUpkeep = hub.upkeep.filter((t) => t.overdue).length;
+  // Names offered when adding a house to-do: whoever already has one, then the kids.
+  const upkeepPeople = [...new Set([...hub.upkeep.map((t) => t.assignee).filter((n): n is string => Boolean(n)), ...hub.kids.map((k) => k.name)])];
   const printBtn = "min-h-12 rounded-xl border px-4 text-lg font-medium";
 
   return (
@@ -180,7 +182,16 @@ export default async function KioskPage() {
                   label: "🔧 Upkeep",
                   badge: hub.upkeep.length,
                   alert: overdueUpkeep > 0,
-                  content: <UpkeepPanel tasks={hub.upkeep} complete={adult ? completeUpkeepAction : undefined} />,
+                  content: (
+                    <UpkeepPanel
+                      tasks={hub.upkeep}
+                      today={hub.today}
+                      people={upkeepPeople}
+                      complete={adult ? completeUpkeepAction : undefined}
+                      add={adult ? addHouseTodoAction : undefined}
+                      defer={adult ? deferUpkeepAction : undefined}
+                    />
+                  ),
                 },
               ]}
             />
