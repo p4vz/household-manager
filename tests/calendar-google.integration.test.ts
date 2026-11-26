@@ -31,8 +31,10 @@ function json(body: unknown, status = 200) {
   return new Response(JSON.stringify(body), { status, headers: { "content-type": "application/json" } });
 }
 
-vi.mock("@/core/net/outbound", () => ({
-  outboundFetch: async (input: string | URL, init: RequestInit = {}) => {
+let townshipDown = false;
+vi.mock("@/core/net/outbound", async (orig) => {
+  const real = await orig<typeof import("@/core/net/outbound")>();
+  const outboundFetch = async (input: string | URL, init: RequestInit = {}) => {
     const url = new URL(String(input));
     const method = (init.method ?? "GET").toUpperCase();
     const headers = new Headers(init.headers);
@@ -81,8 +83,16 @@ vi.mock("@/core/net/outbound", () => ({
       return json(next);
     }
     return json({}, 405);
-  },
-}));
+  };
+  return {
+    ...real,
+    outboundFetch,
+    outboundPublicGet: async (url: string, init: { headers?: Record<string, string> } = {}) => {
+      if (townshipDown && url.includes("catID=25")) throw new TypeError("fetch failed", { cause: { code: "ECONNRESET" } });
+      return outboundFetch(url, init);
+    },
+  };
+});
 
 const api = await import("@/modules/calendar/api");
 
@@ -122,6 +132,26 @@ async function agendaItems() {
 }
 
 describe("two-way family calendar", () => {
+  it("keeps a township feed's events when it can't be reached, says why, and retries in 30 minutes", async () => {
+    const later = (min: number) => new Date(Date.now() + min * 60_000);
+    // A first sync stores the township events; later ones within 6 hours skip the township.
+    await api.syncGoogleCalendars({ force: true, now: later(0) });
+    townshipDown = true;
+    try {
+      const state = await api.syncGoogleCalendars({ force: true, now: later(7 * 60) });
+      expect(state.ok).toBe(false);
+      expect(state.message).toBe("Abington Township township events feed: fetch failed (ECONNRESET)");
+      // Its leaf collection stays on the screen.
+      expect((await agendaItems()).map((i) => i.title)).toContain("Leaf Collection - Areas C, D, F, J");
+      // Not tried again for 30 minutes.
+      expect(await api.syncGoogleCalendars({ force: true, now: later(7 * 60 + 10) })).toMatchObject({ ok: true });
+      expect((await api.syncGoogleCalendars({ force: true, now: later(7 * 60 + 41) })).ok).toBe(false);
+    } finally {
+      townshipDown = false;
+    }
+    expect(await api.syncGoogleCalendars({ force: true, now: later(8 * 60 + 20) })).toMatchObject({ ok: true });
+  });
+
   it("finds the family calendar by name and mirrors both calendars", async () => {
     const state = await api.syncGoogleCalendars({ force: true });
     expect(state).toMatchObject({ ok: true });

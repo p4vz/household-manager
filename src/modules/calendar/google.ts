@@ -1,8 +1,8 @@
 import "server-only";
 import { createSign } from "node:crypto";
-import { and, eq, gt, gte, lt, notInArray, or } from "drizzle-orm";
+import { and, eq, gt, gte, lt, notInArray, notLike, or } from "drizzle-orm";
 import { db } from "@/core/db/client";
-import { outboundFetch } from "@/core/net/outbound";
+import { fetchErrorReason, outboundFetch, outboundPublicGet } from "@/core/net/outbound";
 import { getSetting, setSetting } from "@/core/settings/store";
 import { householdTimeZone, zonedMidnight, zonedParts } from "@/core/time/zoned";
 import {
@@ -187,22 +187,31 @@ async function fetchEvents(calendarId: string, label: string, timeMin: Date, tim
 
 /**
  * The township feed is fetched at most every 6 hours (it changes rarely and
- * is a small town's website). Between fetches its stored rows are kept.
+ * is a small town's website). Between fetches its stored rows are kept. A
+ * feed that fails is tried again after 30 minutes, and its stored rows stay.
  */
 const TOWNSHIP_INTERVAL_MS = 6 * 60 * 60_000;
-let townshipFetchedAt = 0;
+const TOWNSHIP_RETRY_MS = 30 * 60_000;
+let townshipNextAt = 0;
 
-async function fetchTownshipEvents(tz: string, window: { from: string; to: string }): Promise<GoogleEvent[]> {
+type TownshipFetch = { events: GoogleEvent[]; failed: { prefix: string; reason: string }[] };
+
+async function fetchTownshipEvents(tz: string, window: { from: string; to: string }): Promise<TownshipFetch> {
   const events: GoogleEvent[] = trashEvents(process.env, window.from, window.to);
+  const failed: TownshipFetch["failed"] = [];
   for (const feed of townshipFeeds(process.env)) {
-    const res = await outboundFetch(feed.url, { headers: { accept: "text/calendar" } });
-    if (!res.ok) throw new Error(`Abington Township: ${feed.label} feed answered HTTP ${res.status}`);
-    const text = await res.text();
-    if (!text.includes("BEGIN:VCALENDAR")) throw new Error(`Abington Township: ${feed.label} feed was not a calendar`);
     const prefix = feed.label.replace(/\W+/g, "-") + "-";
-    events.push(...parseIcs(text.slice(0, 2_000_000), tz, prefix).filter((e) => feed.keep(e.summary ?? "", e.location ?? "")));
+    try {
+      const res = await outboundPublicGet(feed.url, { headers: { accept: "text/calendar, */*" } });
+      if (!res.ok) throw new Error(`answered HTTP ${res.status}`);
+      const text = await res.text();
+      if (!text.includes("BEGIN:VCALENDAR")) throw new Error("was not a calendar");
+      events.push(...parseIcs(text.slice(0, 2_000_000), tz, prefix).filter((e) => feed.keep(e.summary ?? "", e.location ?? "")));
+    } catch (err) {
+      failed.push({ prefix, reason: `Abington Township ${feed.label} feed: ${fetchErrorReason(err)}` });
+    }
   }
-  return events;
+  return { events, failed };
 }
 
 /** Events in [from, to) by the same rules storedGoogleEvents reads them with. */
@@ -214,17 +223,33 @@ function inWindow(e: GoogleEvent, fromDate: string, toDate: string, from: Date, 
   return s < to && end >= from;
 }
 
-/** Events for one source, or null to keep what is stored (township feed not due yet). */
-async function sourceEvents(source: CalendarSource, tz: string, window: { from: string; to: string }, start: Date, end: Date, now: Date): Promise<GoogleEvent[] | null> {
-  if (source.kind === "static") return schoolEvents().filter((e) => inWindow(e, window.from, window.to, start, end));
+/**
+ * Events for one source, or null to keep what is stored (township feed not
+ * due yet). `keepPrefixes`: stored rows whose ids start with one of these
+ * stay (a township feed that failed this time); `problems` are reported.
+ */
+async function sourceEvents(
+  source: CalendarSource,
+  tz: string,
+  window: { from: string; to: string },
+  start: Date,
+  end: Date,
+  now: Date,
+): Promise<{ events: GoogleEvent[]; keepPrefixes: string[]; problems: string[] } | null> {
+  const plain = (events: GoogleEvent[]) => ({ events, keepPrefixes: [], problems: [] });
+  if (source.kind === "static") return plain(schoolEvents().filter((e) => inWindow(e, window.from, window.to, start, end)));
   if (source.kind === "ics") {
-    if (now.getTime() - townshipFetchedAt < TOWNSHIP_INTERVAL_MS) return null;
-    const events = (await fetchTownshipEvents(tz, window)).filter((e) => inWindow(e, window.from, window.to, start, end));
-    townshipFetchedAt = now.getTime();
-    return events;
+    if (now.getTime() < townshipNextAt) return null;
+    const { events, failed } = await fetchTownshipEvents(tz, window);
+    townshipNextAt = now.getTime() + (failed.length ? TOWNSHIP_RETRY_MS : TOWNSHIP_INTERVAL_MS);
+    return {
+      events: events.filter((e) => inWindow(e, window.from, window.to, start, end)),
+      keepPrefixes: failed.map((f) => f.prefix),
+      problems: failed.map((f) => f.reason),
+    };
   }
   const cal = await resolveCalendar(source);
-  return fetchEvents(cal.id, source.label, start, end);
+  return plain(await fetchEvents(cal.id, source.label, start, end));
 }
 
 let running: Promise<GoogleSyncState> | null = null;
@@ -265,7 +290,9 @@ async function runSync(now: Date): Promise<GoogleSyncState> {
     try {
       const fetched = await sourceEvents(source, tz, window, windowStart, windowEnd, now);
       if (!fetched) continue;
-      const events = fetched
+      failures.push(...fetched.problems);
+      const kept = fetched.keepPrefixes.map((p) => notLike(calendarGoogleEvents.googleEventId, `${p}%`));
+      const events = fetched.events
         .map(toStoredEvent)
         .filter((e): e is NonNullable<typeof e> => e !== null)
         .map((e) => (source.hideNotes ? { ...e, notes: null } : e));
@@ -282,13 +309,15 @@ async function runSync(now: Date): Promise<GoogleSyncState> {
         await tx
           .delete(calendarGoogleEvents)
           .where(
-            seen.length
-              ? and(eq(calendarGoogleEvents.calendarKey, source.key), notInArray(calendarGoogleEvents.googleEventId, seen))
-              : eq(calendarGoogleEvents.calendarKey, source.key),
+            and(
+              eq(calendarGoogleEvents.calendarKey, source.key),
+              seen.length ? notInArray(calendarGoogleEvents.googleEventId, seen) : undefined,
+              ...kept,
+            ),
           );
       });
     } catch (err) {
-      failures.push(err instanceof Error ? err.message : String(err));
+      failures.push(fetchErrorReason(err));
     }
   }
   // Calendars removed from the configuration disappear from the screen.
