@@ -144,7 +144,7 @@ export function ReviewView(d: ReviewData) {
                       </option>
                       {a.candidates.map((c) => (
                         <option key={c.id} value={c.id}>
-                          {c.name} ({OWNER_LABELS[c.owner]}){c.score >= 0.5 ? " · likely match" : ""}
+                          {c.name} ({ACCOUNT_KIND_LABELS[c.kind]}, {OWNER_LABELS[c.owner]}){c.id === a.suggestedIntoId ? " · likely match" : ""}
                         </option>
                       ))}
                     </select>

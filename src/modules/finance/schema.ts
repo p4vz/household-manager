@@ -77,6 +77,12 @@ export const financeAccounts = pgTable(
     last4: text("last4"),
     owner: text("owner", { enum: OWNERS }).notNull().default("joint"),
     kind: text("kind", { enum: ACCOUNT_KINDS }).notNull().default("other"),
+    /**
+     * "guess": worked out from the bank's name and the account's activity,
+     * and refreshed as transactions arrive. "manual": a person set or saved
+     * it on the Accounts page, and nothing automatic changes it again.
+     */
+    kindSource: text("kind_source", { enum: ["guess", "manual"] }).notNull().default("guess"),
     active: boolean("active").notNull().default(true),
     currency: text("currency").notNull().default("USD"),
     balance: money("balance"),

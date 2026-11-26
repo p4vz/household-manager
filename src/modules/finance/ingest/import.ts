@@ -14,7 +14,8 @@ import {
   type CsvRow,
   type SkipSummary,
 } from "./csv";
-import { guessAccountKind } from "./merchant";
+import { guessAccountKind } from "./account-kind";
+import { refreshGuessedKinds } from "./kinds";
 import { extractLast4, stripAccountNumbers } from "./redact";
 
 /** "new" creates a CSV-only account named after the CSV account. */
@@ -143,6 +144,7 @@ export async function commitCsvImport(viewer: Viewer, text: string, mapping: Acc
     await learnRules(eligible);
   }
 
+  await refreshGuessedKinds();
   // Keep planner statistics fresh after a big history load.
   await db().execute(sql`analyze finance_transactions`);
   await bus.publish("finance", "finance.transactionsSynced", { source: "csv", inserted: result.inserted });

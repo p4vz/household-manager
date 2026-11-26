@@ -172,6 +172,7 @@ export async function listAccounts(viewer: Viewer) {
       last4: financeAccounts.last4,
       owner: financeAccounts.owner,
       kind: financeAccounts.kind,
+      kindSource: financeAccounts.kindSource,
       catalogProductId: financeCardProfiles.catalogProductId,
       active: financeAccounts.active,
       balance: financeAccounts.balance,
@@ -219,7 +220,8 @@ export async function updateAccount(viewer: Viewer, id: string, patch: AccountPa
   if (patch.last4 != null && !/^\d{4}$/.test(patch.last4)) throw new Error("Last 4 must be four digits");
   await db()
     .update(financeAccounts)
-    .set({ ...patch, displayName: cleanTypedName(patch.displayName), officialName: cleanTypedName(patch.officialName) })
+    // A type saved here is the household's word: later syncs leave it alone.
+    .set({ ...patch, kindSource: "manual", displayName: cleanTypedName(patch.displayName), officialName: cleanTypedName(patch.officialName) })
     .where(eq(financeAccounts.id, id));
 }
 
