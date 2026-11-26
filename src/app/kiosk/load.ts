@@ -21,6 +21,7 @@ function readingView(r: ReadingSummary | undefined): ReadingView | undefined {
     nextStreakAt: r.stats.nextStreakAt,
     nextTotalAt: r.stats.nextTotalAt,
     today: r.today,
+    recent: r.recent,
     books: r.books,
   };
 }
