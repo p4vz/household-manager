@@ -590,3 +590,5 @@ export {
   type SlideshowStatus,
   type StepResult,
 } from "./slideshow";
+
+export { CHORE_LOG_DAYS, ChoreLogError, addChoreDone, choreLog, removeChoreDone, type ChoreLogEntry } from "./chore-log";

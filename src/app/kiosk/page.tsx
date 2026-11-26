@@ -24,6 +24,7 @@ import { ShoppingPanel } from "@/modules/family/ui/shopping-panel";
 import { UpkeepPanel } from "@/modules/family/ui/upkeep-panel";
 import { addOneTimeChoreAction, addReturnAction, completeUpkeepAction, setChoreDoneAction, setReturnStatusAction, syncCalendarAction } from "./actions";
 import { addEventPhotoAction, createEventAction, eventPhotosAction, updateEventAction } from "./calendar-actions";
+import { addChoreDoneAction, choreLogAction, removeChoreDoneAction } from "./chore-log-actions";
 import { loadHub } from "./load";
 import { slideshowIdsAction, slideshowPhotoAction } from "./slideshow-actions";
 import { shoppingActions } from "./shopping-actions-map";
@@ -130,6 +131,7 @@ export default async function KioskPage() {
                       actions={{
                         setDone: setChoreDoneAction,
                         addOneTime: addOneTimeChoreAction,
+                        log: { list: choreLogAction, add: adult ? addChoreDoneAction : undefined, remove: adult ? removeChoreDoneAction : undefined },
                         reading: {
                           log: logReadingAction,
                           remove: deleteReadingAction,
