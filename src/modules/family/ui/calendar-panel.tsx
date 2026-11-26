@@ -29,7 +29,7 @@ export type AgendaDayView = {
   items: AgendaItemView[];
 };
 
-type View = "agenda" | "week" | "month";
+type View = "month" | "week" | "day";
 type OnEdit = (e: EditableEventView) => void;
 type OnDay = (d: AgendaDayView) => void;
 
@@ -39,7 +39,9 @@ type OnDay = (d: AgendaDayView) => void;
  *   (columns keep their width when the panel is resized); swipe or drag
  *   sideways, or use the arrows, to see later weeks.
  * - Month: the whole month on a grid, with arrows to the next month.
- * - Next 4 days: today large, then the next three days.
+ * - Day: one day in full, with arrows to the days before and after.
+ * The calendars sit in a dropdown, where each one can be hidden on this
+ * screen (remembered by the browser).
  * Tapping a day header (or a month cell) opens that day in full.
  * "+ Add Event" and a tap on a family calendar event open the event modal,
  * which writes to Google straight away. Deleting is offered only when
@@ -79,14 +81,17 @@ export function CalendarPanel({
   const [message, setMessage] = useState<string | null>(null);
   const onEdit: OnEdit = (edit) => setModal({ edit });
   const onDay: OnDay = (d) => setOpenDay(d.date);
-  const allDays = [...earlier, ...days];
+  const [hidden, setHidden] = useHiddenCalendars();
+  const visible = (list: AgendaDayView[]) => (hidden.size ? list.map((d) => ({ ...d, items: d.items.filter((i) => !hidden.has(i.who)) })) : list);
+  const shownDays = visible(days);
+  const allDays = visible([...earlier, ...days]);
   const dayOpen = openDay ? allDays.find((d) => d.date === openDay) : undefined;
 
   return (
     <div className="flex h-full min-h-0 flex-col gap-3">
       <div className="flex flex-wrap items-center gap-2">
         <div className="flex rounded-xl border p-0.5 sm:p-1">
-          {(["week", "month", "agenda"] as const).map((v) => (
+          {(["month", "week", "day"] as const).map((v) => (
             <button
               key={v}
               type="button"
@@ -94,18 +99,12 @@ export function CalendarPanel({
               aria-pressed={view === v}
               className={`${tap} max-sm:px-2.5 ${view === v ? "bg-slate-900 text-white dark:bg-white dark:text-slate-900" : ""}`}
             >
-              {v === "agenda" ? "4 days" : v === "week" ? "Week" : "Month"}
+              {v === "day" ? "Day" : v === "week" ? "Week" : "Month"}
             </button>
           ))}
         </div>
-        <div className="order-last flex w-full flex-wrap gap-2 sm:order-none sm:w-auto sm:flex-1">
-          {legend.map((l) => (
-            <span key={l.label} className="flex items-center gap-1 rounded-full px-3 py-1 text-sm font-semibold" style={{ background: `${l.color}22`, color: l.color }}>
-              <span className="h-3 w-3 rounded-full" style={{ background: l.color }} />
-              {l.label}
-            </span>
-          ))}
-        </div>
+        <CalendarsMenu legend={legend} hidden={hidden} onChange={setHidden} />
+        <div className="flex-1 max-sm:hidden" />
         <button
           type="button"
           disabled={pending || !configured}
@@ -136,10 +135,10 @@ export function CalendarPanel({
         <p className="rounded-lg bg-red-100 p-2 text-sm text-red-900">Calendar sync problem: {message ?? syncError}</p>
       ) : null}
 
-      {view === "agenda" ? (
-        <Agenda days={days.slice(0, 4)} onEdit={onEdit} onDay={onDay} />
+      {view === "day" ? (
+        <DayView days={allDays} today={today} onEdit={onEdit} />
       ) : view === "week" ? (
-        <WeekStrip days={days} onEdit={onEdit} onDay={onDay} />
+        <WeekStrip days={shownDays} onEdit={onEdit} onDay={onDay} />
       ) : (
         <MonthGrid days={allDays} today={today} onDay={onDay} />
       )}
@@ -227,17 +226,110 @@ function DayHeader({ d, onDay, size = "md" }: { d: AgendaDayView; onDay: OnDay; 
   );
 }
 
-function Agenda({ days, onEdit, onDay }: { days: AgendaDayView[]; onEdit: OnEdit; onDay: OnDay }) {
+/** One day in full (events with notes and maps links), with arrows to the days around it. */
+function DayView({ days, today, onEdit }: { days: AgendaDayView[]; today: string; onEdit: OnEdit }) {
+  const [index, setIndex] = useState(() => Math.max(0, days.findIndex((d) => d.date === today)));
+  const d = days[Math.min(index, days.length - 1)];
+  if (!d) return <p className="opacity-50">Nothing planned</p>;
   return (
-    <div className="grid min-h-0 flex-1 grid-rows-[2fr_1fr_1fr_1fr] gap-2">
-      {days.map((d) => (
-        <section key={d.date} className={`flex min-h-0 flex-col rounded-xl p-2 ${d.isToday ? "bg-sky-50 ring-2 ring-sky-400 dark:bg-sky-950" : "bg-slate-100 dark:bg-slate-800"}`}>
-          <DayHeader d={d} onDay={onDay} size={d.isToday ? "lg" : "md"} />
-          <div className="min-h-0 flex-1 space-y-1 overflow-y-auto overscroll-contain">
-            {d.items.length === 0 ? <p className="opacity-50">Nothing planned</p> : d.items.map((e) => <EventCard key={e.key} e={e} onEdit={onEdit} />)}
-          </div>
-        </section>
-      ))}
+    <div className="flex min-h-0 flex-1 flex-col gap-2">
+      <div className="flex items-center gap-2">
+        <button type="button" className={`${tap} border px-3`} onClick={() => setIndex((i) => Math.max(0, i - 1))} disabled={index <= 0} aria-label="Day before">
+          ‹
+        </button>
+        {d.date !== today ? (
+          <button type="button" className={`${tap} border`} onClick={() => setIndex(Math.max(0, days.findIndex((x) => x.date === today)))}>
+            Today
+          </button>
+        ) : null}
+        <div className="flex-1" />
+        <button type="button" className={`${tap} border px-3`} onClick={() => setIndex((i) => Math.min(days.length - 1, i + 1))} disabled={index >= days.length - 1} aria-label="Day after">
+          ›
+        </button>
+      </div>
+      <section className={`flex min-h-0 flex-1 flex-col rounded-xl p-3 ${d.isToday ? "bg-sky-50 ring-2 ring-sky-400 dark:bg-sky-950" : "bg-slate-100 dark:bg-slate-800"}`}>
+        <div className="mb-2">
+          <div className="text-2xl font-bold">{d.heading}</div>
+          <div className="text-sm opacity-60">{d.subheading}</div>
+        </div>
+        <div className="min-h-0 flex-1 space-y-2 overflow-y-auto overscroll-contain">
+          {d.items.length === 0 ? <p className="opacity-50">Nothing planned</p> : d.items.map((e) => <EventCard key={e.key} e={e} details onEdit={onEdit} />)}
+        </div>
+      </section>
+    </div>
+  );
+}
+
+const HIDDEN_KEY = "kiosk.hiddenCalendars";
+
+/** Calendars hidden on this screen, remembered in the browser (best effort). */
+function useHiddenCalendars(): [Set<string>, (next: Set<string>) => void] {
+  const [hidden, setHidden] = useState<Set<string>>(() => new Set());
+  useEffect(() => {
+    try {
+      const raw = window.localStorage.getItem(HIDDEN_KEY);
+      // eslint-disable-next-line react-hooks/set-state-in-effect -- read once after mount (no localStorage on the server)
+      if (raw) setHidden(new Set(JSON.parse(raw) as string[]));
+    } catch {
+      /* storage off: everything shows */
+    }
+  }, []);
+  const update = (next: Set<string>) => {
+    setHidden(next);
+    try {
+      window.localStorage.setItem(HIDDEN_KEY, JSON.stringify([...next]));
+    } catch {
+      /* not remembered */
+    }
+  };
+  return [hidden, update];
+}
+
+/** "Calendars ▾": the coloured list of calendars, each with a show/hide tick. */
+function CalendarsMenu({ legend, hidden, onChange }: { legend: { label: string; color: string }[]; hidden: Set<string>; onChange: (next: Set<string>) => void }) {
+  const [open, setOpen] = useState(false);
+  const shown = legend.filter((l) => !hidden.has(l.label));
+  return (
+    <div className="relative">
+      <button type="button" onClick={() => setOpen((o) => !o)} aria-expanded={open} className={`${tap} flex items-center gap-1.5 border`}>
+        <span className="flex -space-x-1">
+          {shown.slice(0, 5).map((l) => (
+            <span key={l.label} className="h-3 w-3 rounded-full ring-2 ring-white dark:ring-slate-900" style={{ background: l.color }} />
+          ))}
+        </span>
+        Calendars{hidden.size ? ` (${shown.length}/${legend.length})` : ""} ▾
+      </button>
+      {open ? (
+        <>
+          <div className="fixed inset-0 z-30" onClick={() => setOpen(false)} />
+          <ul className="absolute left-0 top-full z-40 mt-1 min-w-56 space-y-1 rounded-xl border bg-white p-2 shadow-xl dark:bg-slate-900">
+            {legend.map((l) => {
+              const on = !hidden.has(l.label);
+              return (
+                <li key={l.label}>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      const next = new Set(hidden);
+                      if (on) next.add(l.label);
+                      else next.delete(l.label);
+                      onChange(next);
+                    }}
+                    aria-pressed={on}
+                    className="flex min-h-11 w-full items-center gap-2 rounded-lg px-2 text-left text-sm font-semibold active:bg-slate-100"
+                    style={{ color: l.color }}
+                  >
+                    <span className={`flex h-5 w-5 items-center justify-center rounded border-2 text-xs text-white`} style={{ borderColor: l.color, background: on ? l.color : "transparent" }}>
+                      {on ? "✓" : ""}
+                    </span>
+                    {l.label}
+                  </button>
+                </li>
+              );
+            })}
+          </ul>
+        </>
+      ) : null}
     </div>
   );
 }
