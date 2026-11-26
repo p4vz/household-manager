@@ -25,6 +25,7 @@ import { UpkeepPanel } from "@/modules/family/ui/upkeep-panel";
 import { addOneTimeChoreAction, addReturnAction, completeUpkeepAction, setChoreDoneAction, setReturnStatusAction, syncCalendarAction } from "./actions";
 import { addEventPhotoAction, createEventAction, eventPhotosAction, updateEventAction } from "./calendar-actions";
 import { loadHub } from "./load";
+import { slideshowIdsAction, slideshowPhotoAction } from "./slideshow-actions";
 import { shoppingActions } from "./shopping-actions-map";
 
 /** Installs as its own full-screen landscape app (public/kiosk.webmanifest). */
@@ -65,6 +66,7 @@ export default async function KioskPage() {
       tz={hub.tz}
       renderedAt={hub.renderedAt}
       weather={<WeatherWidget weather={hub.weather} size="kiosk" />}
+      slideshow={{ ids: slideshowIdsAction, photo: slideshowPhotoAction }}
       header={
         <>
           <KioskControls

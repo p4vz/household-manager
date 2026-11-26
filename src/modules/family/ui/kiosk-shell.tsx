@@ -2,6 +2,7 @@
 
 import { useRouter } from "next/navigation";
 import { useEffect, useRef, useState, type ReactNode } from "react";
+import { SleepSlideshow, type SlideshowSource } from "./sleep-slideshow";
 import { useKioskWatchdog } from "./use-kiosk-watchdog";
 
 /**
@@ -20,7 +21,9 @@ import { useKioskWatchdog } from "./use-kiosk-watchdog";
  * - Timeout: bright while in use; after a set time without a touch (30 s by
  *   default) the screen goes as dark as it can while staying readable. The
  *   first tap only wakes it. (A web page can't change the tablet's own
- *   backlight, so this darkens the picture.)
+ *   backlight, so this darkens the picture.) If photos were chosen in
+ *   Settings, the sleeping screen shows them one after another instead,
+ *   except at night (9 PM–6:30 AM), when it stays dark.
  *
  * A watchdog (watchdog.ts) reloads the page if fresh renders stop arriving,
  * after the connection comes back, and once a night, without ever looping
@@ -67,6 +70,7 @@ export function KioskShell({
   children,
   header,
   weather,
+  slideshow,
 }: {
   tz: string;
   renderedAt: number;
@@ -74,6 +78,8 @@ export function KioskShell({
   header: ReactNode;
   /** Shown next to the date. */
   weather?: ReactNode;
+  /** Photos for the sleeping screen in Timeout mode. */
+  slideshow?: SlideshowSource;
 }) {
   const router = useRouter();
   const { offline } = useKioskWatchdog(renderedAt, tz);
@@ -222,9 +228,10 @@ export function KioskShell({
         </header>
         <div className="min-h-0 flex-1 px-4 pb-4">{children}</div>
       </div>
-      {timedOut ? (
-        // Catches the waking tap so it doesn't also press whatever is underneath.
-        <div className="fixed inset-0 z-50 bg-black transition-opacity duration-1000" style={{ opacity: TIMEOUT_DIM_OPACITY }} aria-label="Tap to wake" />
+      {timedOut && slideshow && !scheduled ? (
+        <SleepSlideshow source={slideshow} clock={time} fallback={<DimCover />} />
+      ) : timedOut ? (
+        <DimCover />
       ) : null}
       {screensaver ? (
         <div className="fixed inset-0 z-50 bg-black" aria-label="Tap to wake">
@@ -239,4 +246,9 @@ export function KioskShell({
       ) : null}
     </div>
   );
+}
+
+/** Timeout mode's dark cover. It catches the waking tap so it doesn't also press whatever is underneath. */
+function DimCover() {
+  return <div className="fixed inset-0 z-50 bg-black transition-opacity duration-1000" style={{ opacity: TIMEOUT_DIM_OPACITY }} aria-label="Tap to wake" />;
 }
