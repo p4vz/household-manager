@@ -1,5 +1,6 @@
 import { NextResponse } from "next/server";
 import { isValidCronRequest } from "@/core/net/cron";
+import { noteCronCall } from "@/core/net/cron-seen";
 import { runNotifications } from "@/notify/run";
 
 /**
@@ -9,6 +10,7 @@ import { runNotifications } from "@/notify/run";
  */
 export async function POST(req: Request) {
   if (!isValidCronRequest(req)) return new NextResponse(null, { status: 401 });
+  await noteCronCall("notifications");
   try {
     return NextResponse.json(await runNotifications());
   } catch (err) {

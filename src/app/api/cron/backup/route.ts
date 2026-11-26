@@ -1,5 +1,6 @@
 import { NextResponse } from "next/server";
 import { isValidCronRequest } from "@/core/net/cron";
+import { noteCronCall } from "@/core/net/cron-seen";
 import { runBackupIfDue } from "@/core/backup/run";
 
 /**
@@ -9,6 +10,7 @@ import { runBackupIfDue } from "@/core/backup/run";
  */
 export async function POST(req: Request) {
   if (!isValidCronRequest(req)) return new NextResponse(null, { status: 401 });
+  await noteCronCall("backup");
   const result = await runBackupIfDue();
   return NextResponse.json(result, { status: result.status === "error" ? 502 : 200 });
 }

@@ -1,5 +1,6 @@
 import { NextResponse } from "next/server";
 import { isValidCronRequest } from "@/core/net/cron";
+import { noteCronCall } from "@/core/net/cron-seen";
 import { runHouseAuditIfDue } from "@/assistant/house-audit";
 import { isSyncSlot, runScheduledSync } from "@/modules/finance/api";
 
@@ -10,6 +11,7 @@ import { isSyncSlot, runScheduledSync } from "@/modules/finance/api";
  */
 export async function POST(req: Request) {
   if (!isValidCronRequest(req)) return new NextResponse(null, { status: 401 });
+  await noteCronCall("simplefin-sync");
   const now = new Date();
   if (!isSyncSlot(now)) return NextResponse.json({ status: "skipped", reason: "Not a sync slot" });
   const result = await runScheduledSync(now);

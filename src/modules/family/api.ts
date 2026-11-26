@@ -27,6 +27,7 @@ export const KID_COLORS = ["#2563eb", "#db2777", "#16a34a", "#ea580c", "#7c3aed"
 
 export { deadlineUrgency, type Urgency } from "./time";
 export { SensitiveTextError } from "./guard";
+export { familyActivitySince, type FamilyActivity } from "./activity";
 export {
   addReading,
   deleteReading,

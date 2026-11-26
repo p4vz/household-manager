@@ -302,6 +302,24 @@ export async function listRecentTransactions(viewer: Viewer, limit = 100) {
     .limit(limit);
 }
 
+/**
+ * Bank-synced transactions that arrived after `since` on accounts `viewer`
+ * may see (joint and their own), for the home page's "Since your last
+ * visit". CSV history imports are left out. Counts and totals only.
+ */
+export async function financeActivitySince(viewer: Viewer, since: Date) {
+  const [row] = await db()
+    .select({
+      n: sql<number>`count(*)::int`,
+      spent: sql<number>`coalesce(sum(case when ${financeTransactions.amount} < 0 and not ${financeTransactions.isTransfer} then -${financeTransactions.amount} else 0 end), 0)::float`,
+      uncategorized: sql<number>`count(*) filter (where ${financeTransactions.category} is null and not ${financeTransactions.isTransfer})::int`,
+    })
+    .from(financeTransactions)
+    .innerJoin(financeAccounts, eq(financeTransactions.accountId, financeAccounts.id))
+    .where(and(visibleTo(viewer), eq(financeTransactions.source, "simplefin"), sql`${financeTransactions.createdAt} > ${since.toISOString()}::timestamptz`));
+  return { transactions: row?.n ?? 0, spent: Math.round((row?.spent ?? 0) * 100) / 100, uncategorized: row?.uncategorized ?? 0 };
+}
+
 // ---------- insights ----------
 
 /** Everything the dashboard needs; filtering happens in the browser. */

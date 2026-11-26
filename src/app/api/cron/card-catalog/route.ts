@@ -1,5 +1,6 @@
 import { NextResponse } from "next/server";
 import { isValidCronRequest } from "@/core/net/cron";
+import { noteCronCall } from "@/core/net/cron-seen";
 import { runCatalogRefreshIfDue } from "@/modules/finance/api";
 
 /**
@@ -8,6 +9,7 @@ import { runCatalogRefreshIfDue } from "@/modules/finance/api";
  */
 export async function POST(req: Request) {
   if (!isValidCronRequest(req)) return new NextResponse(null, { status: 401 });
+  await noteCronCall("card-catalog");
   try {
     return NextResponse.json(await runCatalogRefreshIfDue());
   } catch (err) {
