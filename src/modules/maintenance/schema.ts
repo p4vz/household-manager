@@ -1,4 +1,4 @@
-import { customType, date, integer, jsonb, numeric, pgTable, text, timestamp, uuid } from "drizzle-orm/pg-core";
+import { boolean, customType, date, integer, jsonb, numeric, pgTable, text, timestamp, uuid } from "drizzle-orm/pg-core";
 
 export const maintenanceTasks = pgTable("maintenance_tasks", {
   id: uuid("id").primaryKey().defaultRandom(),
@@ -24,6 +24,16 @@ export const maintenanceTasks = pgTable("maintenance_tasks", {
   parts: text("parts"),
   /** When this was last done (carried from the completed predecessor, or entered by hand). */
   lastDoneOn: date("last_done_on"),
+  /**
+   * A one-time house to-do (caulk the counter, patch holes) added on the
+   * kitchen screen: no schedule, due from the day it was added. Shown with
+   * the date added and who will do it.
+   */
+  todo: boolean("todo").notNull().default(false),
+  /** Who will do it (a first name, typed on the kitchen screen). */
+  assignee: text("assignee"),
+  /** Hidden from the to-do lists until this day ("Defer until"). */
+  deferredUntil: date("deferred_until"),
   createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
 });
 

@@ -15,7 +15,7 @@ import {
   undoChore,
 } from "@/modules/family/api";
 import { householdToday } from "@/modules/family/ui/dates";
-import { completeTask } from "@/modules/maintenance/api";
+import { HouseTodoError, addHouseTodo, completeTask, deferTask } from "@/modules/maintenance/api";
 
 /**
  * What the kitchen screen can do (shopping lists: shopping-actions.ts). Built with kioskAction: an allowlisted
@@ -76,6 +76,35 @@ export const completeUpkeepAction = kioskAction("upkeep.complete", z.object({ ta
   await completeTask(taskId, { date: householdToday() });
   refresh();
   revalidatePath("/maintenance");
+});
+
+/** Adds a one-time house to-do (what, and who will do it), dated today. */
+export const addHouseTodoAction = kioskAction(
+  "upkeep.add",
+  z.object({ title: z.string().trim().min(1).max(160), assignee: z.string().trim().max(40).optional() }),
+  async ({ title, assignee }) => {
+    try {
+      await addHouseTodo({ title, assignee, today: householdToday() });
+    } catch (err) {
+      if (err instanceof HouseTodoError) return { error: err.message };
+      throw err;
+    }
+    refresh();
+    revalidatePath("/maintenance");
+    return { error: null };
+  },
+);
+
+/** "Defer until": hides a to-do or upkeep task until that day. */
+export const deferUpkeepAction = kioskAction("upkeep.defer", z.object({ taskId: id, until: z.iso.date() }), async ({ taskId, until }) => {
+  try {
+    await deferTask(taskId, until, householdToday());
+  } catch (err) {
+    if (err instanceof HouseTodoError) return { error: err.message };
+    throw err;
+  }
+  refresh();
+  return { error: null };
 });
 
 export const syncCalendarAction = kioskAction("calendar.sync", z.object({}), async () => {

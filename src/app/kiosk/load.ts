@@ -38,7 +38,7 @@ export async function loadHub(now = new Date()) {
     choreBoard(now),
     shoppingBoard(now),
     listReturns(),
-    listDueTasks(twoWeeks.toISOString().slice(0, 10)),
+    listDueTasks(twoWeeks.toISOString().slice(0, 10), 30, { today }),
     homeWeather(),
     kidProgress(now),
     readingSummaries(now),
@@ -83,10 +83,13 @@ export async function loadHub(now = new Date()) {
     id: t.id,
     title: t.title,
     dueDate: t.dueDate,
-    dueLabel: `${shortDate(t.dueDate)} (${relativeDue(today, t.dueDate)})`,
-    overdue: t.dueDate < today,
+    // A house to-do has no deadline: it shows the day it was added and who has it.
+    dueLabel: t.todo ? `Added ${shortDate(t.dueDate)}` : `${shortDate(t.dueDate)} (${relativeDue(today, t.dueDate)})`,
+    overdue: !t.todo && t.dueDate < today,
     repeatLabel: t.recurrenceDays ? `every ${t.recurrenceDays} days` : null,
     notes: t.notes,
+    todo: t.todo,
+    assignee: t.assignee,
   }));
 
   const syncedLabel = calendar.sync.lastSyncAt

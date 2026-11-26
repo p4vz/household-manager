@@ -69,6 +69,8 @@ const ADULT_ACTIONS: Record<string, string> = {
   removeChoreDoneAction: "chores.log.edit",
   setReturnStatusAction: "returns.status",
   completeUpkeepAction: "upkeep.complete",
+  addHouseTodoAction: "upkeep.add",
+  deferUpkeepAction: "upkeep.defer",
   deleteEventAdultAction: "calendar.delete",
   removeEventPhotoAdultAction: "calendar.photo.remove",
   exitKitchenModeAction: "kiosk.exit",

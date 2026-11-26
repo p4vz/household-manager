@@ -256,7 +256,8 @@ describe("house upkeep seed", () => {
     expect(tasks.find((t) => t.title === "Replace RO pre-filters")).toMatchObject({ recurrenceDays: 182, area: "Water filtration" });
     expect(tasks.find((t) => t.title === "Heating tune-up and boiler flush")).toMatchObject({ recurrenceDays: 365, lastDoneOn: "2026-08-28" });
     expect(tasks.find((t) => t.title === "Replace attic AC coil")).toMatchObject({ recurrenceDays: null, estimatedCost: 1500, dueDate: "2027-03-01" });
-    expect(tasks).toHaveLength(11);
+    expect(tasks.filter((t) => !t.todo)).toHaveLength(11);
+    expect(tasks.filter((t) => t.todo)).toHaveLength(3);
     const events = await db.select().from(calendarEvents).where(eq(calendarEvents.sourceRef, filters!.id));
     expect(events.map((e) => e.title)).toEqual(["Maintenance: Replace HVAC air filters"]);
     const expected = await finance.listExpectedExpenses("2026-01-01");
