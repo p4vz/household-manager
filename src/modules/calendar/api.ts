@@ -26,6 +26,7 @@ export type { AgendaDay, AgendaItem, EditableEvent } from "./agenda";
 export type { GoogleSyncState } from "./google";
 export type { EventInput } from "./google-config";
 export { KIOSK_DAYS_AHEAD, monthGridStart } from "./google-config";
+export { calendarChangesSince, type CalendarChange } from "./activity";
 export { addEventPhoto, eventPhotos, eventPhotosConfigured, removeEventPhoto, MAX_EVENT_PHOTO_BYTES, MAX_PHOTOS_PER_EVENT, type EventPhoto } from "./photos";
 /**
  * Two-way family calendar: add, change or delete an event on the shared

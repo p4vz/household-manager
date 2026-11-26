@@ -117,7 +117,7 @@ describe("external surface", () => {
       .filter((f) => imports(f).some((s) => resolveImport(f, s)?.replace(/\.(ts|tsx)$/, "") === "core/auth/display-name"))
       .map(rel)
       .sort();
-    expect(users).toEqual(["app/(app)/settings/page.tsx", "app/oauth/authorize/page.tsx"]);
+    expect(users).toEqual(["app/(app)/page.tsx", "app/(app)/settings/page.tsx", "app/(app)/welcome/page.tsx", "app/oauth/authorize/page.tsx"]);
   });
 
   it("cron routes check the cron secret", () => {

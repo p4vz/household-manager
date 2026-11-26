@@ -1,5 +1,6 @@
 import { NextResponse } from "next/server";
 import { isValidCronRequest } from "@/core/net/cron";
+import { noteCronCall } from "@/core/net/cron-seen";
 import { syncGoogleCalendarsIfStale } from "@/modules/calendar/api";
 import { runHousekeeping, scanDueMailboxes } from "@/modules/family/api";
 
@@ -12,6 +13,7 @@ import { runHousekeeping, scanDueMailboxes } from "@/modules/family/api";
  */
 export async function POST(req: Request) {
   if (!isValidCronRequest(req)) return new NextResponse(null, { status: 401 });
+  await noteCronCall("family-hub");
   try {
     const [calendar, housekeeping, returnEmails] = await Promise.all([
       syncGoogleCalendarsIfStale(10 * 60_000),

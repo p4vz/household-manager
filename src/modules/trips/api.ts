@@ -53,6 +53,7 @@ import { openBytes, sealBytes, vaultConfigured } from "./vault";
  * docs/ARCHITECTURE.md ("Trips") for what changed in the move.
  */
 
+export { tripChangesSince } from "./activity";
 export { aiConfigured, vaultConfigured };
 export { ITINERARY_KINDS, BOOKING_STATUSES, PACKING_CATEGORIES, GF_STATUSES, DOCUMENT_KINDS, TRAVELER_KINDS } from "./schema";
 export type { ItineraryKind, BookingStatus, PackingCategory, GfStatus } from "./schema";

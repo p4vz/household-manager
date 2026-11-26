@@ -8,6 +8,7 @@ import * as binder from "./binder";
 import { ASSET_KINDS, ASSET_KIND_LABELS, maintenanceAssets, maintenanceProjects, maintenanceTasks, type AssetKind, type RecallHit } from "./schema";
 
 export { ASSET_KINDS, ASSET_KIND_LABELS, type AssetKind, type RecallHit };
+export { maintenanceActivitySince, type MaintenanceActivity } from "./activity";
 
 /** Areas the maintenance list is grouped by. Free text is allowed too. */
 export const UPKEEP_AREAS = ["Water filtration", "HVAC & heating", "Plumbing", "Exterior & stormwater", "Appliances", "Electrical", "Yard", "Vehicles", "Home binder", "Other"] as const;
