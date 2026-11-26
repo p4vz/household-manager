@@ -125,17 +125,19 @@ export function ChoreBoard({
                     <span className="text-2xl leading-none" aria-hidden>
                       {c.icon}
                     </span>
-                    <span className={`min-w-0 flex-1 text-base font-semibold leading-tight ${c.done ? "line-through opacity-60" : ""}`}>
-                      {c.title}
-                      {c.recurrence !== "daily" ? (
-                        <span className="ml-1.5 align-middle text-[10px] font-medium uppercase opacity-60">{c.recurrence === "weekly" ? "this week" : "today"}</span>
-                      ) : null}
-                    </span>
-                    <span
-                      className={`shrink-0 rounded-full px-1.5 py-0.5 text-sm font-bold ${c.done ? "bg-emerald-100 text-emerald-800" : "bg-yellow-100 text-yellow-900"}`}
-                      aria-label={`${c.stars} ${c.stars === 1 ? "point" : "points"}`}
-                    >
-                      +{c.stars}⭐
+                    <span className="flex min-w-0 flex-1 flex-col items-start gap-0.5">
+                      <span className={`break-words text-base font-semibold leading-tight ${c.done ? "line-through opacity-60" : ""}`}>{c.title}</span>
+                      <span className="flex flex-wrap items-center gap-1.5">
+                        <span
+                          className={`whitespace-nowrap rounded-full px-1.5 text-xs font-bold leading-5 ${c.done ? "bg-emerald-100 text-emerald-800" : "bg-yellow-100 text-yellow-900"}`}
+                          aria-label={`${c.stars} ${c.stars === 1 ? "point" : "points"}`}
+                        >
+                          +{c.stars} ⭐
+                        </span>
+                        {c.recurrence !== "daily" ? (
+                          <span className="text-[10px] font-medium uppercase opacity-60">{c.recurrence === "weekly" ? "this week" : "today"}</span>
+                        ) : null}
+                      </span>
                     </span>
                     <span
                       className={`flex h-9 w-9 shrink-0 items-center justify-center rounded-full border-[3px] text-xl font-black ${
